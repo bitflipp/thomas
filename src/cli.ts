@@ -1,0 +1,56 @@
+// Command line: thomas <command> ...
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { dirname, basename } from 'node:path';
+import { importMusicXml } from './musicxml.ts';
+import { validate, type Score } from './model.ts';
+import { writeText, parseText } from './textformat.ts';
+import { engrave } from './engrave/system.ts';
+import { pageToSvg } from './render.ts';
+
+function loadScore(path: string, flags = new Set<string>()): Score {
+  const src = readFileSync(path, 'utf8');
+  const warn = (m: string) => console.error('warn:', m);
+  const score = /\.(musicxml|xml)$/i.test(path) ? importMusicXml(src, { warn, keepBreaks: flags.has('--keep-breaks'), keepStems: flags.has('--keep-stems') }) : path.endsWith('.json') ? (JSON.parse(src) as Score) : parseText(src);
+  const errs = validate(score);
+  if (errs.length) { errs.slice(0, 10).forEach((e) => console.error('invalid:', e)); throw new Error(`${errs.length} validation problems`); }
+  return score;
+}
+
+const USAGE = `usage:
+  thomas import  <in.musicxml> <out.txt> [--keep-breaks] [--keep-stems]
+                                                  convert MusicXML to the text format
+  thomas render  <in.txt|in.musicxml> <out-base> [--pdf] [--no-breaks] [--numbers|--no-numbers]
+                                                  write <out-base>-<page>.svg (and <out-base>.pdf)
+  thomas check   <in.txt|in.musicxml>             validate`;
+
+const [cmd, ...args] = process.argv.slice(2);
+try {
+  if (cmd === 'import') {
+    const flags = new Set(args.filter((a) => a.startsWith('--')));
+    const [inp, out] = args.filter((a) => !a.startsWith('--'));
+    writeFileSync(out, writeText(loadScore(inp, flags)));
+  } else if (cmd === 'check') {
+    const s = loadScore(args[0]);
+    console.log(`ok: ${s.measures.length} measures, ${s.staves.length} staves`);
+  } else if (cmd === 'render') {
+    const flags = new Set(args.filter((a) => a.startsWith('--')));
+    const [inp, base] = args.filter((a) => !a.startsWith('--'));
+    const score = loadScore(inp, flags);
+    const res = engrave(score, { respectBreaks: !flags.has('--no-breaks'), measureNumbers: flags.has('--no-numbers') ? 'none' : flags.has('--numbers') ? 'all' : 'system', warn: (m) => console.error('warn:', m) });
+    mkdirSync(dirname(base) || '.', { recursive: true });
+    const files = res.pages.map((p, i) => {
+      const f = `${base}-${i + 1}.svg`;
+      writeFileSync(f, pageToSvg(p, res.staffSpace));
+      return f;
+    });
+    console.error(`${res.systems} systems on ${res.pages.length} pages`);
+    if (flags.has('--pdf')) {
+      execFileSync('rsvg-convert', ['-f', 'pdf', '-o', `${base}.pdf`, ...files]);
+      console.error(`wrote ${basename(base)}.pdf`);
+    }
+  } else console.error(USAGE);
+} catch (e) {
+  console.error((e as Error).message);
+  process.exit(1);
+}

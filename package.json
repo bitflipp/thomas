@@ -1,0 +1,14 @@
+{
+  "name": "thomas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Music typesetter: text model -> SVG/PDF",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@vexflow-fonts/bravura": "^1.0.2",
+    "opentype.js": "^2.0.0"
+  }
+}
