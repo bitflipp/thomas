@@ -7,6 +7,7 @@ import { validate, type Score } from './model.ts';
 import { writeText, parseText } from './textformat.ts';
 import { engrave } from './engrave/system.ts';
 import { pageToSvg } from './render.ts';
+import { findCollisions, describe } from './engrave/collide.ts';
 
 function loadScore(path: string, flags = new Set<string>()): Score {
   const src = readFileSync(path, 'utf8');
@@ -22,7 +23,10 @@ const USAGE = `usage:
                                                   convert MusicXML to the text format
   thomas render  <in.txt|in.musicxml> <out-base> [--pdf] [--no-breaks] [--numbers|--no-numbers]
                                                   write <out-base>-<page>.svg (and <out-base>.pdf)
-  thomas check   <in.txt|in.musicxml>             validate`;
+  thomas check   <in.txt|in.musicxml> [--collisions [--mark <out-base>]]
+                                                  validate; with --collisions also engrave and list overlapping
+                                                  elements (see src/engrave/collide.ts); --mark writes <out-base>-<page>.svg
+                                                  with every collision boxed in red`;
 
 const [cmd, ...args] = process.argv.slice(2);
 try {
@@ -31,8 +35,24 @@ try {
     const [inp, out] = args.filter((a) => !a.startsWith('--'));
     writeFileSync(out, writeText(loadScore(inp, flags)));
   } else if (cmd === 'check') {
-    const s = loadScore(args[0]);
+    const s = loadScore(args.find((a) => !a.startsWith('--'))!);
     console.log(`ok: ${s.measures.length} measures, ${s.staves.length} staves`);
+    if (args.includes('--collisions')) {
+      const res = engrave(s, { respectBreaks: true, measureNumbers: 'system' });
+      const cs = findCollisions(res.pages);
+      cs.forEach((c) => console.log(describe(c)));
+      console.log(`${cs.length} collision${cs.length === 1 ? '' : 's'}`);
+      const mi = args.indexOf('--mark');
+      if (mi >= 0) {
+        const base = args[mi + 1];
+        mkdirSync(dirname(base) || '.', { recursive: true });
+        res.pages.forEach((p, i) => {
+          const boxes = cs.filter((c) => c.page === i + 1).map((c) => `<rect x="${c.x}" y="${c.y}" width="${c.w}" height="${c.h}" fill="none" stroke="red" stroke-width="0.12"/>`).join('');
+          writeFileSync(`${base}-${i + 1}.svg`, pageToSvg(p, res.staffSpace).replace('</svg>', `${boxes}</svg>`));
+        });
+      }
+      if (cs.length) process.exitCode = 1;
+    }
   } else if (cmd === 'render') {
     const flags = new Set(args.filter((a) => a.startsWith('--')));
     const [inp, base] = args.filter((a) => !a.startsWith('--'));

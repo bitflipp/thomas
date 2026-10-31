@@ -25,6 +25,7 @@ export interface HeadL {
   dx: number; // x offset relative to the event's notehead x (set during layout)
   accX?: number; // x offset of the accidental glyph's left edge
   shared?: boolean; // unison with a head of the first voice that can serve both: drawn only once
+  sharers?: EvL[]; // events of other voices whose stems attach to this head (they share it)
   skipDots?: boolean; // the first voice already draws at least as many dots here
 }
 

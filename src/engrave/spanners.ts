@@ -2,9 +2,9 @@
 import { pitchStep, type Mark } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { posToY, type EvL } from './prep.ts';
-import { D, geomOf, xAtTick, type SysCtx } from './draw.ts';
+import { D, geomOf, articExtent, xAtTick, type SysCtx } from './draw.ts';
 import { DOT_STEP } from './spacing.ts';
-import type { Prim } from './scene.ts';
+import { oid, type Kind, type Prim } from './scene.ts';
 
 const sm = loadSmufl();
 
@@ -42,7 +42,14 @@ export function drawSpanners(systems: SysCtx[]): void {
     for (const [, evs] of voiceEvs) {
       evs.forEach((e, i) => {
         if (e.ev.kind !== 'note') return;
-        e.heads.forEach((h, hi) => {
+        // nested ties of a chord: the arc nearest the chord first, the outer ones around it
+        const order = e.heads.map((_, hi) => hi).sort((p, q) => {
+          const pa = tieAbove(e, p), qa = tieAbove(e, q);
+          if (pa !== qa) return pa ? -1 : 1;
+          return pa ? e.heads[p].pos - e.heads[q].pos : e.heads[q].pos - e.heads[p].pos;
+        });
+        order.forEach((hi) => {
+          const h = e.heads[hi];
           if (!h.tie) return;
           let next: EvL | undefined, nh: number = -1;
           for (let k = i + 1; k < evs.length && k <= i + 2; k++) {
@@ -74,14 +81,16 @@ function headPoint(e: EvL, side: 'above' | 'below', margin: number): { x: number
   const g = geomOf.get(e)!;
   const above = side === 'above';
   const stemSide = e.stem === (above ? 'up' : 'down');
-  if (stemSide) return { x: g.stemX, y: above ? g.stemTip - margin * 0.8 : g.stemTip + margin * 0.8, stemSide };
+  // articulations on the same side as the slur: start just beyond them
+  const ax = articExtent.get(e);
+  const artEdge = ax && ax.above === above ? ax.edge + (above ? -0.5 : 0.5) : undefined;
+  if (stemSide) return { x: g.stemX, y: artEdge ?? (above ? g.stemTip - margin * 0.8 : g.stemTip + margin * 0.8), stemSide };
   const ref = above ? e.heads.reduce((a, h) => (h.pos > a.pos ? h : a)) : e.heads.reduce((a, h) => (h.pos < a.pos ? h : a));
-  return { x: e.x + ref.dx + g.hw / 2, y: posToY(ref.pos) + (above ? -margin : margin), stemSide };
+  return { x: e.x + ref.dx + g.hw / 2, y: artEdge ?? posToY(ref.pos) + (above ? -margin : margin), stemSide };
 }
 
-function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: EvL | undefined, nh: number): void {
+function tieAbove(e: EvL, hi: number): boolean {
   const h = e.heads[hi];
-  const g = geomOf.get(e)!;
   let above: boolean;
   if (e.nVoices > 1) above = e.voiceRank === 0;
   else if (e.heads.length > 1) above = hi >= e.heads.length / 2;
@@ -90,25 +99,75 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
     const sorted = [...e.heads].sort((a, b) => a.pos - b.pos);
     above = sorted.indexOf(h) >= sorted.length / 2;
   }
+  return above;
+}
+
+function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: EvL | undefined, nh: number): void {
+  const h = e.heads[hi];
+  const g = geomOf.get(e)!;
+  const above = tieAbove(e, hi);
   const dots = e.te.ev.dur.dots;
   const y = posToY(h.pos) + (above ? -0.38 : 0.38);
-  const x0 = e.x + h.dx + g.hw + 0.12 + (dots ? 0.4 + DOT_STEP * dots : 0);
+  const ledgerExt = D.legerLineExtension as number;
+  // a ledger line in the space next to the tie's end would be crossed: start/stop beyond its extension
+  const ledgerNear = (ev: EvL, hh: { pos: number }): boolean => {
+    const q = above ? hh.pos + 1 : hh.pos - 1;
+    if (q % 2 !== 0) return false;
+    const own = ev.heads.filter((x) => !x.shared);
+    return (q <= -2 && own.some((x) => x.pos <= q)) || (q >= 10 && own.some((x) => x.pos >= q));
+  };
+  const flagged = e.stem === (above ? 'up' : 'down') && e.te.ev.dur.base >= 8 && !e.beam && !e.tremPair;
+  let x0 = e.x + h.dx + g.hw + 0.12 + (dots ? 0.4 + DOT_STEP * dots : 0);
+  if (ledgerNear(e, h)) x0 = Math.max(x0, e.x + h.dx + g.hw + ledgerExt + 0.1);
+  if (flagged) x0 = Math.max(x0, g.stemX + sm.bbox(`flag${e.te.ev.dur.base >= 32 ? '32nd' : e.te.ev.dur.base >= 16 ? '16th' : '8th'}${above ? 'Up' : 'Down'}`).x1 + 0.1);
   const si = systems[e.mi >= 0 ? sysOfIndex(systems, e.mi) : 0];
   const thick = D.tieMidpointThickness as number;
-  const place = (ctx: SysCtx, xa: number, xb: number) => {
-    const len = xb - xa;
-    if (len < 0.4) return;
-    const hgt = Math.min(1.1, 0.4 + len * 0.045);
-    ctx.prims[e.staff].push({ t: 'path', d: crescent(xa, y, xb, y, hgt, thick, above) });
-    ctx.sky[e.staff].add(xa, xb, above ? y - hgt - 0.1 : y, above ? y : y + hgt + 0.1);
+  // between ledger lines of the chord there is little room for the arc
+  const ledgerCap = (ev: EvL, hh: { pos: number }): number => {
+    const own = ev.heads.filter((x) => !x.shared);
+    const lo = Math.min(...own.map((x) => x.pos)), hi = Math.max(...own.map((x) => x.pos));
+    const q0 = above ? (hh.pos % 2 === 0 ? hh.pos + 2 : hh.pos + 1) : (hh.pos % 2 === 0 ? hh.pos - 2 : hh.pos - 1);
+    const exists = (q0 <= -2 && lo <= q0) || (q0 >= 10 && hi >= q0);
+    return exists ? Math.abs(q0 - hh.pos) / 2 - 0.38 - 0.25 : Infinity;
   };
-  if (!next || nh < 0) { place(si, x0, Math.min(x0 + 2.6, si.width)); return; }
+  const cap = Math.max(0.25, Math.min(ledgerCap(e, h), next && nh >= 0 ? ledgerCap(next, next.heads[nh]) : Infinity));
+  const place = (ctx: SysCtx, xa: number, xb: number, y: number): { hgt: number; draw: (hh: number) => void } | undefined => {
+    const len = xb - xa;
+    if (len < 0.4) return undefined;
+    let hgt = Math.min(1.1, 0.4 + len * 0.045, cap);
+    // bulge further if something (accidentals of other voices ...) stands in the way
+    const sk = ctx.sky[e.staff];
+    for (let t = 0.1; t <= 0.9001; t += 0.05) {
+      const x = xa + len * t, f = 4 * t * (1 - t);
+      const o = above ? sk.top(x - 0.35, x + 0.35, Infinity) : sk.bottom(x - 0.35, x + 0.35, -Infinity);
+      if (!Number.isFinite(o)) continue;
+      const gap = above ? y - (o - 0.25) : o + 0.25 - y;
+      if (gap > 0 && gap < 3) hgt = Math.max(hgt, gap / (f * 0.95));
+    }
+    hgt = Math.min(hgt, 2.4);
+    return {
+      hgt,
+      draw: (hh: number) => {
+        ctx.prims[e.staff].push({ t: 'path', d: crescent(xa, y, xb, y, hh, thick, above), k: 'tie', o: oid(h) });
+        ctx.sky[e.staff].add(xa, xb, above ? y - hh - 0.1 : y, above ? y : y + hh + 0.1, true);
+      },
+    };
+  };
+  const solo = (p: { hgt: number; draw: (hh: number) => void } | undefined) => p?.draw(p.hgt);
+  if (!next || nh < 0) { solo(place(si, x0, Math.min(x0 + 2.6, si.width), y)); return; }
   const sj = systems[sysOfIndex(systems, next.mi)];
-  const x1 = next.x + next.heads[nh].dx - 0.12;
+  let x1 = next.x + next.heads[nh].dx - 0.12;
+  if (ledgerNear(next, next.heads[nh])) x1 = Math.min(x1, next.x + next.heads[nh].dx - ledgerExt - 0.1);
   const yN = posToY(next.heads[nh].pos) + (above ? -0.38 : 0.38);
-  void yN;
-  if (sj === si) place(si, x0, x1);
-  else { place(si, x0, si.width - 0.2); place(sj, Math.max(sj.prefix - 0.6, 0.5), x1); }
+  if (sj === si) solo(place(si, x0, x1, y));
+  else {
+    // both halves of a tie broken across systems get the same height and the same reach into their system
+    const reach = Math.min(si.width - 0.2 - x0, x1 - Math.max(sj.prefix - 0.6, 0.5));
+    const outgoing = place(si, x0, si.width - 0.2, y), incoming = place(sj, Math.max(sj.prefix - 0.6, 0.5), x1, yN);
+    void reach;
+    const hh = Math.max(outgoing?.hgt ?? 0, incoming?.hgt ?? 0);
+    outgoing?.draw(hh); incoming?.draw(hh);
+  }
 }
 
 function sysOfIndex(systems: SysCtx[], mi: number): number {
@@ -133,32 +192,79 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
   // a tie starting on the same side as the slur: start the slur above the tie
   const tieSide = (e: EvL): 'above' | 'below' | null => (e.heads.some((h) => h.tie) ? (e.nVoices > 1 ? (e.voiceRank === 0 ? 'above' : 'below') : e.stem === 'down' ? 'above' : 'below') : null);
   if (tieSide(a) === side && !pa.stemSide) pa.y += above ? -0.7 : 0.7;
+  const slurId = oid({});
   const sa = systems[sysOf[a.mi]], sb = systems[sysOf[b.mi]];
   const thick = (D.slurMidpointThickness as number) * 1.3;
-  const piece = (ctx: SysCtx, x0: number, y0: number, x1: number, y1: number, staff: number) => {
+  const piece = (ctx: SysCtx, x0: number, y0: number, x1: number, y1: number, staff: number, openL = false, openR = false): { h: number; draw: (h: number) => void } | undefined => {
     const L = x1 - x0;
-    if (L < 0.5) return;
-    let h = Math.max(0.6, Math.min(2.3, 0.065 * L + 0.5));
+    if (L < 0.5) return undefined;
     const sky = ctx.sky[staff];
+    const dir = above ? -1 : 1; // direction away from the notes
     const win = 0.7;
-    for (let t = 0.1; t <= 0.9001; t += 0.05) {
-      const x = x0 + L * t;
-      const chord = y0 + (y1 - y0) * t;
-      const f = 4 * t * (1 - t);
-      if (x < x0 + 0.9 || x > x1 - 0.9) continue;
-      const obst = above ? sky.top(x - win / 2, x + win / 2, 99) : sky.bottom(x - win / 2, x + win / 2, -99);
-      if (above && obst < 90) h = Math.max(h, (chord - (obst - 0.3)) / (f * 0.95));
-      if (!above && obst > -90) h = Math.max(h, ((obst + 0.3) - chord) / (f * 0.95));
+    const reach = (a: number, b: number) => (above ? sky.top(a, b, 99) : sky.bottom(a, b, -99));
+    // an open (system-break) end has no note to attach to: start it clear of whatever stands near the system edge
+    const edge = 7;
+    const openY = (y: number, o: number): number => (above ? Math.max(y - 3, Math.min(y, o - 0.9)) : Math.min(y + 3, Math.max(y, o + 0.9)));
+    if (openL) { const o = reach(x0, x0 + edge); if (Math.abs(o) < 90) y0 = openY(y0, o); }
+    if (openR) { const o = reach(x1 - edge, x1); if (Math.abs(o) < 90) y1 = openY(y1, o); }
+    // an attached end sits just beyond whatever stands next to its note (neighbouring notes, beams, dots,
+    // articulations - not other slurs), never more than a couple of spaces off the note itself
+    const near = 3.5, maxUp = 2.0;
+    const attach = (y: number, xa: number, xb: number): number => {
+      const o = above ? sky.top(xa, xb, 99, true) : sky.bottom(xa, xb, -99, true);
+      if (Math.abs(o) > 90) return y;
+      return above ? Math.max(y - maxUp, Math.min(y, o - 0.45)) : Math.min(y + maxUp, Math.max(y, o + 0.45));
+    };
+    if (!openL) y0 = attach(y0, x0 - 0.3, x0 + near);
+    if (!openR) y1 = attach(y1, x1 - near, x1 + 0.3);
+    // obstacle profile under the arc, sampled once
+    const samples: { t: number; o: number }[] = [];
+    for (let x = x0 + 0.3; x <= x1 - 0.3; x += 0.25) {
+      if ((!openL && x < x0 + 0.45) || (!openR && x > x1 - 0.45)) continue; // attached ends: the note itself is there
+      const o = reach(x - win / 2, x + win / 2);
+      if (Math.abs(o) < 90) samples.push({ t: (x - x0) / L, o });
     }
-    h = Math.min(h, 5);
-    ctx.prims[staff].push({ t: 'path', d: crescent(x0, y0, x1, y1, h, thick, above) });
-    const ym = Math.min(y0, y1), yM = Math.max(y0, y1);
-    sky.add(x0, x1, above ? ym - h : ym, above ? yM : yM + h);
+    const hPref = Math.max(0.7, Math.min(3.0, 0.09 * L + 0.6));
+    // height needed for the arc, with end points at y0/y1, to clear everything underneath
+    const need = (ya: number, yb: number): number => {
+      let h = hPref;
+      for (const { t, o } of samples) {
+        const chord = ya + (yb - ya) * t;
+        const gap = above ? chord - (o - 0.4) : (o + 0.4) - chord; // positive: the chord is beyond the obstacle edge, the arc must bulge
+        if (gap > 0) h = Math.max(h, gap / (4 * t * (1 - t) * 0.95));
+      }
+      return h;
+    };
+    // the end points may move away from their notes (each on its own, so the slope can change) when that makes a
+    // flatter arc possible; moving costs, and so does a tall arc
+    const hLimit = Math.max(4.5, 0.1 * L); // long slurs may arch higher before the end points are lifted instead
+    let best = { cost: Infinity, d0: 0, d1: 0, h: hPref };
+    for (let d0 = 0; d0 <= 8; d0 += 0.5) {
+      for (let d1 = 0; d1 <= 8; d1 += 0.5) {
+        const hh = need(y0 + dir * d0, y1 + dir * d1);
+        const cost = 2.5 * (d0 + d1) + 0.25 * (hh - hPref) + (hh > hLimit ? 4 * (hh - hLimit) : 0) + 0.04 * Math.abs(y1 + dir * d1 - y0 - dir * d0);
+        if (cost < best.cost - 1e-9) best = { cost, d0, d1, h: hh };
+      }
+    }
+    y0 += dir * best.d0; y1 += dir * best.d1;
+    let h = best.h;
+    h = Math.min(h, Math.max(7, 0.12 * L));
+    return {
+      h,
+      draw: (hh: number) => {
+        ctx.prims[staff].push({ t: 'path', d: crescent(x0, y0, x1, y1, hh, thick, above), k: 'slur', o: slurId });
+        const ym = Math.min(y0, y1), yM = Math.max(y0, y1);
+        sky.add(x0, x1, above ? ym - hh : ym, above ? yM : yM + hh, true);
+      },
+    };
   };
-  if (sa === sb) piece(sa, pa.x, pa.y, pb.x, pb.y, a.staff);
+  if (sa === sb) { const p = piece(sa, pa.x, pa.y, pb.x, pb.y, a.staff); p?.draw(p.h); }
   else {
-    piece(sa, pa.x, pa.y, sa.width - 0.2, pa.y, a.staff);
-    piece(sb, Math.max(sb.prefix - 0.3, 0.5), pb.y, pb.x, pb.y, b.staff);
+    // the two halves of a slur broken across systems get the same arch height so that they read as one slur
+    const p1 = piece(sa, pa.x, pa.y, sa.width - 0.2, pa.y, a.staff, false, true);
+    const p2 = piece(sb, Math.max(sb.prefix - 0.3, 0.5), pb.y, pb.x, pb.y, b.staff, true, false);
+    const hh = Math.max(p1?.h ?? 0, p2?.h ?? 0);
+    p1?.draw(hh); p2?.draw(hh);
   }
 }
 
@@ -173,12 +279,24 @@ interface Item {
   order: number;
 }
 
-function dynRun(text: string): { names: string[]; w: number; up: number; down: number } {
+function dynRun(text: string): { names: string[]; w: number; up: number; down: number; ink0: number; ink1: number } {
   const map: Record<string, string> = { p: 'dynamicPiano', m: 'dynamicMezzo', f: 'dynamicForte', r: 'dynamicRinforzando', s: 'dynamicSforzando', z: 'dynamicZ', n: 'dynamicNiente' };
   const names = text.split('').map((c) => map[c]).filter(Boolean);
-  let w = 0, up = 0, down = 0;
-  for (const n of names) { const b = sm.bbox(n); w += sm.adv(n); up = Math.max(up, b.y1); down = Math.max(down, -b.y0); }
-  return { names, w, up, down };
+  let w = 0, up = 0, down = 0, ink0 = 0, ink1 = 0;
+  names.forEach((n, i) => {
+    const b = sm.bbox(n);
+    if (i === 0) ink0 = b.x0;
+    ink1 = w + b.x1;
+    w += sm.adv(n); up = Math.max(up, b.y1); down = Math.max(down, -b.y0);
+  });
+  return { names, w, up, down, ink0, ink1 };
+}
+
+/** Centre of the notehead(s) sounding at `tick` (falls back to the column x plus half a head). */
+function xHeadCentre(evs: EvL[], tick: number, x: number): number {
+  const e = evs.find((q) => q.ev.kind === 'note' && q.start === tick);
+  const g = e && geomOf.get(e);
+  return g ? (g.headL + g.headR) / 2 : x + 0.6;
 }
 
 interface Span { mark: Mark & { type: string }; mi: number; end?: { mark: Mark; mi: number } }
@@ -201,9 +319,15 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
       switch (m.type) {
         case 'dynamic': {
           const r = dynRun(m.text);
-          const cx = x + 0.6;
+          const cx = xHeadCentre(prep.measures[mi][s].evs, m.tick, x);
           const side = m.placement ?? 'below';
-          items[si].push({ kind: 'dyn', x0: cx - r.w / 2, x1: cx + r.w / 2, side, up: r.up, down: r.down, row: 0, order: 0, draw: (ref) => { let px = cx - r.w / 2; return r.names.map((n) => { const p: Prim = { t: 'glyph', name: n, x: px, y: ref }; px += sm.adv(n); return p; }); } });
+          let left = cx - (r.ink0 + r.ink1) / 2; // origin so that the visible ink is centred on the notehead
+          // never straddle a barline: slide the run to the left of it
+          for (let k = sys.a; k <= sys.b; k++) {
+            const bx = sys.mx[k] + sys.placed[k].endX;
+            if (bx > left + r.ink0 - 0.2 && bx < left + r.ink1 + 0.2) left = bx - 0.35 - r.ink1;
+          }
+          items[si].push({ kind: 'dyn', x0: left + r.ink0, x1: left + r.ink1, side, up: r.up, down: r.down, row: 0, order: 0, draw: (ref) => { let px = left; return r.names.map((n) => { const p: Prim = { t: 'glyph', name: n, x: px, y: ref }; px += sm.adv(n); return p; }); } });
           break;
         }
         case 'hairpin': { const sp: Span = { mark: m, mi }; openHair.set(m.id, sp); hairs.push(sp); break; }
@@ -240,9 +364,22 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
       }
     }
   }
+  /** x of the stem (head centre if stemless) of the note starting at `tick` ('at') or of the last note before it ('before'), in system coordinates. */
+  const stemAt = (mi: number, tick: number, mode: 'at' | 'before'): number | undefined => {
+    let e: EvL | undefined, m = mi;
+    const notes = (k: number) => prep.measures[k][s].evs.filter((q) => q.ev.kind === 'note');
+    if (mode === 'at') e = notes(m).find((q) => q.start === tick);
+    else {
+      e = notes(m).filter((q) => q.start < tick).pop();
+      if (!e && m > 0 && sysOf[m - 1] === sysOf[m]) { m -= 1; e = notes(m).pop(); }
+    }
+    const g = e && geomOf.get(e);
+    if (!g) return undefined;
+    return e!.stem ? g.stemX : (g.headL + g.headR) / 2;
+  };
   const endOfPiece = { mi: lastMi, tick: prep.measureLen[lastMi] };
   // spans -> per-system pieces
-  const pieces = (sp: Span, startOff: number, endOff: number): { si: number; x0: number; x1: number; first: boolean; last: boolean }[] => {
+  const pieces = (sp: Span, startOff: number, endOff: number, snap = false): { si: number; x0: number; x1: number; first: boolean; last: boolean }[] => {
     const m0 = sp.mi, t0 = (sp.mark as Mark).tick;
     const m1 = sp.end ? sp.end.mi : endOfPiece.mi, t1 = sp.end ? (sp.end.mark as Mark).tick : endOfPiece.tick;
     const out: { si: number; x0: number; x1: number; first: boolean; last: boolean }[] = [];
@@ -250,8 +387,9 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
     for (let si = s0; si <= s1; si++) {
       const ctx = systems[si];
       const first = si === s0, last = si === s1;
-      const x0 = first ? xAtTick(ctx, m0, t0) + startOff : ctx.prefix;
-      const x1 = last ? xAtTick(ctx, m1, t1) + endOff : ctx.width - 0.3;
+      const sx = snap && first ? stemAt(m0, t0, 'at') : undefined, ex = snap && last && sp.end ? stemAt(m1, t1, 'before') : undefined;
+      const x0 = first ? (sx ?? xAtTick(ctx, m0, t0) + startOff) : ctx.prefix;
+      const x1 = last ? (ex ?? xAtTick(ctx, m1, t1) + endOff) : ctx.width - 0.3;
       if (x1 - x0 > 0.3) out.push({ si, x0, x1, first, last });
     }
     return out;
@@ -260,7 +398,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
   const W = 1.15;
   for (const sp of hairs) {
     const m = sp.mark as Mark & { type: 'hairpin' };
-    const ps = pieces(sp, 0, -0.5);
+    const ps = pieces(sp, 0, -0.5, true);
     const total = ps.reduce((a, p) => a + (p.x1 - p.x0), 0);
     let acc = 0;
     for (const p of ps) {
@@ -272,18 +410,19 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
       const o1 = m.kind === 'cresc' ? (p.last ? wide : mid) : (p.last ? 0 : mid);
       void f0; void f1;
       const th = D.hairpinThickness as number;
-      items[p.si].push({
+      const item: Item = {
         kind: 'hair', x0: p.x0, x1: p.x1, side: m.placement ?? 'below', up: Math.max(o0, o1) / 2 + th, down: Math.max(o0, o1) / 2 + th, row: 0, order: 0,
         draw: (ref) => [
-          { t: 'line', x1: p.x0, y1: ref - o0 / 2, x2: p.x1, y2: ref - o1 / 2, w: th },
-          { t: 'line', x1: p.x0, y1: ref + o0 / 2, x2: p.x1, y2: ref + o1 / 2, w: th },
+          { t: 'line', x1: item.x0, y1: ref - o0 / 2, x2: item.x1, y2: ref - o1 / 2, w: th },
+          { t: 'line', x1: item.x0, y1: ref + o0 / 2, x2: item.x1, y2: ref + o1 / 2, w: th },
         ],
-      });
+      };
+      items[p.si].push(item);
     }
   }
   // pedal
   for (const sp of pedals) {
-    const ps = pieces(sp, -0.2, -0.2);
+    const ps = pieces(sp, -0.2, -0.5);
     const pedB = sm.bbox('keyboardPedalPed');
     const pedW = sm.adv('keyboardPedalPed');
     const th = D.pedalLineThickness as number;
@@ -334,18 +473,28 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
   systems.forEach((ctx, si) => {
     const sky = ctx.sky[s];
     const its = items[si];
+    // a hairpin stops short of a dynamic that follows it and starts after one that precedes it
+    for (const hp of its.filter((i) => i.kind === 'hair')) {
+      for (const d of its.filter((i) => i.kind === 'dyn' && i.side === hp.side)) {
+        if (d.x0 < hp.x1 + 0.3 && d.x1 > hp.x1 - 1.0 && d.x0 > hp.x0) hp.x1 = Math.min(hp.x1, d.x0 - 0.3);
+        else if (d.x1 > hp.x0 - 0.3 && d.x0 < hp.x0 + 1.0 && d.x1 < hp.x1) hp.x0 = Math.max(hp.x0, d.x1 + 0.3);
+      }
+    }
     const place = (side: 'above' | 'below') => {
       const list = its.filter((i) => i.side === side).sort((a, b) => a.row - b.row || a.order - b.order || a.x0 - b.x0);
-      // cluster dynamics & hairpins (same row) that touch so they share one baseline
+      // all dynamics & hairpins of this side share one baseline over the whole system
       const groups: Item[][] = [];
-      let cur: Item[] = [];
-      let curRow = -99, curEnd = -Infinity;
+      let dynGroup: Item[] | null = null;
+      let pedGroup: Item[] | null = null;
       for (const it of list) {
-        const clusterable = it.kind === 'dyn' || it.kind === 'hair';
-        if (clusterable && cur.length && it.row === curRow && it.x0 < curEnd + 2.5 && (cur[0].kind === 'dyn' || cur[0].kind === 'hair')) { cur.push(it); curEnd = Math.max(curEnd, it.x1); }
-        else { if (cur.length) groups.push(cur); cur = [it]; curRow = it.row; curEnd = it.x1; }
+        if (it.kind === 'dyn' || it.kind === 'hair') {
+          if (!dynGroup) { dynGroup = []; groups.push(dynGroup); }
+          dynGroup.push(it);
+        } else if (it.kind === 'pedal') {
+          if (!pedGroup) { pedGroup = []; groups.push(pedGroup); }
+          pedGroup.push(it); // all pedal lines of the system share one baseline
+        } else groups.push([it]);
       }
-      if (cur.length) groups.push(cur);
       for (const g of groups) {
         const clear = 0.55;
         let ref = side === 'below' ? -Infinity : Infinity;
@@ -361,7 +510,8 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
         }
         for (const it of g) {
           const r = it.kind === 'hair' ? ref - 0.55 : ref;
-          for (const p of it.draw(r)) ctx.prims[s].push(p);
+          const kind: Kind = it.kind === 'hair' ? 'hairpin' : it.kind === 'ott' ? 'ottava' : it.kind;
+          for (const p of it.draw(r)) { p.k = kind; p.o = oid(it); if (it.kind === 'dyn' || it.kind === 'hair') p.a = ref; ctx.prims[s].push(p); }
           sky.add(it.x0, it.x1, r - it.up, r + it.down);
         }
       }

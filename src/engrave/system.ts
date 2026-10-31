@@ -5,7 +5,7 @@ import { prepare, posToY, keyAlter, type Prepared } from './prep.ts';
 import { spaceMeasure, placeMeasure, COMPRESS, type MeasureSpacing } from './spacing.ts';
 import { drawSystemNotes, xAtTick, D, type SysCtx } from './draw.ts';
 import { drawSpanners } from './spanners.ts';
-import { Skyline, type Page, type Prim } from './scene.ts';
+import { Skyline, oid, tagFrom, type Page, type Prim } from './scene.ts';
 
 const sm = loadSmufl();
 
@@ -174,22 +174,24 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       const gap = Math.max(6.5, ext[s - 1].bottom - 4 + -ext[s].top + 1.6);
       ctx.staffY[s] = ctx.staffY[s - 1] + 4 + gap;
     }
+    alignDynamics(ctx, nS);
     const P: Prim[] = [];
     const first = ctx.a === 0;
     // staves
     for (let s = 0; s < nS; s++) {
       const y0 = ctx.staffY[s];
-      for (let l = 0; l < 5; l++) P.push({ t: 'line', x1: 0, x2: ctx.width, y1: y0 + l, y2: y0 + l, w: D.staffLineThickness as number });
+      for (let l = 0; l < 5; l++) P.push({ t: 'line', x1: 0, x2: ctx.width, y1: y0 + l, y2: y0 + l, w: D.staffLineThickness as number, k: 'staff' });
       for (const p of ctx.prims[s]) P.push(shift(p, 0, y0));
       // clef + key + time
       const clef = prep.clefAt(s, ctx.a, 0);
       const cg = clefGlyph(clef);
-      P.push({ t: 'glyph', name: cg.name, x: 0.9, y: y0 + cg.y });
+      P.push({ t: 'glyph', name: cg.name, x: 0.9, y: y0 + cg.y, k: 'clef', o: oid({}) });
       let kx = 0.9 + sm.adv(cg.name) + 1.0;
       const key = keyAt(score, ctx.a);
+      const keyId = oid({});
       if (key) {
         const name = key > 0 ? 'accidentalSharp' : 'accidentalFlat';
-        keyPositions(key, clef).forEach((pos) => { P.push({ t: 'glyph', name, x: kx, y: y0 + posToY(pos) }); kx += sm.adv(name) + 0.12; });
+        keyPositions(key, clef).forEach((pos) => { P.push({ t: 'glyph', name, x: kx, y: y0 + posToY(pos), k: 'keysig', o: keyId }); kx += sm.adv(name) + 0.12; });
         kx += 0.9;
       }
       if (first) timeSig(P, kx, y0, timeAt(score, ctx.a));
@@ -203,7 +205,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
           const cx = xAtTick(ctx, mi, mk.tick);
           const colj = ctx.spacing[mi].cols.findIndex((c) => c.tick === mk.tick);
           const L = colj >= 0 ? ctx.spacing[mi].cols[colj].L[s] : 0;
-          P.push({ t: 'glyph', name: g.name, x: cx - L + 0.1, y: y0 + g.y });
+          P.push({ t: 'glyph', name: g.name, x: cx - L + 0.5, y: y0 + g.y, k: 'clef', o: oid({}) });
         }
       }
     }
@@ -217,8 +219,12 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
         const label = String(score.measures[mi].number);
         const x = mi === ctx.a ? 0.2 : ctx.mx[mi] + 0.3;
         const w = label.length * size * 0.5 + 0.4;
-        const y = Math.min(-0.8, ctx.sky[0].top(x, x + w, 0) - 0.5);
-        P.push({ t: 'text', x, y, s: label, size, italic: true });
+        let y = Math.min(-0.8, ctx.sky[0].top(x, x + w, 0) - 0.5);
+        if (mi === ctx.a) { // the clef at the start of the system may reach above the staff
+          const cb = sm.bbox(clefGlyph(prep.clefAt(0, ctx.a, 0)).name), cy = clefGlyph(prep.clefAt(0, ctx.a, 0)).y;
+          if (x + w > 0.9) y = Math.min(y, cy - cb.y1 - 0.5);
+        }
+        P.push({ t: 'text', x, y, s: label, size, italic: true, k: 'measurenum', o: oid({}) });
         ctx.sky[0].add(x, x + w, y - size * 0.75, y + 0.2);
       }
       ext[0] = ctx.sky[0].extent();
@@ -233,12 +239,13 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     }
     for (let s = 0; s < nS; s++) if (!used.has(s)) groupsOf.push([s, s]);
     const thin = D.thinBarlineThickness as number, thick = D.thickBarlineThickness as number, sep = D.thinThickBarlineSeparation as number ?? 0.4;
-    P.push({ t: 'line', x1: 0, x2: 0, y1: 0, y2: bottom, w: thin });
+    P.push({ t: 'line', x1: 0, x2: 0, y1: 0, y2: bottom, w: thin, k: 'barline', o: oid({}) });
     for (let mi = ctx.a; mi <= ctx.b; mi++) {
       const bx = ctx.mx[mi] + ctx.placed[mi].endX;
       const bl = score.measures[mi].barline ?? 'single';
       const lastInSys = mi === ctx.b;
       for (const [s0, s1] of groupsOf) {
+        const nBar = P.length;
         const y0 = ctx.staffY[s0], y1 = ctx.staffY[s1] + 4;
         if (bl === 'final' || (lastInSys && mi === nM - 1)) {
           const tx = ctx.width - thick / 2;
@@ -249,6 +256,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
           P.push({ t: 'line', x1: bx - 0.4, x2: bx - 0.4, y1: y0, y2: y1, w: thin });
           P.push({ t: 'line', x1: bx, x2: bx, y1: y0, y2: y1, w: thin });
         } else P.push({ t: 'line', x1: bx, x2: bx, y1: y0, y2: y1, w: thin });
+        tagFrom(P, nBar, 'barline', oid({}));
       }
     }
     void sep;
@@ -263,9 +271,9 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
         const sy = (y1 - y0) / bh;
         const sx = Math.min(3.2, 0.75 * sy);
         // glyph origin is at the bottom of the brace in SMuFL; place so its top edge matches the staff top
-        P.push({ t: 'glyph', name: 'brace', x: -0.35 - b.x1 * sx, y: y1 + b.y0 * sy, sx, sy });
+        P.push({ t: 'glyph', name: 'brace', x: -0.35 - b.x1 * sx, y: y1 + b.y0 * sy, sx, sy, k: 'brace', o: oid({}) });
       } else {
-        P.push({ t: 'line', x1: -0.8, x2: -0.8, y1: y0 - 0.2, y2: y1 + 0.2, w: D.bracketThickness as number });
+        P.push({ t: 'line', x1: -0.8, x2: -0.8, y1: y0 - 0.2, y2: y1 + 0.2, w: D.bracketThickness as number, k: 'brace', o: oid({}) });
       }
     }
     sysPrims.push(P);
@@ -330,6 +338,31 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   return { pages, systems: systems.length, staffSpace: S };
 }
 
+/**
+ * Dynamics and hairpins below a staff and above the next one share the gap between the two staves. Where both occur,
+ * the upper-staff row is the reference and the lower staff's row moves up to its (absolute) baseline, so that they
+ * read as one line — unless that would put them on top of each other horizontally.
+ */
+function alignDynamics(ctx: SysCtx, nS: number): void {
+  const isMark = (p: Prim) => (p.k === 'dyn' || p.k === 'hairpin') && p.a !== undefined;
+  const span = (p: Prim): [number, number] => (p.t === 'glyph' ? [p.x, p.x + sm.adv(p.name)] : p.t === 'line' ? [Math.min(p.x1, p.x2), Math.max(p.x1, p.x2)] : [0, 0]);
+  for (let s = 0; s + 1 < nS; s++) {
+    const below = ctx.prims[s].filter((p) => isMark(p) && p.a! > 4);
+    const above = ctx.prims[s + 1].filter((p) => isMark(p) && p.a! < 0);
+    if (!below.length || !above.length) continue;
+    const target = ctx.staffY[s] + below[0].a!;
+    const dy = target - (ctx.staffY[s + 1] + above[0].a!);
+    if (dy >= 0) continue; // only ever move up, away from the lower staff
+    const clash = above.some((a) => below.some((b) => { const [a0, a1] = span(a), [b0, b1] = span(b); return a1 > b0 - 0.5 && a0 < b1 + 0.5; }));
+    if (clash) continue;
+    for (const p of above) {
+      if (p.t === 'glyph') p.y += dy;
+      else if (p.t === 'line') { p.y1 += dy; p.y2 += dy; }
+      p.a! += dy;
+    }
+  }
+}
+
 function timeSig(P: Prim[], x: number, y0: number, ts: { beats: number; beatType: number }): void {
   const draw = (n: number, y: number) => {
     const s = String(n);
@@ -348,8 +381,10 @@ function timeSig(P: Prim[], x: number, y0: number, ts: { beats: number; beatType
     for (const ch of String(n)) { P.push({ t: 'glyph', name: `timeSig${ch}`, x: px, y }); px += w; }
   };
   void draw;
+  const n0 = P.length;
   drawC(ts.beats, y0 + 1, wn);
   drawC(ts.beatType, y0 + 3, wd);
+  tagFrom(P, n0, 'timesig', oid({}));
 }
 
 function shift(p: Prim, dx: number, dy: number): Prim {
@@ -357,7 +392,7 @@ function shift(p: Prim, dx: number, dy: number): Prim {
     case 'glyph': return { ...p, x: p.x + dx, y: p.y + dy };
     case 'line': return { ...p, x1: p.x1 + dx, x2: p.x2 + dx, y1: p.y1 + dy, y2: p.y2 + dy };
     case 'text': return { ...p, x: p.x + dx, y: p.y + dy };
-    case 'path': return { t: 'path', d: p.d.replace(/(-?\d*\.?\d+(?:e-?\d+)?)[ ,](-?\d*\.?\d+(?:e-?\d+)?)/gi, (_m, a: string, b: string) => `${(parseFloat(a) + dx).toFixed(3)} ${(parseFloat(b) + dy).toFixed(3)}`) };
+    case 'path': return { ...p, d: p.d.replace(/(-?\d*\.?\d+(?:e-?\d+)?)[ ,](-?\d*\.?\d+(?:e-?\d+)?)/gi, (_m, a: string, b: string) => `${(parseFloat(a) + dx).toFixed(3)} ${(parseFloat(b) + dy).toFixed(3)}`) };
   }
 }
 void keyAlter;

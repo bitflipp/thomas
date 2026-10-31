@@ -24,6 +24,7 @@ export interface Column {
   R: number[]; // per-staff right extent
   has: boolean[]; // per-staff: occupied
   clefChange: boolean[]; // per-staff
+  clefW: number[]; // per-staff width reserved for a clef change (added to L)
 }
 
 export interface MeasureSpacing {
@@ -46,7 +47,7 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
   const colMap = new Map<number, Column>();
   const mk = (tick: number): Column => {
     let c = colMap.get(tick);
-    if (!c) { c = { tick, evs: [], ideal: 0, L: Array(nS).fill(0), R: Array(nS).fill(0), has: Array(nS).fill(false), clefChange: Array(nS).fill(false) }; colMap.set(tick, c); }
+    if (!c) { c = { tick, evs: [], ideal: 0, L: Array(nS).fill(0), R: Array(nS).fill(0), has: Array(nS).fill(false), clefChange: Array(nS).fill(false), clefW: Array(nS).fill(0) }; colMap.set(tick, c); }
     return c;
   };
   let anyVisible = false;
@@ -69,9 +70,9 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
   for (let s = 0; s < nS; s++) {
     for (const c of cols) {
       const evs = c.evs.filter((e) => e.staff === s);
-      if (c.clefChange[s]) c.L[s] += sm.adv('gClefChange') * 0.9 + 0.9;
-      if (!evs.length) continue;
-      layoutColumnStaff(c, s, evs);
+      if (c.clefChange[s]) c.clefW[s] = sm.adv('gClefChange') + 1.4; // clef, then clear space before the notes (and their accidentals)
+      if (evs.length) layoutColumnStaff(c, s, evs);
+      c.L[s] += c.clefW[s];
     }
   }
   // ideal distances
@@ -97,7 +98,7 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
   // spaceMeasure runs more than once per measure: start from a clean state each time
   for (const e of evs) {
     e.shiftDx = 0;
-    for (const h of e.heads) { h.dx = 0; h.shared = false; h.skipDots = false; h.accX = undefined; }
+    for (const h of e.heads) { h.dx = 0; h.shared = false; h.skipDots = false; h.accX = undefined; h.sharers = undefined; }
   }
   // --- voice collisions: identical primes share one head, other clashes shift the lower voice right
   const notesEvs = evs.filter((e) => e.ev.kind === 'note');
@@ -111,10 +112,21 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
           const sameDur = fd.base === d.base && fd.dots === d.dots;
           // distinguishable by opposite stems and the same head shape: one head serves both voices
           const distinct = !!f.stem && !!e.stem && f.stem !== e.stem && headGlyph(fd.base) === headGlyph(d.base);
-          if ((sameDur || distinct) && f.heads.some((g) => g.pos === h.pos && g.pitch.alter === h.pitch.alter && !g.shared)) { h.shared = true; h.skipDots = fd.dots >= d.dots; }
+          const host = (sameDur || distinct) ? f.heads.find((g) => g.pos === h.pos && g.pitch.alter === h.pitch.alter && !g.shared) : undefined;
+          if (host) { h.shared = true; h.skipDots = fd.dots >= d.dots; (host.sharers ??= []).push(e); }
         }
       let clash = false;
       for (const h of e.heads) if (!h.shared) for (const f of first) for (const g of f.heads) if (Math.abs(h.pos - g.pos) <= 1) clash = true;
+      // a head standing on the stem of the other voice (or the other way round): move this voice aside
+      const stemSpan = (x: EvL): [number, number] => {
+        const ps = x.heads.map((q) => q.pos), lo = Math.min(...ps), hi = Math.max(...ps);
+        return x.stem === 'up' ? [lo, hi + 7] : x.stem === 'down' ? [lo - 7, hi] : [lo, hi];
+      };
+      for (const f of first) {
+        const [fl, fh] = stemSpan(f), [el, eh] = stemSpan(e);
+        if (e.heads.some((h) => !h.shared && h.pos > fl && h.pos <= fh && f.stem) && f.stem !== null) clash = true;
+        if (f.heads.some((g) => g.pos >= el && g.pos < eh && e.stem)) clash = true;
+      }
       if (clash) { e.shiftDx = headWidth(e.te.ev.dur.base); for (const h of e.heads) if (!h.shared) h.dx += e.shiftDx; }
     }
   }
@@ -161,7 +173,16 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
     });
     const colW = stacks.map((st) => Math.max(...st.map((q) => q.w)));
     const colRight: number[] = [];
-    let edge = leftEdge - 0.2;
+    // an accidental level with a ledger line must clear the line's extension as well
+    const own = heads.filter((x) => !x.h.shared);
+    const pMin = Math.min(...own.map((x) => x.h.pos)), pMax = Math.max(...own.map((x) => x.h.pos));
+    const ledgerHit = info.some((it) => {
+      const half = it.hh / 2 + 0.3;
+      for (let p = -2; p >= pMin; p -= 2) if (Math.abs(p - it.x.h.pos) < half) return true;
+      for (let p = 10; p <= pMax; p += 2) if (Math.abs(p - it.x.h.pos) < half) return true;
+      return false;
+    });
+    let edge = leftEdge - 0.2 - (ledgerHit ? (sm.def.legerLineExtension as number) : 0);
     stacks.forEach((_, k) => { colRight[k] = edge; edge -= colW[k] + 0.12; });
     info.forEach((it, idx) => {
       const k = colOf[idx];
