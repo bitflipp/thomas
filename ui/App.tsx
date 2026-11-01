@@ -52,6 +52,17 @@ function printPdf() {
   requestAnimationFrame(() => setTimeout(() => print(), 300));
 }
 
+/** Keep the context menu inside the viewport: flip to the other side of the click point when it would overflow. */
+function placeMenu(el: HTMLUListElement | null) {
+  const m = menu.value;
+  if (!el || !m) return;
+  const r = el.getBoundingClientRect(), pad = 4;
+  const x = m.x + r.width + pad > innerWidth ? m.x - r.width : m.x;
+  const y = m.y + r.height + pad > innerHeight ? m.y - r.height : m.y;
+  el.style.left = `${Math.max(pad, x)}px`;
+  el.style.top = `${Math.max(pad, y)}px`;
+}
+
 export function App() {
   const fileIn = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -122,7 +133,7 @@ export function App() {
       <Shortcuts />
       {tst && <div class={`toast${tst.err ? ' err' : ''}`} role="status">{tst.msg}</div>}
       {m && (
-        <ul class="ctxmenu" style={{ left: `${m.x}px`, top: `${m.y}px` }} onPointerDown={(e) => e.stopPropagation()}>
+        <ul class="ctxmenu" ref={(el) => placeMenu(el)} style={{ left: `${m.x}px`, top: `${m.y}px` }} onPointerDown={(e) => e.stopPropagation()}>
           {m.items.map((it) => it.sep ? <li class="sep" /> : <li><button class={it.danger ? 'danger' : ''} onClick={() => { menu.value = null; it.run(); }}>{it.label}</button></li>)}
         </ul>
       )}

@@ -676,6 +676,58 @@ export function moveStaff(score: Score, id: string, dir: -1 | 1): Score {
   });
 }
 
+/** Move a staff to index `to`; the joins stay where they are (between the same positions). */
+export function moveStaffTo(score: Score, id: string, to: number): Score {
+  const i = score.staves.findIndex((s) => s.id === id);
+  if (i < 0) throw new EditError('No such staff');
+  to = Math.max(0, Math.min(to, score.staves.length - 1));
+  if (i === to) return score;
+  return edit(score, (d) => {
+    const conn = connections(score);
+    const [st] = d.staves.splice(i, 1);
+    d.staves.splice(to, 0, st);
+    d.groups = groupsFrom(d.staves.map((s) => s.id), conn) as Draft<Score['groups']>;
+  });
+}
+
+/** A copy of a staff (same clef, name and music) directly below it. */
+export function duplicateStaff(score: Score, id: string): Score {
+  const i = score.staves.findIndex((s) => s.id === id);
+  if (i < 0) throw new EditError('No such staff');
+  const src = score.staves[i];
+  const withNew = addStaff(score, { clef: src.clef, ...(src.name ? { name: src.name } : {}), at: i + 1 });
+  const nid = withNew.staves[i + 1].id;
+  return edit(withNew, (d) => {
+    d.measures.forEach((m, mi) => { m.staves[nid] = JSON.parse(JSON.stringify(score.measures[mi].staves[id])); });
+  });
+}
+
+const G: Clef = { sign: 'G', line: 2 }, F: Clef = { sign: 'F', line: 4 }, C3: Clef = { sign: 'C', line: 3 }, C4: Clef = { sign: 'C', line: 4 }, G8: Clef = { sign: 'G', line: 2, octave: -1 };
+export interface InstrumentPreset { key: string; label: string; staves: { clef: Clef; name?: string }[]; join?: 'brace' | 'bracket' }
+export const INSTRUMENTS: InstrumentPreset[] = [
+  { key: 'treble', label: 'Treble staff', staves: [{ clef: G }] },
+  { key: 'bass', label: 'Bass staff', staves: [{ clef: F }] },
+  { key: 'piano', label: 'Piano (grand staff)', staves: [{ clef: G, name: 'Piano' }, { clef: F, name: 'Piano' }], join: 'brace' },
+  { key: 'voice', label: 'Voice', staves: [{ clef: G, name: 'Voice' }] },
+  { key: 'violin', label: 'Violin', staves: [{ clef: G, name: 'Violin' }] },
+  { key: 'viola', label: 'Viola', staves: [{ clef: C3, name: 'Viola' }] },
+  { key: 'cello', label: 'Cello', staves: [{ clef: F, name: 'Cello' }] },
+  { key: 'satb', label: 'SATB choir', staves: [{ clef: G, name: 'Soprano' }, { clef: G, name: 'Alto' }, { clef: G8, name: 'Tenor' }, { clef: F, name: 'Bass' }], join: 'bracket' },
+  { key: 'quartet', label: 'String quartet', staves: [{ clef: G, name: 'Violin I' }, { clef: G, name: 'Violin II' }, { clef: C3, name: 'Viola' }, { clef: F, name: 'Cello' }], join: 'bracket' },
+];
+void C4;
+
+/** Insert the staves of a preset (with names and joins) at position `at` (default: last), as one edit. */
+export function addInstrument(score: Score, key: string, at?: number): Score {
+  const p = INSTRUMENTS.find((x) => x.key === key);
+  if (!p) throw new EditError('Unknown instrument');
+  const base = Math.max(0, Math.min(at ?? score.staves.length, score.staves.length));
+  let sc = score;
+  p.staves.forEach((st, k) => { sc = addStaff(sc, { clef: st.clef, name: st.name, at: base + k }); });
+  if (p.join) for (let k = 0; k + 1 < p.staves.length; k++) sc = setConnection(sc, base + k, p.join);
+  return sc;
+}
+
 export function setStaffName(score: Score, id: string, name: string): Score {
   return edit(score, (d) => { const s = d.staves.find((x) => x.id === id); if (s) { if (name) s.name = name; else delete s.name; } });
 }

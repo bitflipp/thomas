@@ -8,7 +8,7 @@ import * as C from '../src/editor/commands.ts';
 import { eventOf, markOf, tupletOf, type Ref } from '../src/editor/addr.ts';
 import { score, selection, run, space } from './state.ts';
 import { chooseDuration, chooseDots, nudge, flipStem, slurSelection, tieSelection } from './actions.ts';
-import { deleteSelection, evRefs } from './interact.ts';
+import { deleteSelection, evRefs, menu } from './interact.ts';
 import { DYNAMICS } from './Palette.tsx';
 
 function Row({ label, children }: { label: string; children: preact.ComponentChildren }) { return <div class="row"><span>{label}</span><div class="ctl">{children}</div></div>; }
@@ -52,20 +52,40 @@ const clefKey = (c: { sign: string; line: number; octave?: number }) => `${c.sig
 function StavesSection() {
   const s = score.value;
   const conn = C.connections(s);
-  const [newClef, setNewClef] = useState('G2');
+  const [editing, setEditing] = useState<string | undefined>();
+  const [drag, setDrag] = useState<string | undefined>();
+  const [over, setOver] = useState<number | undefined>();
+  const [inst, setInst] = useState('piano');
+  const clefSel = (st: Score['staves'][number]) => (
+    <select value={clefKey(st.clef)} title="Clef" onChange={(e) => { const c = CLEF_OPTS.find(([k]) => k === (e.target as HTMLSelectElement).value)?.[1]; if (c) run((x) => C.setStaffClef(x, st.id, c)); }}>
+      <option value="G2">Treble</option><option value="F4">Bass</option><option value="C3">Alto</option><option value="C4">Tenor</option><option value="G2-1">Treble 8vb</option>
+    </select>
+  );
+  const openMenu = (x: number, y: number, st: Score['staves'][number], i: number) => {
+    menu.value = { x, y, items: [
+      { label: 'Insert above', run: () => run((c) => C.addInstrument(c, inst, i)) },
+      { label: 'Insert below', run: () => run((c) => C.addInstrument(c, inst, i + 1)) },
+      { label: 'Duplicate', run: () => run((c) => C.duplicateStaff(c, st.id)) },
+      { label: 'Rename', run: () => setEditing(st.id) },
+      { sep: true, label: '', run: () => {} },
+      { label: 'Remove staff', danger: true, run: () => { if (s.staves.length > 1) run((c) => C.removeStaff(c, st.id)); } },
+    ] };
+  };
   return (
     <section class="staves">
       <h3>Staves</h3>
       {s.staves.map((st, i) => (
         <>
-          <div class="staffrow">
-            <input type="text" value={st.name ?? ''} placeholder={st.id} title="Instrument name (kept in the file; not drawn yet)" onChange={(e) => run((x) => C.setStaffName(x, st.id, (e.target as HTMLInputElement).value))} />
-            <select value={clefKey(st.clef)} title="Clef" onChange={(e) => { const c = CLEF_OPTS.find(([k]) => k === (e.target as HTMLSelectElement).value)?.[1]; if (c) run((x) => C.setStaffClef(x, st.id, c)); }}>
-              <option value="G2">Treble</option><option value="F4">Bass</option><option value="C3">Alto</option><option value="C4">Tenor</option><option value="G2-1">Treble 8vb</option>
-            </select>
-            <button class="mini" disabled={i === 0} title="Move up" onClick={() => run((x) => C.moveStaff(x, st.id, -1))}>↑</button>
-            <button class="mini" disabled={i === s.staves.length - 1} title="Move down" onClick={() => run((x) => C.moveStaff(x, st.id, 1))}>↓</button>
-            <button class="mini danger" disabled={s.staves.length === 1} title="Remove this staff and everything on it" onClick={() => { if (confirm(`Remove staff "${st.name || st.id}" and all its music?`)) run((x) => C.removeStaff(x, st.id)); }}>×</button>
+          <div class={`staffrow${drag === st.id ? ' dragging' : ''}${over === i && drag && drag !== st.id ? ' dropto' : ''}`}
+            onContextMenu={(e) => { e.preventDefault(); openMenu(e.clientX, e.clientY, st, i); }}
+            onDragOver={(e) => { if (drag) { e.preventDefault(); setOver(i); } }}
+            onDrop={(e) => { e.preventDefault(); if (drag) run((x) => C.moveStaffTo(x, drag, i)); setDrag(undefined); setOver(undefined); }}>
+            <span class="grip" draggable title="Drag to reorder" onDragStart={(e) => { setDrag(st.id); e.dataTransfer?.setData('text/plain', st.id); }} onDragEnd={() => { setDrag(undefined); setOver(undefined); }}>⠿</span>
+            {editing === st.id
+              ? <input type="text" autofocus value={st.name ?? ''} placeholder={st.id} onBlur={(e) => { setEditing(undefined); const v = (e.target as HTMLInputElement).value; if (v !== (st.name ?? '')) run((x) => C.setStaffName(x, st.id, v)); }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); else if (e.key === 'Escape') { setEditing(undefined); } }} />
+              : <span class={`sname${st.name ? '' : ' empty'}`} title="Click to rename (the name is kept in the file; not drawn yet)" onClick={() => setEditing(st.id)}>{st.name || st.id}</span>}
+            {clefSel(st)}
+            <button class="mini" title="Staff actions (or right-click the row)" onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); openMenu(r.left, r.bottom + 2, st, i); }}>⋯</button>
           </div>
           {i < s.staves.length - 1 && (
             <div class="joinrow">
@@ -76,8 +96,10 @@ function StavesSection() {
         </>
       ))}
       <div class="btns">
-        <select value={newClef} onChange={(e) => setNewClef((e.target as HTMLSelectElement).value)}><option value="G2">Treble</option><option value="F4">Bass</option><option value="C3">Alto</option><option value="C4">Tenor</option></select>
-        <button onClick={() => { const c = CLEF_OPTS.find(([k]) => k === newClef)![1]; run((x) => C.addStaff(x, { clef: c })); }}>Add staff</button>
+        <select value={inst} title="Instrument to add (also used by Insert above/below)" onChange={(e) => setInst((e.target as HTMLSelectElement).value)}>
+          {C.INSTRUMENTS.map((p) => <option value={p.key}>{p.label}</option>)}
+        </select>
+        <button onClick={() => run((x) => C.addInstrument(x, inst))}>Add</button>
       </div>
     </section>
   );
@@ -89,37 +111,31 @@ function MeasureSection({ mi }: { mi: number }) {
   const ts = timeAt(s, mi);
   return (
     <section>
+      <Group title={`Measure ${mi + 1}`}>
       <Row label="Time"><Num value={ts.beats} min={1} max={32} w="3.5em" onChange={(n) => run((x) => C.setTimeSig(x, mi, { ...ts, beats: n }))} /> / <select value={ts.beatType} onChange={(e) => run((x) => C.setTimeSig(x, mi, { ...ts, beatType: Number((e.target as HTMLSelectElement).value) }))}>{[1, 2, 4, 8, 16].map((b) => <option>{b}</option>)}</select>
         {mi > 0 && m.time && <button class="mini" title="Inherit from the previous measure" onClick={() => run((x) => C.setTimeSig(x, mi, undefined))}>×</button>}</Row>
       <Row label="Key"><select value={keyAt(s, mi)} onChange={(e) => run((x) => C.setKeySig(x, mi, Number((e.target as HTMLSelectElement).value)))}>{KEYS.map((k) => <option value={k}>{KEYNAME(k)}</option>)}</select>
         {mi > 0 && m.key !== undefined && <button class="mini" title="Inherit from the previous measure" onClick={() => run((x) => C.setKeySig(x, mi, undefined))}>×</button>}</Row>
       <Row label="Barline"><Pick value={m.barline ?? 'single'} opts={[['single', '│'], ['double', '║'], ['final', '𝄂']]} onChange={(v) => run((x) => C.setBarline(x, mi, v))} /></Row>
       <Row label="Break before"><Pick value={m.breakBefore ?? 'none'} opts={[['none', 'auto'], ['system', 'system'], ['page', 'page']]} onChange={(v) => run((x) => C.setBreak(x, mi, v === 'none' ? undefined : (v as 'system' | 'page')))} /></Row>
-      <div class="btns">
-        <button onClick={() => run((x) => C.insertMeasures(x, mi))}>Insert before</button>
-        <button onClick={() => run((x) => C.insertMeasures(x, mi + 1))}>Insert after</button>
-        <button class="danger" onClick={() => deleteSelection()}>Delete</button>
-      </div>
+      </Group>
+      <Group title="Actions">
+        <div class="btns">
+          <button onClick={() => run((x) => C.insertMeasures(x, mi))}>Insert before</button>
+          <button onClick={() => run((x) => C.insertMeasures(x, mi + 1))}>Insert after</button>
+          <button class="danger" onClick={() => deleteSelection()}>Delete</button>
+        </div>
+      </Group>
     </section>
   );
 }
 
-// Collapsed/open state of the note tab's groups, remembered across sessions (storage may be unavailable).
-const GROUPS_KEY = 'thomas.inspector.groups';
-const groupState = signal<Record<string, boolean>>((() => { try { return JSON.parse(localStorage.getItem(GROUPS_KEY) ?? '{}'); } catch { return {}; } })());
-function toggleGroup(id: string, def: boolean) {
-  const v = { ...groupState.value, [id]: !(groupState.value[id] ?? def) };
-  groupState.value = v;
-  try { localStorage.setItem(GROUPS_KEY, JSON.stringify(v)); } catch { /* private mode etc. */ }
-}
-/** A titled group with a fold arrow; `def` is whether it starts open. */
-function Group({ id, title, def = true, children }: { id: string; title: string; def?: boolean; children: preact.ComponentChildren }) {
-  const open = groupState.value[id] ?? def;
-  const flip = () => toggleGroup(id, def);
+/** A titled group of controls. */
+function Group({ title, children }: { id?: string; title: string; children: preact.ComponentChildren }) {
   return (
     <div class="sec">
-      <div class="sh" role="button" tabIndex={0} aria-expanded={open} onClick={flip} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } }}>{title}<span>{open ? '▾' : '▸'}</span></div>
-      {open && children}
+      <div class="sh">{title}</div>
+      {children}
     </div>
   );
 }
@@ -155,8 +171,8 @@ function EventSection() {
       </div>
       <Group id="rhythm" title="Rhythm">
         <div class="g7">{([1, 2, 4, 8, 16, 32, 64] as const).map((b) => <button aria-pressed={same(evs.map((e) => e.dur.base)) === b} onClick={() => chooseDuration(b)}>{b === 1 ? '1' : `1/${b}`}</button>)}</div>
-        <div class="gap"><Pick value={same(evs.map((e) => e.dur.dots))} opts={[[0, 'no dot'], [1, '·'], [2, '··']]} onChange={(n) => chooseDots(n)} /></div>
-        {evs.some((e) => e.kind === 'rest') && <div class="gap"><Pick value={same(evs.filter((e) => e.kind === 'rest').map((e) => (e as { style: string }).style))} opts={[['normal', 'rest shown'], ['hidden', 'hidden']]} onChange={(v) => run((x) => C.updateEvents(x, refs, (e) => { if (e.kind === 'rest' && e.style !== 'measure') e.style = v as 'normal' | 'hidden'; }))} /></div>}
+        <Row label="Dot"><Pick value={same(evs.map((e) => e.dur.dots))} opts={[[0, 'none'], [1, '·'], [2, '··']]} onChange={(n) => chooseDots(n)} /></Row>
+        {evs.some((e) => e.kind === 'rest') && <Row label="Rest"><Pick value={same(evs.filter((e) => e.kind === 'rest').map((e) => (e as { style: string }).style))} opts={[['normal', 'rest shown'], ['hidden', 'hidden']]} onChange={(v) => run((x) => C.updateEvents(x, refs, (e) => { if (e.kind === 'rest' && e.style !== 'measure') e.style = v as 'normal' | 'hidden'; }))} /></Row>}
       </Group>
       {notes.length > 0 && <>
         <Group id="pitch" title="Pitch">
@@ -164,10 +180,8 @@ function EventSection() {
             <button title="Semitone up (↑)" onClick={() => nudge(1)}>♯↑</button><button title="Octave up (Ctrl ↑)" onClick={() => nudge(12)}>8va↑</button><button title="Letter name up (Shift ↑)" onClick={() => nudge(undefined, 1)}>step↑</button>
             <button title="Semitone down (↓)" onClick={() => nudge(-1)}>♭↓</button><button title="Octave down (Ctrl ↓)" onClick={() => nudge(-12)}>8vb↓</button><button title="Letter name down (Shift ↓)" onClick={() => nudge(undefined, -1)}>step↓</button>
           </div>
-          <div class="two">
-            <div><label>Accidental</label><Pick value={same(notes.flatMap((n) => n.pitches.map((p) => p.acc)))} opts={[[undefined, 'auto'], ['force', 'show'], ['cautionary', '( )']]} onChange={(v) => run((x) => C.updateNotes(x, refs, (n) => { for (const p of n.pitches) if (v) p.acc = v; else delete p.acc; }))} /></div>
-            {nonHome.length > 0 && <div><label>Staff</label><Pick value={same(notes.map((n) => n.staff ?? r0.staff))} opts={[[r0.staff, `own (${r0.staff})`], ...nonHome.map((s): [string, string] => [s.id, s.name ? `${s.name} (${s.id})` : s.id])]} onChange={(v) => run((x) => C.setStaffOf(x, refs, v === r0.staff ? undefined : v))} /></div>}
-          </div>
+            <Row label="Accidental"><Pick value={same(notes.flatMap((n) => n.pitches.map((p) => p.acc)))} opts={[[undefined, 'auto'], ['force', 'show'], ['cautionary', '( )']]} onChange={(v) => run((x) => C.updateNotes(x, refs, (n) => { for (const p of n.pitches) if (v) p.acc = v; else delete p.acc; }))} /></Row>
+            {nonHome.length > 0 && <Row label="Staff"><Pick value={same(notes.map((n) => n.staff ?? r0.staff))} opts={[[r0.staff, `own (${r0.staff})`], ...nonHome.map((s): [string, string] => [s.id, s.name ? `${s.name} (${s.id})` : s.id])]} onChange={(v) => run((x) => C.setStaffOf(x, refs, v === r0.staff ? undefined : v))} /></Row>}
         </Group>
         <Group id="notation" title="Notation">
           <div class="tg">
@@ -178,14 +192,12 @@ function EventSection() {
             <Tog on={notes.every((n) => n.arpeggio)} title="Arpeggio (wavy line)" onClick={() => flag('arpeggio', true)}>≀</Tog>
             <Tog on={notes.some((n) => n.noBeam)} title="Do not beam" onClick={() => flag('noBeam', false)}>⌐</Tog>
           </div>
-          <div class="two">
-            <div><label>Stem</label><Pick value={same(notes.map((n) => n.stem))} opts={[[undefined, 'auto'], ['up', '↑'], ['down', '↓']]} onChange={(v) => upd((n) => { if (v) n.stem = v; else delete n.stem; })} /></div>
-            {notes.some((n) => n.art?.length) && <div><label>Articulation placed</label><Pick value={same(notes.map((n) => n.artSide))} opts={[[undefined, 'auto'], ['above', '▲'], ['below', '▼']]} onChange={(v) => upd((n) => { if (v) n.artSide = v; else delete n.artSide; })} /></div>}
-          </div>
+            <Row label="Stem"><Pick value={same(notes.map((n) => n.stem))} opts={[[undefined, 'auto'], ['up', '↑'], ['down', '↓']]} onChange={(v) => upd((n) => { if (v) n.stem = v; else delete n.stem; })} /></Row>
+            {notes.some((n) => n.art?.length) && <Row label="Articulation"><Pick value={same(notes.map((n) => n.artSide))} opts={[[undefined, 'auto'], ['above', '▲'], ['below', '▼']]} onChange={(v) => upd((n) => { if (v) n.artSide = v; else delete n.artSide; })} /></Row>}
         </Group>
       </>}
       {(refs.length >= 2 || notes.length > 0) && (
-        <Group id="grouping" title="Grouping" def={false}>
+        <Group id="grouping" title="Grouping">
           <div class="btns">
             {refs.length >= 2 && <button onClick={slurSelection}>Slur (S)</button>}
             {refs.length >= 2 && <button title="Beam the selected notes together" onClick={() => run((x) => C.makeBeam(x, sorted[0], sorted[0].idx, sorted[sorted.length - 1].idx))}>Beam</button>}
@@ -194,7 +206,7 @@ function EventSection() {
           </div>
         </Group>
       )}
-      <div class="btns actions"><button onClick={flipStem}>Flip stem (X)</button><button class="danger" onClick={() => deleteSelection()}>Delete</button></div>
+      <Group title="Actions"><div class="btns"><button onClick={flipStem}>Flip stem (X)</button><button class="danger" onClick={() => deleteSelection()}>Delete</button></div></Group>
     </section>
   );
 }
