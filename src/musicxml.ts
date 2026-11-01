@@ -286,7 +286,7 @@ function readPitch(el: XNode, mi: number, opts: ImportOptions): import('./model.
   const np: import('./model.ts').NotePitch = { pitch };
   if (children(el, 'tie').some((t) => t.attrs.type === 'start')) np.tie = true;
   const acc = child(el, 'accidental');
-  if (acc?.attrs.cautionary === 'yes') np.acc = 'cautionary';
+  if (acc?.attrs.cautionary === 'yes') np.acc = 'force';
   void opts;
   return np;
 }
@@ -315,6 +315,8 @@ function readNotations(el: XNode, ev: NoteEvent | RestEvent, isChord: boolean, o
       else if (a.tag === 'staccato') list.push('staccato');
     }
     if (list.length) ev.art = list;
+    const pl = art.children.map((a) => a.attrs.placement).find((x) => x === 'above' || x === 'below');
+    if (list.length && pl) ev.artSide = pl as 'above' | 'below';
   }
   const orn = child(n, 'ornaments');
   const trem = child(orn, 'tremolo');

@@ -35,6 +35,7 @@ export interface NoteEvent extends EventBase {
   kind: 'note';
   pitches: NotePitch[]; // ordered low -> high
   art?: Articulation[];
+  artSide?: 'above' | 'below'; // forced side of the articulations (default: by stem / voice)
   arpeggio?: boolean;
   tremolo2?: { role: 'start' | 'stop'; beams: number };
 }

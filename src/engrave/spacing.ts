@@ -7,13 +7,15 @@ import type { Prepared, EvL, HeadL } from './prep.ts';
 const sm = loadSmufl();
 
 export function headGlyph(base: number): string { return base === 1 ? 'noteheadWhole' : base === 2 ? 'noteheadHalf' : 'noteheadBlack'; }
-export function headWidth(base: number): number { return sm.adv(headGlyph(base)); }
+/** MuseScore's noteheads are a little fuller than Bravura's at the same staff size */
+export const HEAD_SCALE = 1.1;
+export function headWidth(base: number): number { return sm.adv(headGlyph(base)) * HEAD_SCALE; }
 export const STEM_T = 0.12;
 export const DOT_STEP = 0.55;
 export const COMPRESS = 0.7; // minimum stretch factor allowed when fitting measures on a line
 
 export function idealSpace(dt: number): number {
-  return 1.1 + 3.1 * Math.pow(dt / PPQ, 0.6);
+  return 1.1 + 1.9 * Math.pow(dt / PPQ, 0.6);
 }
 
 export interface Column {
@@ -87,7 +89,7 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
   const lead = 0.9 + prefix + Math.max(0, ...cols.slice(0, 1).flatMap((c) => c.L));
   const endReq: number[] = Array(nS).fill(0);
   for (let s = 0; s < nS; s++) for (const c of cols) if (c.has[s]) endReq[s] = c.R[s];
-  const sp: MeasureSpacing = { mi, cols, endIdeal, lead, endTrail: 0.9, endReq, prefix, timeSig, minWidth: 0, compWidth: 0, restOnly };
+  const sp: MeasureSpacing = { mi, cols, endIdeal, lead, endTrail: 0.75, endReq, prefix, timeSig, minWidth: 0, compWidth: 0, restOnly };
   sp.minWidth = placeMeasure(sp, 1).width;
   sp.compWidth = placeMeasure(sp, COMPRESS).width;
   return sp;
@@ -140,6 +142,7 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
         heads.push({ h, e });
         L = Math.max(L, -h.dx);
         let r = h.dx + w;
+        if (h.pos <= -2 || h.pos >= 10) r += sm.def.legerLineExtension as number; // its ledger line reaches beyond the head
         const dots = e.te.ev.dur.dots;
         if (dots) r += 0.4 + DOT_STEP * dots;
         R = Math.max(R, r);
@@ -214,7 +217,7 @@ export function placeMeasure(sp: MeasureSpacing, f: number): PlacedMeasure {
     for (let s = 0; s < nS; s++) {
       if (!c.has[s]) continue;
       const i = lastOcc[s];
-      if (i >= 0) x = Math.max(x, xs[i] + sp.cols[i].R[s] + c.L[s] + 0.55);
+      if (i >= 0) x = Math.max(x, xs[i] + sp.cols[i].R[s] + c.L[s] + 0.47);
       lastOcc[s] = j;
     }
     if (j === 0) x = Math.max(x, sp.lead);

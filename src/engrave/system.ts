@@ -171,7 +171,16 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     const ext = ctx.sky.map((k) => k.extent());
     ctx.staffY = [0];
     for (let s = 1; s < nS; s++) {
-      const gap = Math.max(6.5, ext[s - 1].bottom - 4 + -ext[s].top + 1.6);
+      // minimum gap from pairwise overlap in x (a tall slur in one staff only matters where the other staff has content)
+      let need = 0;
+      for (const a of ctx.sky[s - 1].boxes) for (const b of ctx.sky[s].boxes) {
+        if (a.spanner && b.spanner) continue;
+        if (a.x1 > b.x0 && a.x0 < b.x1) need = Math.max(need, a.y1 - 4 - b.y0 + 1.0);
+      }
+      // ... and clear of both staves' lines: content hanging below the upper staff, or above the lower one
+      for (const a of ctx.sky[s - 1].boxes) if (!a.spanner) need = Math.max(need, a.y1 - 4 + 0.7);
+      for (const b of ctx.sky[s].boxes) if (!b.spanner) need = Math.max(need, -b.y0 + 0.7);
+      const gap = Math.max(3.7, need);
       ctx.staffY[s] = ctx.staffY[s - 1] + 4 + gap;
     }
     alignDynamics(ctx, nS);
@@ -301,7 +310,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const pageSystems: number[][] = [[]];
   let cursor = topOf(0);
   const placeY: number[] = [];
-  const gapMin = 6;
+  const gapMin = 1.5;
   systems.forEach((ctx, i) => {
     const needTop = -sysTop[i];
     const h = sysBottom[i] - sysTop[i];
@@ -324,7 +333,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       const last = list[list.length - 1];
       const extra = usableBottom - (placeY[last] + sysBottom[last]);
       if (extra <= 0) return;
-      const per = Math.min(extra / (list.length - 1), 7);
+      const per = Math.min(extra / (list.length - 1), 5);
       list.forEach((si, k) => { placeY[si] += per * k; });
     });
   }
@@ -353,12 +362,21 @@ function alignDynamics(ctx: SysCtx, nS: number): void {
     const target = ctx.staffY[s] + below[0].a!;
     const dy = target - (ctx.staffY[s + 1] + above[0].a!);
     if (dy >= 0) continue; // only ever move up, away from the lower staff
+    // ... but never into the upper staff's own content (notes standing below it, ledger lines, ...)
+    let dyMin = -Infinity;
+    for (const p of above) {
+      const [x0, x1] = span(p);
+      const top = p.t === 'glyph' ? p.y - sm.bbox(p.name).y1 : p.t === 'line' ? Math.min(p.y1, p.y2) - 0.3 : 0;
+      for (const b of ctx.sky[s].boxes) if (!b.spanner && b.x1 > x0 - 0.3 && b.x0 < x1 + 0.3) dyMin = Math.max(dyMin, ctx.staffY[s] - ctx.staffY[s + 1] + b.y1 + 0.3 - top);
+    }
+    const dyAdj = Math.max(dy, dyMin);
+    if (dyAdj >= 0) continue;
     const clash = above.some((a) => below.some((b) => { const [a0, a1] = span(a), [b0, b1] = span(b); return a1 > b0 - 0.5 && a0 < b1 + 0.5; }));
     if (clash) continue;
     for (const p of above) {
-      if (p.t === 'glyph') p.y += dy;
-      else if (p.t === 'line') { p.y1 += dy; p.y2 += dy; }
-      p.a! += dy;
+      if (p.t === 'glyph') p.y += dyAdj;
+      else if (p.t === 'line') { p.y1 += dyAdj; p.y2 += dyAdj; }
+      p.a! += dyAdj;
     }
   }
 }

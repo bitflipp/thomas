@@ -41,7 +41,7 @@ Voice numbers are local to a staff (`rh.1`, `rh.2`, `lh.1`, ...). Every voice of
 | Chord | `<pitches>` then duration | `<c4 e4 g4>:2` |
 | Tie | `~` after a note, or after the chord (all notes), or after a pitch inside a chord | `c4:2~ c4:4` `<c4~ e4>` |
 | Slur | `(` before the first note, `)` after the last. Optional number (overlap) and side `^` `_` | `( c5:8 d5 e5 )` `(2^ ... )2` |
-| Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note) | `c5:8->` |
+| Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |
 | Accidental override | `!` force, `?` cautionary (after the pitch) | `c#4!` `e4?` |
 | Arpeggio | `\arp` before a chord | `\arp <c3 g3 e4>:8` |
 | Two-note tremolo | `\tremN` on the first, `\tremend` on the second note | `\trem2 c4:4 \tremend e4:4` |

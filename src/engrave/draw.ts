@@ -2,7 +2,7 @@
 import { isTuplet, type TupletGroup, type Clef } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { posToY, beamLevels, type EvL, type Prepared } from './prep.ts';
-import { headGlyph, headWidth, restGlyph, STEM_T, DOT_STEP, type MeasureSpacing, type PlacedMeasure } from './spacing.ts';
+import { headGlyph, headWidth, HEAD_SCALE, restGlyph, STEM_T, DOT_STEP, type MeasureSpacing, type PlacedMeasure } from './spacing.ts';
 import { Skyline, tagFrom, oid, type Prim } from './scene.ts';
 
 const sm = loadSmufl();
@@ -140,6 +140,7 @@ export function drawSystemNotes(ctx: SysCtx): void {
             let len = stemLength(Math.max(1, lv));
             // a displaced head right of an up-stem would run into the flag
             if (e.stem === 'up' && e.te.ev.dur.base >= 8 && e.heads.some((h) => h.dx > g.hw / 2 && !h.shared)) len += 0.6;
+            if (e.stem === 'down' && e.te.ev.dur.base >= 8) len += 0.3; // the flag curls up towards the (wider) head
             setStem(e, g, len);
             drawStem(ctx, e, g, s, true);
           }
@@ -199,7 +200,7 @@ function drawNoteBasics(ctx: SysCtx, e: EvL, s: number): void {
   const maxDx = Math.max(...e.heads.map((h) => h.dx));
   for (const h of e.heads) {
     if (h.shared) continue;
-    prims.push({ t: 'glyph', name: gl, x: e.x + h.dx, y: posToY(h.pos) });
+    prims.push({ t: 'glyph', name: gl, x: e.x + h.dx, y: posToY(h.pos), sx: HEAD_SCALE, sy: 1 });
     tagFrom(prims, prims.length - 1, 'head', e, h.sharers);
     const nAcc = prims.length;
     if (h.acc) {
@@ -255,7 +256,7 @@ function drawNoteBasics(ctx: SysCtx, e: EvL, s: number): void {
   const stemX = e.stem === 'up' ? e.x + e.shiftDx + hw - STEM_T / 2 : e.x + e.shiftDx + STEM_T / 2;
   const g: Geom = {
     shift: e.shiftDx, x: e.x, hw, yTop: yTop, yBot: yBot, stemX, stemTip: 0,
-    stemBase: e.stem === 'up' ? yBot - 0.168 : yTop + 0.168,
+    stemBase: e.stem === 'up' ? yBot - 0.168 * HEAD_SCALE : yTop + 0.168 * HEAD_SCALE,
     headL: e.x + minDx, headR: e.x + maxDx + hw,
   };
   geomOf.set(e, g);
@@ -291,7 +292,18 @@ function drawRestPrims(ctx: SysCtx, e: EvL, s: number): void {
     const clef = e.clef;
     y = posToY(Math.round(((e.ev.display.octave * 7 + ['c', 'd', 'e', 'f', 'g', 'a', 'b'].indexOf(e.ev.display.step)) - clefBottom(clef))));
     if (base === 1) y += 0; 
-  } else if (e.nVoices > 1) y += e.voiceRank === 0 ? -1.5 : 1.5;
+  } else if (e.nVoices > 1) {
+    y += e.voiceRank === 0 ? -1.5 : 1.5;
+    // keep clear of the heads (and accidentals) of the other voices sounding at the same time
+    const rb = sm.bbox(name);
+    const others = ctx.prep.measures[e.mi][s].evs.filter((o) => o.ev.kind === 'note' && o.voice !== e.voice && o.start < e.start + e.ticks && e.start < o.start + o.ticks);
+    const hits = (yy: number) => others.some((o) => o.heads.some((h) => {
+      const hy = posToY(h.pos), r = h.acc ? 1.6 : 0.75;
+      return hy + r > yy - rb.y1 && hy - r < yy - rb.y0;
+    }));
+    const stepDir = e.voiceRank === 0 ? -1 : 1;
+    for (let k = 0; k < 8 && hits(y); k++) y += stepDir;
+  }
   ctx.prims[s].push({ t: 'glyph', name, x: e.x, y });
   const b = sm.bbox(name);
   pushBox(ctx, s, e.x, e.x + b.x1, y - b.y1, y - b.y0);
@@ -467,17 +479,20 @@ function drawTuplet(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): void {
   drawTupletPrims(ctx, t, evs, s);
   tagFrom(ctx.prims[s], n0, 'tuplet', t);
 }
-function drawTupletPrims(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): void {
+function drawTupletPrims(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number, forceSide?: 'above' | 'below', dry = false): number | void {
   if (!evs.length) return;
   const showNum = t.number !== 'none';
   const notes = evs.filter((e) => e.ev.kind === 'note');
   const beamSets = new Set(notes.map((n) => n.beam));
   const fullyBeamed = notes.length > 0 && beamSets.size === 1 && !beamSets.has(undefined);
-  const bracket = t.bracket ?? !fullyBeamed;
+  let bracket = t.bracket ?? !fullyBeamed;
   if (!showNum && !bracket) return;
   const anchor = notes[0] ?? evs[0];
-  const side: 'above' | 'below' = t.placement ?? (anchor.stem === 'down' ? 'below' : 'above');
+  const side: 'above' | 'below' = forceSide ?? t.placement ?? (anchor.stem === 'down' ? 'below' : 'above');
   const above = side === 'above';
+  // a number on the side away from the beams (where the heads are) gets a bracket
+  const beamDir = notes[0]?.beam?.dir ?? anchor.stem;
+  if (showNum && notes.length && beamDir && above !== (beamDir === 'up')) bracket = true;
   const label = String(t.label ?? t.actual);
   // x extent
   const gAll = evs.map((e) => (e.ev.kind === 'note' ? geomOf.get(e)! : null));
@@ -538,7 +553,16 @@ function drawTupletPrims(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): vo
   const bx0 = xa - (bracket ? 0 : 0), bx1 = xb;
   const cx = (bx0 + bx1) / 2;
   const cy = ya + ((yb - ya) * (cx - x0)) / Math.max(0.001, x1 - x0);
-  const tw = label.split('').reduce((w, ch) => w + sm.adv(`tuplet${ch}`), 0);
+  const tw = label.length * 1.0;
+  if (dry) return cy;
+  // a bare number that would sit on staff lines moves to the other side of the group, if that is clear of them
+  if (!bracket && showNum && !forceSide && !t.placement) {
+    const hitsLine = (c: number) => [0, 1, 2, 3, 4].some((l) => Math.abs(l - c) < 0.75);
+    if (hitsLine(cy)) {
+      const alt = drawTupletPrims(ctx, t, evs, s, above ? 'below' : 'above', true) as number;
+      if (!hitsLine(alt)) return drawTupletPrims(ctx, t, evs, s, above ? 'below' : 'above');
+    }
+  }
   const th = sm.bbox('tuplet6');
   const hookLen = 0.75 * (above ? 1 : -1);
   const lw = D.tupletBracketThickness as number;
@@ -551,13 +575,9 @@ function drawTupletPrims(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): vo
     ctx.prims[s].push({ t: 'line', x1: bx1, y1: yAt(bx1), x2: bx1, y2: yAt(bx1) + hookLen, w: lw });
   }
   if (showNum) {
-    let px = cx - tw / 2;
-    const yc = bracket ? cy : cy; // glyph centre on the line
-    for (const ch of label) {
-      const nm = `tuplet${ch}`;
-      ctx.prims[s].push({ t: 'glyph', name: nm, x: px, y: yc + (th.y0 + th.y1) / 2 });
-      px += sm.adv(nm);
-    }
+    // plain italic text (lighter than Bravura's bold tuplet figures)
+    const size = 1.8;
+    ctx.prims[s].push({ t: 'text', x: cx, y: cy + size * 0.3, s: label, size, italic: true, anchor: 'middle' });
   }
   const yLo = Math.min(ya, yb) - (above ? 1.0 : 0), yHi = Math.max(ya, yb) + (above ? 0 : 1.0);
   if (bracket) pushBox(ctx, s, bx0, bx1, above ? yLo - 0.2 : yLo, above ? yHi : yHi + 0.2); // no bracket, no band
@@ -574,7 +594,7 @@ function drawArticulations(ctx: SysCtx, e: EvL, s: number): void {
 function drawArticulationPrims(ctx: SysCtx, e: EvL, s: number): void {
   if (e.ev.kind !== 'note' || !e.ev.art) return;
   const g = geomOf.get(e)!;
-  const above = e.nVoices > 1 ? e.voiceRank === 0 : e.stem === 'down';
+  const above = e.ev.artSide ? e.ev.artSide === 'above' : e.nVoices > 1 ? e.voiceRank === 0 : e.stem === 'down' || e.ev.art.includes('marcato');
   const stemSide = e.stem === (above ? 'up' : 'down');
   const arts = [...e.ev.art].sort((a, b) => (a === 'staccato' ? -1 : b === 'staccato' ? 1 : 0)); // staccato nearest the head
   let cx: number, y: number;

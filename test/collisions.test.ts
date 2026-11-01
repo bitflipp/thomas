@@ -8,7 +8,6 @@ import { findCollisions, describe } from '../src/engrave/collide.ts';
 // Known engraver limitations on the reference piece: "kindA x kindB" (sorted) -> how many are tolerated.
 // Fix one, lower the number; nothing outside this table may collide (allowlist: src/engrave/collide.ts).
 const KNOWN: Record<string, number> = {
-  'acc x tie': 1,
   'ledger x tie': 1,
 };
 

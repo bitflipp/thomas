@@ -23,7 +23,7 @@ export const CP: Record<string, number> = {
   tuplet0: 0xE880, tuplet1: 0xE881, tuplet2: 0xE882, tuplet3: 0xE883, tuplet4: 0xE884,
   tuplet5: 0xE885, tuplet6: 0xE886, tuplet7: 0xE887, tuplet8: 0xE888, tuplet9: 0xE889, tupletColon: 0xE88A,
   wiggleArpeggiatoUp: 0xEAA9,
-  keyboardPedalPed: 0xE650, keyboardPedalUp: 0xE655,
+  keyboardPedalPed: 0xE650, keyboardPedalParensLeft: 0xE676, keyboardPedalParensRight: 0xE677, keyboardPedalUp: 0xE655,
   ottava: 0xE510, ottavaAlta: 0xE511, ottavaBassa: 0xE512,
   metNoteHalfUp: 0xE1D3, metNoteQuarterUp: 0xE1D5, metAugmentationDot: 0xE1FC,
 };

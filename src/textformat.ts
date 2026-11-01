@@ -74,6 +74,7 @@ class VoiceWriter {
       core = e.pitches.length === 1 ? ps[0] : `<${ps.join(' ')}>`;
       if (allTied) post += '~';
       for (const a of e.art ?? []) post += a === 'accent' ? '->' : a === 'marcato' ? '-^' : '-.';
+      if (e.art?.length && e.artSide) post += e.artSide === 'above' ? '^' : '_';
     } else core = e.hidden ? 's' : e.measure ? 'R' : e.display ? `r@${pitchStr(e.display)}` : 'r';
     // duration (sticky, base only; dots always written)
     let d = '';
@@ -339,6 +340,7 @@ function parseVoiceLine(line: string, where: string, marksOut: Mark[]): Item[] {
         else if (sc.take(/-\./y)) (ne.art ??= []).push('staccato');
         else break;
       }
+      if (ne.art) { if (sc.take(/\^/y)) ne.artSide = 'above'; else if (sc.take(/_/y)) ne.artSide = 'below'; }
       ev = ne;
     }
     if (pendingSlurs.length) ev.slurStart = pendingSlurs;

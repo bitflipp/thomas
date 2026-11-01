@@ -1,6 +1,4 @@
-# music typesetter score
 title "Gewitter"
-subtitle "임윤찬 gewidmet"
 composer "Philipp Naumann (2026)"
 rights "© Philipp Naumann, licensed under CC BY-SA 4.0"
 page 210.1x296.9 margin=10 space=1.91
@@ -36,7 +34,7 @@ m8
   lh.1: [ c#3:16 d3:8 db3 c3 cb3:16 ] \unped
 m9
   rh.1: 12:4(bracket,above,label=6){ \trem2 a#3:4. \tremend b3:4. } 12:4(nobracket,nonum,below,label=6){ \trem2 a#3:4. \tremend b3:4. }
-  lh.1: \ped ( bb2?:2~
+  lh.1: \ped ( bb2!:2~
 m10
   rh.1: 12:4(nobracket,nonum,below,label=6){ \trem2 a#3:4. \tremend b3:4. } 12:4(nobracket,nonum,below,label=6){ \trem2 a#3:4. \tremend b3:4. }
   lh.1: bb2:4 d3
@@ -71,7 +69,7 @@ m19
   rh.2: [ eb4:16 g4 c4 f4 ] [ eb4 cb4:8 bb3:16 ]
   lh.1: [ \ped (2 c2:16 eb2 ab2 eb2 ] [ \unped c3 ab2)2 (2_ db3 d3 ]
 m20
-  rh.1: [ f4:8 bb4 ] 3:2(nobracket,above){ [ g4-. d4-. db4-.) ] }
+  rh.1: [ f4:8 bb4 ] 3:2(nobracket,above){ [ g4-._ d4-._ db4-._) ] }
   rh.2: [ g4:16 eb4:8 bb3 g3 bb3:16~ ]
   lh.1: [ \ped eb3:16)2 ( bb3 g3 eb3) ] [ \unped \ped ( eb2 bb2 eb3 g3) ] \unped
 m21
@@ -148,7 +146,7 @@ m43
   rh.1: [ \< b3:16 b2 b3 c4 ] [ c#4 d4 d#4 e4 ]
   lh.1: \ped a#1:4 r
 m44
-  rh.1: [ \clef G2 f4:16 f#4 g4 g#4? ] [ a4 a#4? b4 c5 ] \!
+  rh.1: [ \clef G2 f4:16 f#4 g4 g#4! ] [ a4 a#4! b4 c5 ] \!
   lh.1: R:2
 m45
   rh.1: [ \> db5:16 c5 cb5 bb4 ] [ a4 ab4 g4 gb4 ]

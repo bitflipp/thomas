@@ -4,6 +4,7 @@ import { parseText, writeText } from '../src/textformat.ts';
 import { validate, flattenVoice, PPQ } from '../src/model.ts';
 import { prepare } from '../src/engrave/prep.ts';
 import { engrave } from '../src/engrave/system.ts';
+import { HEAD_SCALE } from '../src/engrave/spacing.ts';
 import { pageToSvg } from '../src/render.ts';
 
 const HEAD = `title "T"
@@ -180,7 +181,7 @@ m1 time=2/4
   // g (voice 2, stem down) is shifted right by one head width; both stems end up on (almost) the same x
   assert.ok(Math.abs(vlines[0].x1 - vlines[1].x1) < 0.2, `stems at ${vlines.map((l) => l.x1)}`);
   const xs = heads.map((h) => h.x).sort((a, b) => a - b);
-  assert.ok(Math.abs(xs[1] - xs[0] - 1.18) < 0.01);
+  assert.ok(Math.abs(xs[1] - xs[0] - 1.18 * HEAD_SCALE) < 0.01);
 });
 
 test('measure numbers: shown at the start of every system but the first', () => {
@@ -190,4 +191,17 @@ test('measure numbers: shown at the start of every system but the first', () => 
   assert.ok(res.systems > 1);
   assert.equal(nums.length, res.systems - 1);
   assert.ok(!nums.some((n) => n.t === 'text' && n.s === '1'));
+});
+
+test('a pedal carried over a system break restarts with "(Ped.)"', () => {
+  const s = parseText(`${HEAD}
+m1 time=2/4
+  rh.1: R:2
+  lh.1: \\ped c3:4 d3
+m2 break=system
+  rh.1: R:2
+  lh.1: e3:4 f3 \\unped
+`);
+  const ps = engrave(s).pages[0].prims;
+  assert.ok(ps.some((p) => p.t === 'glyph' && p.name === 'keyboardPedalParensLeft'));
 });

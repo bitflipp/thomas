@@ -144,7 +144,7 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
       const gap = above ? y - (o - 0.25) : o + 0.25 - y;
       if (gap > 0 && gap < 3) hgt = Math.max(hgt, gap / (f * 0.95));
     }
-    hgt = Math.min(hgt, 2.4);
+    hgt = Math.min(hgt, 2.4, Math.max(0.4 + len * 0.045, 0.6 + 0.2 * len)); // a short tie never becomes a hump
     return {
       hgt,
       draw: (hh: number) => {
@@ -161,12 +161,13 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
   const yN = posToY(next.heads[nh].pos) + (above ? -0.38 : 0.38);
   if (sj === si) solo(place(si, x0, x1, y));
   else {
-    // both halves of a tie broken across systems get the same height and the same reach into their system
-    const reach = Math.min(si.width - 0.2 - x0, x1 - Math.max(sj.prefix - 0.6, 0.5));
+    // halves of a tie broken across systems
     const outgoing = place(si, x0, si.width - 0.2, y), incoming = place(sj, Math.max(sj.prefix - 0.6, 0.5), x1, yN);
-    void reach;
-    const hh = Math.max(outgoing?.hgt ?? 0, incoming?.hgt ?? 0);
-    outgoing?.draw(hh); incoming?.draw(hh);
+    // the halves of a broken tie match in height, except that an obstacle-driven outgoing half does not turn the
+    // incoming half into a bowl: that one only follows part of the way
+    const ho = outgoing?.hgt ?? 0, hi = incoming?.hgt ?? 0;
+    outgoing?.draw(Math.max(ho, hi));
+    incoming?.draw(hi >= ho ? hi : Math.max(hi, Math.min(ho, hi * 1.25 + 0.05)));
   }
 }
 
@@ -195,7 +196,7 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
   const slurId = oid({});
   const sa = systems[sysOf[a.mi]], sb = systems[sysOf[b.mi]];
   const thick = (D.slurMidpointThickness as number) * 1.3;
-  const piece = (ctx: SysCtx, x0: number, y0: number, x1: number, y1: number, staff: number, openL = false, openR = false): { h: number; draw: (h: number) => void } | undefined => {
+  const piece = (ctx: SysCtx, x0: number, y0: number, x1: number, y1: number, staff: number, openL = false, openR = false): { h: number; L: number; draw: (h: number) => void } | undefined => {
     const L = x1 - x0;
     if (L < 0.5) return undefined;
     const sky = ctx.sky[staff];
@@ -237,12 +238,12 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
     };
     // the end points may move away from their notes (each on its own, so the slope can change) when that makes a
     // flatter arc possible; moving costs, and so does a tall arc
-    const hLimit = Math.max(4.5, 0.1 * L); // long slurs may arch higher before the end points are lifted instead
+    const hLimit = Math.max(3.5, 0.07 * L); // long slurs may arch higher before the end points are lifted instead
     let best = { cost: Infinity, d0: 0, d1: 0, h: hPref };
     for (let d0 = 0; d0 <= 8; d0 += 0.5) {
       for (let d1 = 0; d1 <= 8; d1 += 0.5) {
         const hh = need(y0 + dir * d0, y1 + dir * d1);
-        const cost = 2.5 * (d0 + d1) + 0.25 * (hh - hPref) + (hh > hLimit ? 4 * (hh - hLimit) : 0) + 0.04 * Math.abs(y1 + dir * d1 - y0 - dir * d0);
+        const cost = 2.5 * (d0 + d1) + 0.25 * (hh - hPref) + (hh > hLimit ? 6 * (hh - hLimit) : 0) + 0.04 * Math.abs(y1 + dir * d1 - y0 - dir * d0);
         if (cost < best.cost - 1e-9) best = { cost, d0, d1, h: hh };
       }
     }
@@ -250,7 +251,7 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
     let h = best.h;
     h = Math.min(h, Math.max(7, 0.12 * L));
     return {
-      h,
+      h, L,
       draw: (hh: number) => {
         ctx.prims[staff].push({ t: 'path', d: crescent(x0, y0, x1, y1, hh, thick, above), k: 'slur', o: slurId });
         const ym = Math.min(y0, y1), yM = Math.max(y0, y1);
@@ -264,7 +265,9 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
     const p1 = piece(sa, pa.x, pa.y, sa.width - 0.2, pa.y, a.staff, false, true);
     const p2 = piece(sb, Math.max(sb.prefix - 0.3, 0.5), pb.y, pb.x, pb.y, b.staff, true, false);
     const hh = Math.max(p1?.h ?? 0, p2?.h ?? 0);
-    p1?.draw(hh); p2?.draw(hh);
+    // ... but a short half must not become a bowl just because the other one is long
+    const cap = (p: typeof p1) => (p ? Math.min(hh, Math.max(0.12 * p.L + 0.35, Math.min(p.h, 0.7))) : hh);
+    p1?.draw(cap(p1)); p2?.draw(cap(p2));
   }
 }
 
@@ -340,15 +343,15 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
           const unit = m.unit === 4 ? 'metNoteQuarterUp' : m.unit === 2 ? 'metNoteHalfUp' : 'metNoteQuarterUp';
           const nb = sm.bbox(unit);
           const label = `= ${m.bpm}`;
-          const size = 2.2;
-          const wText = label.length * size * 0.5;
+          const size = 2.5;
+          const wText = label.length * size * 0.55;
           const dotsW = m.dots * 0.5;
           items[si].push({
             kind: 'tempo', x0: x, x1: x + nb.x1 + dotsW + 0.5 + wText, side: 'above', up: 1.6, down: 0.2, row: 0, order: 0,
             draw: (ref) => {
               const out: Prim[] = [{ t: 'glyph', name: unit, x, y: ref }];
               for (let k = 0; k < m.dots; k++) out.push({ t: 'glyph', name: 'metAugmentationDot', x: x + nb.x1 + 0.2 + k * 0.5, y: ref });
-              out.push({ t: 'text', x: x + nb.x1 + dotsW + 0.5, y: ref + 0.45, s: label, size, bold: false });
+              out.push({ t: 'text', x: x + nb.x1 + dotsW + 0.5, y: ref + 0.5, s: label, size, bold: true });
               return out;
             },
           });
@@ -365,7 +368,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
     }
   }
   /** x of the stem (head centre if stemless) of the note starting at `tick` ('at') or of the last note before it ('before'), in system coordinates. */
-  const stemAt = (mi: number, tick: number, mode: 'at' | 'before'): number | undefined => {
+  const stemAt = (mi: number, tick: number, mode: 'at' | 'before', what: 'stem' | 'headL' | 'headR' = 'stem'): number | undefined => {
     let e: EvL | undefined, m = mi;
     const notes = (k: number) => prep.measures[k][s].evs.filter((q) => q.ev.kind === 'note');
     if (mode === 'at') e = notes(m).find((q) => q.start === tick);
@@ -375,11 +378,13 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
     }
     const g = e && geomOf.get(e);
     if (!g) return undefined;
+    if (what === 'headL') return g.headL;
+    if (what === 'headR') return g.headR;
     return e!.stem ? g.stemX : (g.headL + g.headR) / 2;
   };
   const endOfPiece = { mi: lastMi, tick: prep.measureLen[lastMi] };
   // spans -> per-system pieces
-  const pieces = (sp: Span, startOff: number, endOff: number, snap = false): { si: number; x0: number; x1: number; first: boolean; last: boolean }[] => {
+  const pieces = (sp: Span, startOff: number, endOff: number, snap: boolean | { start: 'stem' | 'headL'; end: 'stem' | 'headR' } = false): { si: number; x0: number; x1: number; first: boolean; last: boolean }[] => {
     const m0 = sp.mi, t0 = (sp.mark as Mark).tick;
     const m1 = sp.end ? sp.end.mi : endOfPiece.mi, t1 = sp.end ? (sp.end.mark as Mark).tick : endOfPiece.tick;
     const out: { si: number; x0: number; x1: number; first: boolean; last: boolean }[] = [];
@@ -387,7 +392,8 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
     for (let si = s0; si <= s1; si++) {
       const ctx = systems[si];
       const first = si === s0, last = si === s1;
-      const sx = snap && first ? stemAt(m0, t0, 'at') : undefined, ex = snap && last && sp.end ? stemAt(m1, t1, 'before') : undefined;
+      const sn = snap === true ? { start: 'stem' as const, end: 'stem' as const } : snap;
+      const sx = sn && first ? stemAt(m0, t0, 'at', sn.start) : undefined, ex = sn && last && sp.end ? stemAt(m1, t1, 'before', sn.end) : undefined;
       const x0 = first ? (sx ?? xAtTick(ctx, m0, t0) + startOff) : ctx.prefix;
       const x1 = last ? (ex ?? xAtTick(ctx, m1, t1) + endOff) : ctx.width - 0.3;
       if (x1 - x0 > 0.3) out.push({ si, x0, x1, first, last });
@@ -398,7 +404,8 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
   const W = 1.15;
   for (const sp of hairs) {
     const m = sp.mark as Mark & { type: 'hairpin' };
-    const ps = pieces(sp, 0, -0.5, true);
+    // every hairpin starts at the notehead and ends at the stem
+    const ps = pieces(sp, 0, -0.5, { start: 'headL', end: 'stem' });
     const total = ps.reduce((a, p) => a + (p.x1 - p.x0), 0);
     let acc = 0;
     for (const p of ps) {
@@ -434,6 +441,13 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
           const out: Prim[] = [];
           let lx = p.x0;
           if (p.first) { out.push({ t: 'glyph', name: 'keyboardPedalPed', x: p.x0, y: ref }); lx = p.x0 + pedW + 0.3; }
+          else if (p.x1 - p.x0 > pedW + 2) { // continuation of a pedal from the previous system: "(Ped.)"
+            const lw = sm.adv('keyboardPedalParensLeft');
+            out.push({ t: 'glyph', name: 'keyboardPedalParensLeft', x: p.x0, y: ref });
+            out.push({ t: 'glyph', name: 'keyboardPedalPed', x: p.x0 + lw, y: ref });
+            out.push({ t: 'glyph', name: 'keyboardPedalParensRight', x: p.x0 + lw + pedW, y: ref });
+            lx = p.x0 + lw + pedW + sm.adv('keyboardPedalParensRight') + 0.3;
+          }
           const ly = ref - 0.25;
           if (p.x1 - lx > 0.2) out.push({ t: 'line', x1: lx, y1: ly, x2: p.x1, y2: ly, w: th });
           if (p.last && sp.end) out.push({ t: 'line', x1: p.x1, y1: ly, x2: p.x1, y2: ly - 0.9, w: th });
