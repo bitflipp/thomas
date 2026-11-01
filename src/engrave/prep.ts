@@ -33,7 +33,8 @@ export interface HeadL {
 export interface EvL {
   id: number;
   mi: number; // measure index
-  staff: number; // staff index
+  staff: number; // staff index the heads are drawn on (differs from `home` for cross-staff notes)
+  home: number; // staff index of the voice (stems, beams, tuplets and slurs belong to it)
   voice: number; // voice id
   voiceRank: number; // 0-based rank among sounding voices in this staff-measure
   nVoices: number;
@@ -62,11 +63,13 @@ export interface BeamL {
   evs: EvL[]; // all members incl. rests
   notes: EvL[]; // members that are notes
   dir: 'up' | 'down';
+  cross?: boolean; // members sit on different staves: the beam runs between them, stems point towards it
+  crossY?: [number, number]; // cross beam: top and bottom edge (y in the voice's staff, set when drawn)
 }
 
 export interface StaffMeasureL {
-  evs: EvL[]; // all events in all voices, sorted by (start, voice)
-  voices: { id: number; evs: EvL[] }[];
+  evs: EvL[]; // events drawn on this staff (all voices, incl. cross-staff arrivals), sorted by (start, voice)
+  voices: { id: number; evs: EvL[] }[]; // the voices of this staff, with all their events wherever drawn
   marks: Mark[];
 }
 
@@ -133,19 +136,22 @@ export function prepare(score: Score): Prepared {
     const key = keyAt(score, mi);
     const bt = beatTicks(timeAt(score, mi));
     const row: StaffMeasureL[] = [];
+    const smOf = (si: number) => m.staves[score.staves[si].id] ?? { voices: [], marks: [] };
+    // ----- pass 1: events of every voice (a cross-staff event takes clef, octave shift and accidentals of its display staff)
+    const voicesOf: { id: number; evs: EvL[] }[][] = [];
     for (let si = 0; si < nS; si++) {
-      const sid = score.staves[si].id;
-      const sm = m.staves[sid] ?? { voices: [], marks: [] };
+      const sm = smOf(si);
       const voices: { id: number; evs: EvL[] }[] = [];
       const soundingVoices = sm.voices.filter((v) => flattenVoice(v).some((e) => e.ev.kind === 'note' || (e.ev.kind === 'rest' && e.ev.style === 'normal')));
       sm.voices.forEach((v) => {
         const flat = flattenVoice(v);
         const rank = soundingVoices.findIndex((x) => x.id === v.id);
         const evs: EvL[] = flat.map((te) => {
-          const clef = clefAt(si, mi, te.start);
-          const shift = ottAt(si, mi, te.start, true);
+          const ds = te.ev.kind === 'note' && te.ev.staff !== undefined && staffIdx.has(te.ev.staff) ? staffIdx.get(te.ev.staff)! : si;
+          const clef = clefAt(ds, mi, te.start);
+          const shift = ottAt(ds, mi, te.start, true);
           const e: EvL = {
-            id: id++, mi, staff: si, voice: v.id, voiceRank: Math.max(0, rank), nVoices: soundingVoices.length,
+            id: id++, mi, staff: ds, home: si, voice: v.id, voiceRank: Math.max(0, rank), nVoices: soundingVoices.length,
             te, ev: te.ev, start: te.start, ticks: te.ticks, clef, heads: [], stem: null, x: 0, tupletKeys: te.tuplets, ottavaShift: shift, shiftDx: 0,
           };
           if (te.ev.kind === 'note') {
@@ -158,10 +164,13 @@ export function prepare(score: Score): Prepared {
         });
         voices.push({ id: v.id, evs });
       });
+      voicesOf.push(voices);
+    }
 
-      // ----- accidentals (state per staff in the measure, processed in time order)
+    // ----- pass 2: accidentals per display staff (state per staff in the measure, processed in time order)
+    for (let si = 0; si < nS; si++) {
       const state = new Map<string, number>(); // "step+oct" -> alter
-      const all = voices.flatMap((v) => v.evs).sort((a, b) => a.start - b.start || a.voice - b.voice);
+      const all = voicesOf.flatMap((vs) => vs.flatMap((v) => v.evs)).filter((e) => e.staff === si).sort((a, b) => a.start - b.start || a.voice - b.voice);
       for (const e of all) {
         if (e.ev.kind !== 'note') continue;
         const ne = e.ev as NoteEvent;
@@ -179,12 +188,17 @@ export function prepare(score: Score): Prepared {
           state.set(k, np.pitch.alter);
         });
       }
-      // tie carry to next measure
-      tiedFromPrev[si].clear();
-      for (const v of voices) {
-        const last = v.evs[v.evs.length - 1];
-        if (last && last.ev.kind === 'note') for (const np of last.ev.pitches) if (np.tie) tiedFromPrev[si].set(`${v.id}|${pitchStep(np.pitch)}|${np.pitch.alter}`, true);
-      }
+    }
+    // tie carry to next measure (keyed by the staff the tied note is drawn on)
+    for (const t of tiedFromPrev) t.clear();
+    for (const voices of voicesOf) for (const v of voices) {
+      const last = v.evs[v.evs.length - 1];
+      if (last && last.ev.kind === 'note') for (const np of last.ev.pitches) if (np.tie) tiedFromPrev[last.staff].set(`${v.id}|${pitchStep(np.pitch)}|${np.pitch.alter}`, true);
+    }
+
+    for (let si = 0; si < nS; si++) {
+      const sm = smOf(si);
+      const voices = voicesOf[si];
 
       // ----- beams
       for (const v of voices) assignBeams(v, sm.voices.find((x) => x.id === v.id)!, bt);
@@ -222,16 +236,28 @@ export function prepare(score: Score): Prepared {
       }
       for (const v of voices) for (const e of v.evs) if (e.beam && e.beam.dir) e.stem = e.stem && e.ev.kind === 'note' ? e.beam.dir : e.stem;
 
+      // ----- cross-staff beams: the stems of the upper staff's notes point down, those of the lower staff's up
+      for (const v of voices) {
+        const seen = new Set<BeamL>();
+        for (const e of v.evs) if (e.beam && !seen.has(e.beam)) {
+          seen.add(e.beam);
+          const st = new Set(e.beam.notes.map((n) => n.staff));
+          if (st.size < 2) continue;
+          e.beam.cross = true;
+          const top = Math.min(...st);
+          for (const n of e.beam.notes) n.stem = n.staff === top ? 'down' : 'up';
+        }
+      }
+
       // ----- displaced heads in chords
       for (const v of voices) for (const e of v.evs) if (e.ev.kind === 'note') displaceHeads(e);
 
       voices.forEach((v) => v.evs.forEach((e) => allEvs.push(e)));
-      row.push({
-        evs: voices.flatMap((v) => v.evs).sort((a, b) => a.start - b.start || a.voice - b.voice),
-        voices,
-        marks: sm.marks,
-      });
+      row.push({ evs: [], voices, marks: sm.marks });
     }
+    for (const r of row) r.evs = [];
+    for (const r of row) for (const v of r.voices) for (const e of v.evs) row[e.staff].evs.push(e);
+    for (const r of row) r.evs.sort((a, b) => a.start - b.start || a.voice - b.voice);
     measures.push(row);
   });
   return { score, measures, clefAt, measureLen, allEvs };

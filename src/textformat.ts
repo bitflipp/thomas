@@ -62,13 +62,16 @@ class VoiceWriter {
   marksAt: Map<number, string[]>;
   flat: ReturnType<typeof flattenVoice>;
   eventIdx = 0;
-  constructor(marksAt: Map<number, string[]>, flat: ReturnType<typeof flattenVoice>) { this.marksAt = marksAt; this.flat = flat; }
+  home: string;
+  curStaff: string; // staff the following events are drawn on (see \staff)
+  constructor(marksAt: Map<number, string[]>, flat: ReturnType<typeof flattenVoice>, home: string) { this.marksAt = marksAt; this.flat = flat; this.home = this.curStaff = home; }
 
   eventStr(e: Event): string {
     const pre: string[] = [];
     const t = this.flat[this.eventIdx++].start;
     const mk = this.marksAt.get(t);
     if (mk) { pre.push(...mk); this.marksAt.delete(t); }
+    if ((e.staff ?? this.home) !== this.curStaff) { this.curStaff = e.staff ?? this.home; pre.push(`\\staff ${this.curStaff}`); }
     for (const s of e.slurStart ?? []) pre.push('(' + idStr(s.id) + sideStr(s.side));
     if (e.stem) pre.push(e.stem === 'up' ? '\\stemup' : '\\stemdown');
     let core: string;
@@ -126,7 +129,7 @@ function writeStaffMeasure(sm: StaffMeasure, sid: string, lines: string[]): void
     if (!placed) orphans.push(m);
   }
   sm.voices.forEach((v, vi) => {
-    const w = new VoiceWriter(perVoice[vi], flats[vi]);
+    const w = new VoiceWriter(perVoice[vi], flats[vi], sid);
     w.items(v.items);
     const endT = flats[vi].length ? flats[vi][flats[vi].length - 1].start + flats[vi][flats[vi].length - 1].ticks : 0;
     const tail = perVoice[vi].get(endT);
@@ -214,7 +217,7 @@ interface PendingEv { stem?: 'up' | 'down'; arpeggio?: boolean; noBeam?: boolean
  * A mark in a voice line belongs to the event that follows it (or to the end of the measure); its tick is
  * resolved afterwards from the parsed tree, so tuplet arithmetic lives in `flattenVoice` only.
  */
-function parseVoiceLine(line: string, where: string, markLine = false): { items: Item[]; marks: Mark[] } {
+function parseVoiceLine(line: string, where: string, home: string, markLine = false): { items: Item[]; marks: Mark[] } {
   const sc = new Scanner(line, where);
   type Frame = { kind: 'root' | 'tuplet' | 'beam' | 'tremolo'; items: Item[] };
   const stack: Frame[] = [{ kind: 'root', items: [] }];
@@ -225,6 +228,7 @@ function parseVoiceLine(line: string, where: string, markLine = false): { items:
   let pendingSlurs: { id: number; side?: Side }[] = [];
   let pendingEv: PendingEv = {};
   let lastEv: Event | null = null;
+  let curStaff = home; // set by \staff, sticky within the line
   const marks: Mark[] = [];
   const later: { body: MarkBody; ev: Event | null }[] = [];
 
@@ -305,6 +309,7 @@ function parseVoiceLine(line: string, where: string, markLine = false): { items:
         addMark(tm);
       } else if (name === 'text') { sc.ws(); addMark(withSide({ type: 'text', text: readString(sc) }, placement())); }
       else if (name === 'arp') pendingEv.arpeggio = true;
+      else if (name === 'staff') { sc.ws(); curStaff = sc.take(/\w+/y) ?? sc.fail('staff id expected'); }
       else if (name === 'nobeam') pendingEv.noBeam = true;
       else if (name === 'stemup') pendingEv.stem = 'up';
       else if (name === 'stemdown') pendingEv.stem = 'down';
@@ -357,6 +362,7 @@ function parseVoiceLine(line: string, where: string, markLine = false): { items:
     if (pendingSlurs.length) ev.slurStart = pendingSlurs;
     pendingSlurs = [];
     if (pendingEv.stem) ev.stem = pendingEv.stem;
+    if (curStaff !== home) ev.staff = curStaff;
     pendingEv = {};
     flush(ev);
     top().items.push(ev);
@@ -406,7 +412,7 @@ export function parseText(src: string): Score {
         if (!score.staves.some((s) => s.id === sid)) throw new Error(`unknown staff ${sid}`);
         const sm = (cur.staves[sid] ??= { voices: [], marks: [] });
         const markLine = m[2] === undefined;
-        const { items, marks } = parseVoiceLine(m[3], where, markLine);
+        const { items, marks } = parseVoiceLine(m[3], where, sid, markLine);
         if (!markLine) sm.voices.push({ id: Number(m[2]), items });
         sm.marks.push(...marks);
         return;

@@ -28,6 +28,7 @@ export interface SlurStart { id: number; side?: 'above' | 'below' }
 export interface EventBase {
   dur: Dur;
   stem?: 'up' | 'down';
+  staff?: string; // cross-staff: drawn on this other staff (default: the staff of the voice); stem and beam stay with the voice
   slurStart?: SlurStart[];
   slurStop?: number[];
 }
@@ -201,6 +202,7 @@ export function validate(score: Score): string[] {
       const at = `m${mi + 1} ${sid}`;
       if (!ids.has(sid)) errs.push(`m${mi + 1}: unknown staff ${sid}`);
       for (const v of sm.voices) {
+        for (const te of flattenVoice(v)) if (te.ev.staff !== undefined && (!ids.has(te.ev.staff) || te.ev.staff === sid)) errs.push(`${at}.${v.id}: bad cross-staff target ${te.ev.staff}`);
         let t: number;
         try { t = voiceTicks(v); } catch (e) { errs.push(`${at}.${v.id}: ${(e as Error).message}`); continue; }
         if (t > len) errs.push(`${at}.${v.id}: voice too long (${t} > ${len})`);

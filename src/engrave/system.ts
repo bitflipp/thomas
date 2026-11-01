@@ -3,7 +3,7 @@ import { keyAt, timeAt, type Score, type Clef } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { prepare, posToY, keyAlter, type Prepared } from './prep.ts';
 import { spaceMeasure, placeMeasure, COMPRESS, type MeasureSpacing } from './spacing.ts';
-import { drawSystemNotes, xAtTick, D, type SysCtx } from './draw.ts';
+import { drawSystemNotes, xAtTick, D, CROSS_GAP0, type SysCtx } from './draw.ts';
 import { drawSpanners } from './spanners.ts';
 import { Skyline, oid, tagFrom, type Page, type Prim } from './scene.ts';
 
@@ -158,11 +158,42 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     systems.push({
       prep, index, a: plan.a, b: plan.b, spacing, placed, mx, prefix, width: x, f,
       prims: score.staves.map(() => []), sky: score.staves.map(() => new Skyline()), staffY: [], barlines: [], tupletBoxes: [],
+      gap: score.staves.map(() => CROSS_GAP0), gapNeed: score.staves.map(() => 0),
     });
   }
 
-  for (const ctx of systems) drawSystemNotes(ctx);
+  for (const ctx of systems) {
+    drawSystemNotes(ctx);
+    // cross-staff beams are drawn for a given distance between the staves: settle on one that satisfies them and the skylines
+    const crossing = ctx.gapNeed.some((g) => g > 0) || prep.allEvs.some((e) => e.mi >= ctx.a && e.mi <= ctx.b && e.staff !== e.home);
+    if (!crossing) continue;
+    for (let it = 0; it < 4; it++) {
+      let changed = false;
+      for (let s = 1; s < nS; s++) {
+        const want = Math.max(staffGap(ctx, s), ctx.gapNeed[s] + 0.3);
+        if (Math.abs(want - ctx.gap[s]) > 0.01) { ctx.gap[s] = want; changed = true; }
+      }
+      if (!changed) break;
+      ctx.prims = score.staves.map(() => []); ctx.sky = score.staves.map(() => new Skyline()); ctx.gapNeed = score.staves.map(() => 0);
+      drawSystemNotes(ctx);
+    }
+    ctx.pinned = true;
+  }
   drawSpanners(systems);
+  // slurs and marks may need more room between the staves of a system whose gap was fixed for its cross-staff beams: widen it and redraw
+  for (let it = 0; it < 4; it++) {
+    let changed = false;
+    for (const ctx of systems) if (ctx.pinned) for (let s = 1; s < nS; s++) {
+      const want = staffGap(ctx, s);
+      if (want > ctx.gap[s] + 0.01) { ctx.gap[s] = want; changed = true; }
+    }
+    if (!changed) break;
+    for (const ctx of systems) {
+      ctx.prims = score.staves.map(() => []); ctx.sky = score.staves.map(() => new Skyline()); ctx.gapNeed = score.staves.map(() => 0);
+      drawSystemNotes(ctx);
+    }
+    drawSpanners(systems);
+  }
 
   // ---- finalize each system: staff positions, staff lines, clefs, barlines, brace
   const sysPrims: Prim[][] = [];
@@ -171,16 +202,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     const ext = ctx.sky.map((k) => k.extent());
     ctx.staffY = [0];
     for (let s = 1; s < nS; s++) {
-      // minimum gap from pairwise overlap in x (a tall slur in one staff only matters where the other staff has content)
-      let need = 0;
-      for (const a of ctx.sky[s - 1].boxes) for (const b of ctx.sky[s].boxes) {
-        if (a.spanner && b.spanner) continue;
-        if (a.x1 > b.x0 && a.x0 < b.x1) need = Math.max(need, a.y1 - 4 - b.y0 + 1.0);
-      }
-      // ... and clear of both staves' lines: content hanging below the upper staff, or above the lower one
-      for (const a of ctx.sky[s - 1].boxes) if (!a.spanner) need = Math.max(need, a.y1 - 4 + 0.7);
-      for (const b of ctx.sky[s].boxes) if (!b.spanner) need = Math.max(need, -b.y0 + 0.7);
-      const gap = Math.max(3.7, need);
+      const gap = ctx.pinned ? ctx.gap[s] : staffGap(ctx, s);
       ctx.staffY[s] = ctx.staffY[s - 1] + 4 + gap;
     }
     alignDynamics(ctx, nS);
@@ -345,6 +367,20 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     if (pi > 0) page.prims.push({ t: 'text', x: pageW - margin, y: margin + 1.2, s: String(pi + 1), size: 10 * pt, anchor: 'end' });
   });
   return { pages, systems: systems.length, staffSpace: S };
+}
+
+/** Distance between the bottom line of staff s-1 and the top line of staff s that the content of both requires. */
+function staffGap(ctx: SysCtx, s: number): number {
+  // minimum gap from pairwise overlap in x (a tall slur in one staff only matters where the other staff has content)
+  let need = 0;
+  for (const a of ctx.sky[s - 1].boxes) for (const b of ctx.sky[s].boxes) {
+    if (a.spanner && b.spanner) continue;
+    if (a.x1 > b.x0 && a.x0 < b.x1) need = Math.max(need, a.y1 - 4 - b.y0 + 1.0);
+  }
+  // ... and clear of both staves' lines: content hanging below the upper staff, or above the lower one
+  for (const a of ctx.sky[s - 1].boxes) if (!a.spanner) need = Math.max(need, a.y1 - 4 + 0.7);
+  for (const b of ctx.sky[s].boxes) if (!b.spanner) need = Math.max(need, -b.y0 + 0.7);
+  return Math.max(3.7, need);
 }
 
 /**

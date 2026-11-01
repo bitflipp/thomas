@@ -2,9 +2,9 @@
 import { pitchStep, type Mark } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { posToY, type EvL } from './prep.ts';
-import { D, geomOf, articExtent, xAtTick, type SysCtx } from './draw.ts';
+import { D, geomOf, articExtent, xAtTick, staffOffset, type SysCtx } from './draw.ts';
 import { DOT_STEP } from './spacing.ts';
-import { oid, type Kind, type Prim } from './scene.ts';
+import { oid, Skyline, type Kind, type Prim } from './scene.ts';
 
 const sm = loadSmufl();
 
@@ -27,6 +27,7 @@ export function drawSpanners(systems: SysCtx[]): void {
   const sysOf: number[] = [];
   systems.forEach((s, i) => { for (let m = s.a; m <= s.b; m++) sysOf[m] = i; });
 
+  const slurs: (() => void)[] = [], crossSlurs: (() => void)[] = [];
   // ---- per staff, per voice event lists over the whole piece
   for (let s = 0; s < nS; s++) {
     const voiceEvs = new Map<number, EvL[]>();
@@ -36,7 +37,8 @@ export function drawSpanners(systems: SysCtx[]): void {
         if (!voiceEvs.has(v.id)) voiceEvs.set(v.id, []);
         voiceEvs.get(v.id)!.push(...v.evs);
       }
-      timeOrder.push(...prep.measures[mi][s].evs);
+      // slurs belong to the voice, wherever its (cross-staff) notes are drawn
+      timeOrder.push(...prep.measures[mi][s].voices.flatMap((v) => v.evs).sort((p, q) => p.start - q.start || p.voice - q.voice));
     }
     // ---- ties
     for (const [, evs] of voiceEvs) {
@@ -62,31 +64,32 @@ export function drawSpanners(systems: SysCtx[]): void {
         });
       });
     }
-    // ---- slurs
+    // ---- slurs (collected; those between staves are drawn first so that the others nest around them)
     const open = new Map<string, { ev: EvL; side?: 'above' | 'below' }>();
     for (const e of timeOrder) {
       for (const id of e.ev.slurStop ?? []) {
         const k = `${e.voice}|${id}`;
         const st = open.get(k);
-        if (st) { drawSlur(systems, sysOf, st.ev, e, st.side, voiceEvs.get(e.voice)!); open.delete(k); }
+        if (st) { const ve = voiceEvs.get(e.voice)!, a0 = st.ev, sd = st.side; (a0.staff !== a0.home || e.staff !== a0.home ? crossSlurs : slurs).push(() => drawSlur(systems, sysOf, a0, e, sd, ve)); open.delete(k); }
       }
       for (const ss of e.ev.slurStart ?? []) open.set(`${e.voice}|${ss.id}`, { ev: e, side: ss.side });
     }
   }
+  for (const f of [...crossSlurs, ...slurs]) f();
   // ---- marks
   for (let s = 0; s < nS; s++) drawMarks(systems, sysOf, s);
 }
 
-function headPoint(e: EvL, side: 'above' | 'below', margin: number): { x: number; y: number; stemSide: boolean } {
+function headPoint(e: EvL, side: 'above' | 'below', margin: number): { x: number; y: number; stemSide: boolean; homed: boolean } {
   const g = geomOf.get(e)!;
   const above = side === 'above';
   const stemSide = e.stem === (above ? 'up' : 'down');
   // articulations on the same side as the slur: start just beyond them
   const ax = articExtent.get(e);
   const artEdge = ax && ax.above === above ? ax.edge + (above ? -0.5 : 0.5) : undefined;
-  if (stemSide) return { x: g.stemX, y: artEdge ?? (above ? g.stemTip - margin * 0.8 : g.stemTip + margin * 0.8), stemSide };
+  if (stemSide) return { x: g.stemX, y: artEdge ?? (above ? g.stemTip - margin * 0.8 : g.stemTip + margin * 0.8), stemSide, homed: !!g.homed };
   const ref = above ? e.heads.reduce((a, h) => (h.pos > a.pos ? h : a)) : e.heads.reduce((a, h) => (h.pos < a.pos ? h : a));
-  return { x: e.x + ref.dx + g.hw / 2, y: artEdge ?? posToY(ref.pos) + (above ? -margin : margin), stemSide };
+  return { x: e.x + ref.dx + g.hw / 2, y: artEdge ?? posToY(ref.pos) + (above ? -margin : margin), stemSide, homed: false };
 }
 
 function tieAbove(e: EvL, hi: number): boolean {
@@ -189,11 +192,21 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
   if (tieSide(a) === side && !pa.stemSide) pa.y += above ? -0.7 : 0.7;
   const slurId = oid({});
   const sa = systems[sysOf[a.mi]], sb = systems[sysOf[b.mi]];
+  // a slur belongs to the voice's staff; an end on another staff is converted to that staff's coordinates
+  if (a.staff !== a.home && !(pa.stemSide && pa.homed)) pa.y += staffOffset(sa, a.home, a.staff);
+  if (b.staff !== a.home && !(pb.stemSide && pb.homed)) pb.y += staffOffset(sb, a.home, b.staff);
   const thick = (D.slurMidpointThickness as number) * 1.3;
   const piece = (ctx: SysCtx, x0: number, y0: number, x1: number, y1: number, staff: number, openL = false, openR = false): { h: number; L: number; draw: (h: number) => void } | undefined => {
     const L = x1 - x0;
     if (L < 0.5) return undefined;
-    const sky = ctx.sky[staff];
+    // a slur between staves must clear the content of both: their skylines, in the voice's coordinates
+    const others = [...new Set([a.staff, b.staff])].filter((q) => q !== staff);
+    let sky = ctx.sky[staff];
+    if (others.length) {
+      sky = new Skyline();
+      sky.boxes = [...ctx.sky[staff].boxes];
+      for (const q of others) { const d = staffOffset(ctx, staff, q); for (const bx of ctx.sky[q].boxes) sky.boxes.push({ ...bx, y0: bx.y0 + d, y1: bx.y1 + d }); }
+    }
     const dir = above ? -1 : 1; // direction away from the notes
     const win = 0.7;
     const reach = (a: number, b: number) => (above ? sky.top(a, b, 99) : sky.bottom(a, b, -99));
@@ -249,15 +262,16 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
       draw: (hh: number) => {
         ctx.prims[staff].push({ t: 'path', d: crescent(x0, y0, x1, y1, hh, thick, above), k: 'slur', o: slurId });
         const ym = Math.min(y0, y1), yM = Math.max(y0, y1);
+        // (a slur between staves reaches into the other staff: it is not recorded, or it would push the staves apart for good)
         sky.add(x0, x1, above ? ym - hh : ym, above ? yM : yM + hh, true);
       },
     };
   };
-  if (sa === sb) { const p = piece(sa, pa.x, pa.y, pb.x, pb.y, a.staff); p?.draw(p.h); }
+  if (sa === sb) { const p = piece(sa, pa.x, pa.y, pb.x, pb.y, a.home); p?.draw(p.h); }
   else {
     // the two halves of a slur broken across systems get the same arch height so that they read as one slur
-    const p1 = piece(sa, pa.x, pa.y, sa.width - 0.2, pa.y, a.staff, false, true);
-    const p2 = piece(sb, Math.max(sb.prefix - 0.3, 0.5), pb.y, pb.x, pb.y, b.staff, true, false);
+    const p1 = piece(sa, pa.x, pa.y, sa.width - 0.2, pa.y, a.home, false, true);
+    const p2 = piece(sb, Math.max(sb.prefix - 0.3, 0.5), pb.y, pb.x, pb.y, a.home, true, false);
     const hh = Math.max(p1?.h ?? 0, p2?.h ?? 0);
     // ... but a short half must not become a bowl just because the other one is long
     const cap = (p: typeof p1) => (p ? Math.min(hh, Math.max(0.12 * p.L + 0.35, Math.min(p.h, 0.7))) : hh);

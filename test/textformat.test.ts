@@ -79,3 +79,21 @@ test('simplifyTupletBrackets drops a bracket choice equal to the default', () =>
 test('validate rejects single-note beam groups', () => {
   assert.match(validate(parse('  rh.1: [ c5:8 ] r:8 r:2')).join(), /at least two notes/);
 });
+
+test('cross-staff notes: \\staff switches the display staff, sticky and lossless', () => {
+  const src = `page 210x297 margin=10 space=1.9
+staff rh clef=G2
+staff lh clef=F4
+m1 time=2/4
+  lh.1: c3:16 e3 \\staff rh g4 c5 \\staff lh r:8 d3:8
+  rh.1: R:2
+`;
+  const s = parseText(src);
+  const evs = flattenVoice(s.measures[0].staves.lh.voices[0]).map((t) => t.ev.staff);
+  assert.deepEqual(evs, [undefined, undefined, 'rh', 'rh', undefined, undefined]);
+  assert.deepEqual(validate(s), []);
+  assert.equal(writeText(s).includes('\\staff rh g4'), true);
+  assert.equal(writeText(parseText(writeText(s))), writeText(s));
+  const bad = parseText(src.replace('\\staff rh', '\\staff lh').replace('staff lh r:8', 'staff xx r:8'));
+  assert.ok(validate(bad).some((e) => e.includes('cross-staff')));
+});

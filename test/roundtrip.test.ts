@@ -5,7 +5,7 @@ import { importMusicXml } from '../src/musicxml.ts';
 import { writeText, parseText } from '../src/textformat.ts';
 import { validate } from '../src/model.ts';
 
-const xml = readFileSync(new URL('../gewitter.musicxml', import.meta.url), 'utf8');
+const xml = readFileSync(new URL('../examples/gewitter.musicxml', import.meta.url), 'utf8');
 
 test('MusicXML imports and validates', () => {
   const s = importMusicXml(xml);

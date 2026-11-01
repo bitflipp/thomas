@@ -116,6 +116,7 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
       };
       let cursor = 0, lastStart = 0, lastLen = 0;
       let prev: RawNote | undefined;
+      const homeStaff = new Map<number, number>(); // voice -> staff of its first note (cross-staff notes stay in their voice)
       if (pi === 0 && mx.attrs.implicit === 'yes') warn(`m${mi + 1}: implicit (pickup) measure not specially handled`);
       for (const el of mx.children) {
         switch (el.tag) {
@@ -187,7 +188,8 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
             const dur = Number(text(el, 'duration') ?? 0);
             const staffN = Number(text(el, 'staff') ?? 1);
             const voice = Number(text(el, 'voice') ?? 1);
-            const staffId = sid(staffN);
+            if (!homeStaff.has(voice)) homeStaff.set(voice, staffN);
+            const staffId = sid(homeStaff.get(voice)!);
             if (child(el, 'grace')) { warn(`m${mi + 1}: grace notes not supported, skipped`); break; }
             const typeName = text(el, 'type');
             const rest = child(el, 'rest');
@@ -215,6 +217,7 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
             }
             const tmEl = child(el, 'time-modification');
             if (tmEl) rn.tmRatio = [Number(text(tmEl, 'actual-notes')), Number(text(tmEl, 'normal-notes'))];
+            if (!child(el, 'chord') && sid(staffN) !== staffId) rn.ev.staff = sid(staffN); // cross-staff note
             const stemT = text(el, 'stem');
             if (opts.keepStems && (stemT === 'up' || stemT === 'down')) rn.ev.stem = stemT;
             // tuplets
@@ -357,6 +360,8 @@ function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: stri
     if (expect !== n.ticks && !(n.ev.kind === 'rest' && n.ev.style === 'measure')) warn(`m${mnum}: notated duration ${expect} != sounding ${n.ticks}`);
   }
   if (pos > mlen) warn(`m${mnum}: voice longer than measure`);
+  // a voice that stops early is implicitly padded with rests (as MuseScore does)
+  if (pos < mlen) for (const d of decomposeGap(mlen - pos)) evs.push({ ev: { kind: 'rest', style: 'hidden', dur: d }, tupStop: 0 });
 
   // 2. tuplet ranges
   type Range = { a: number; b: number; make: () => Item; rank: number }; // rank: nesting order for identical ranges, outer first

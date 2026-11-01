@@ -12,6 +12,7 @@ export const HEAD_SCALE = 1.1;
 export function headWidth(base: number): number { return sm.adv(headGlyph(base)) * HEAD_SCALE; }
 export const STEM_T = 0.12;
 export const DOT_STEP = 0.55;
+export const CROSS_STEM_SEP = 2.0; // least distance between an up-stem and the following down-stem of a cross-staff beam
 export const COMPRESS = 0.7; // minimum stretch factor allowed when fitting measures on a line
 
 export function idealSpace(dt: number): number {
@@ -27,6 +28,7 @@ export interface Column {
   has: boolean[]; // per-staff: occupied
   clefChange: boolean[]; // per-staff
   clefW: number[]; // per-staff width reserved for a clef change (added to L)
+  minFrom: { j: number; d: number }[]; // at least d to the right of column j (stems of a cross-staff beam)
 }
 
 export interface MeasureSpacing {
@@ -49,7 +51,7 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
   const colMap = new Map<number, Column>();
   const mk = (tick: number): Column => {
     let c = colMap.get(tick);
-    if (!c) { c = { tick, evs: [], ideal: 0, L: Array(nS).fill(0), R: Array(nS).fill(0), has: Array(nS).fill(false), clefChange: Array(nS).fill(false), clefW: Array(nS).fill(0) }; colMap.set(tick, c); }
+    if (!c) { c = { tick, evs: [], ideal: 0, L: Array(nS).fill(0), R: Array(nS).fill(0), has: Array(nS).fill(false), clefChange: Array(nS).fill(false), clefW: Array(nS).fill(0), minFrom: [] }; colMap.set(tick, c); }
     return c;
   };
   let anyVisible = false;
@@ -75,6 +77,22 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
       if (c.clefChange[s]) c.clefW[s] = sm.adv('gClefChange') + 1.4; // clef, then clear space before the notes (and their accidentals)
       if (evs.length) layoutColumnStaff(c, s, evs);
       c.L[s] += c.clefW[s];
+    }
+  }
+  // a cross-staff beam has up-stems on the right of their heads followed by down-stems on the left of theirs: keep those stems apart
+  {
+    const colAt = new Map(cols.map((c, j) => [c.tick, j]));
+    const seen = new Set<object>();
+    for (const c of cols) for (const e of c.evs) {
+      if (!e.beam?.cross || seen.has(e.beam)) continue;
+      seen.add(e.beam);
+      const ns = e.beam.notes;
+      for (let k = 1; k < ns.length; k++) {
+        const a = ns[k - 1], b = ns[k];
+        const ja = colAt.get(a.start), jb = colAt.get(b.start);
+        if (a.stem === 'up' && b.stem === 'down' && ja !== undefined && jb !== undefined && ja < jb)
+          cols[jb].minFrom.push({ j: ja, d: headWidth(a.te.ev.dur.base) + CROSS_STEM_SEP });
+      }
     }
   }
   // ideal distances
@@ -220,6 +238,7 @@ export function placeMeasure(sp: MeasureSpacing, f: number): PlacedMeasure {
       if (i >= 0) x = Math.max(x, xs[i] + sp.cols[i].R[s] + c.L[s] + 0.47);
       lastOcc[s] = j;
     }
+    for (const m of c.minFrom) x = Math.max(x, xs[m.j] + m.d);
     if (j === 0) x = Math.max(x, sp.lead);
     xs.push(x);
   });

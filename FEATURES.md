@@ -107,3 +107,4 @@ All features listed in section 2 are implemented and rendered for `gewitter.musi
 - Mid-piece key signature changes: the signature is drawn at system starts, but not as a change mid-system.
 - Whole-measure rests are always drawn as a whole rest (no multi-measure rests).
 - Ledger lines for rests displaced far outside the staff.
+- **Cross-staff notes** (tango.musicxml): notes of one voice written on the other staff of the piano, usually arpeggio figures whose beam runs between the staves. Imported as `\staff <id>` switches within the voice.

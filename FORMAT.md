@@ -50,6 +50,7 @@ Voice numbers are local to a staff (`rh.1`, `rh.2`, `lh.1`, ...). Every voice of
 | Arpeggio | `\arp` before a chord | `\arp <c3 g3 e4>:8` |
 | No beam | `\nobeam` keeps a note out of the automatic beaming | `\nobeam c5:8 d5` |
 | Stem override | `\stemup`, `\stemdown` (else automatic) | `\stemdown c5:4` |
+| Cross-staff | `\staff <id>` draws the following events of the voice on that staff, until `\staff <home>` switches back (resets at each line) | `lh.1: [ c3:16 e3 g3 \staff rh c4 e4 g4 ] \staff lh r:8` |
 
 Pitches are written with sounding octave. Under an octave shift (`\8va`/`\8vb`) the engraver writes them an octave away;
 you never write the shifted pitch yourself.
@@ -62,6 +63,9 @@ you never write the shifted pitch yourself.
 | Tuplet options | `A:N(opts){ }` with `bracket`, `nobracket`, `nonum`, `above`, `below`, `label=K` | `6:4(nobracket,below){ ... }` |
 | Beam group | `[ ... ]` forces exactly these events (at least two notes) into one beam | `[ c5:16 d5 e5 f5 ]` |
 | Two-note tremolo | `tremN{ ... }` around exactly two notes, drawn with `N` beams between them | `trem2{ c4:4 e4:4 }` |
+
+A cross-staff note keeps its voice (timing, slurs, ties' voice, beams, tuplets) but its head, clef, octave shift and accidentals belong to the staff it is drawn on.
+A beam whose notes sit on two staves runs flat between them: stems of the upper staff point down, those of the lower staff up, and the gap between the staves grows to fit it.
 
 Without explicit `[ ]`, eighth notes and shorter are beamed automatically per beat (and not across tuplet boundaries or rests);
 write a group only where you want something else, and `\nobeam` to opt a note out. Tuplet brackets are omitted automatically when one

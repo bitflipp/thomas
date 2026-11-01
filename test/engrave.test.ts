@@ -6,6 +6,7 @@ import { prepare } from '../src/engrave/prep.ts';
 import { engrave } from '../src/engrave/system.ts';
 import { HEAD_SCALE } from '../src/engrave/spacing.ts';
 import { pageToSvg } from '../src/render.ts';
+import { findCollisions, describe } from '../src/engrave/collide.ts';
 
 const HEAD = `title "T"
 page 210x297 margin=10 space=1.91
@@ -204,4 +205,29 @@ m2 break=system
 `);
   const ps = engrave(s).pages[0].prims;
   assert.ok(ps.some((p) => p.t === 'glyph' && p.name === 'keyboardPedalParensLeft'));
+});
+
+test('cross-staff beam: stems point at a beam between the staves, which keep a gap that fits it', () => {
+  const s = parseText(`${HEAD}
+m1 time=2/4
+  lh.1: [ c3:16 e3 g3 \\staff rh c5 e5 g5 ]  \\staff lh r:8
+  rh.1: R:2
+`);
+  assert.deepEqual(validate(s), []);
+  const p = prepare(s);
+  const evs = p.measures[0][1].voices[0].evs;
+  assert.deepEqual(evs.slice(0, 6).map((e) => e.staff), [1, 1, 1, 0, 0, 0]);
+  assert.ok(evs.every((e) => e.home === 1));
+  assert.ok(evs[0].beam!.cross);
+  assert.deepEqual(evs.slice(0, 6).map((e) => e.stem), ['up', 'up', 'up', 'down', 'down', 'down']);
+  assert.equal(p.measures[0][0].evs.filter((e) => e.ev.kind === 'note').length, 3); // the rh column holds the arrivals
+  const prims = engrave(s).pages[0].prims;
+  const beams = prims.filter((q) => q.k === 'beam');
+  assert.ok(beams.length > 0);
+  const stems = prims.filter((q) => q.k === 'stem') as { y1: number; y2: number; x1: number }[];
+  assert.equal(stems.length, 6);
+  // all stems end on the same flat beam: the longest stem of a note below it and of a note above it meet at one y
+  const tips = new Set(stems.map((q) => Math.round(q.y2 * 100)));
+  assert.ok(tips.size <= 2, `tips ${[...tips]}`);
+  assert.deepEqual(findCollisions(engrave(s).pages).map(describe), []);
 });
