@@ -29,7 +29,7 @@ enter notes and rests (a ghost note shows where it lands; clicking a note adds o
 pitch or move it to the other staff, drag between notes for slurs, along a staff for hairpins, pedal and 8va/8vb, click for dynamics,
 text, tempo and clef changes, click a note or rest to make a tuplet. The panel on the right edits whatever is selected (duration, dots,
 accidentals, stems, articulations, ties, grouping, marks, tuplets, measures: time, key, barlines, breaks). Undo/redo everywhere, copy/paste
-of notes, autosave in the browser, SVG and PDF (print) export. `Ctrl E` shows the score as text (the format of FORMAT.md) next to it, editable;
+of notes, autosave in the browser, printing (PDF via the print dialog). `Ctrl E` shows the score as text (the format of FORMAT.md) next to it, editable;
 `?` lists the keyboard shortcuts. Opens `.txt` scores and MusicXML.
 
 ## Layout of the code

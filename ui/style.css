@@ -74,7 +74,8 @@ button.mini { padding: 0 6px; margin-left: 4px; }
   .toolbar, .palette, .inspector, .textpane, .toast, .ctxmenu, .overlay { display: none !important; }
   html, body, #app, .app, .main { height: auto; overflow: visible; display: block; background: #fff; }
   .scroll { overflow: visible; padding: 0; background: #fff; }
-  .page { box-shadow: none; margin: 0; width: auto !important; break-after: page; }
+  .page { box-shadow: none; margin: 0; width: 100% !important; height: auto !important; break-after: page; overflow: hidden; }
+  .page:last-child { break-after: auto; }
 }
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: grid; place-items: center; z-index: 50; }
 .modal .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 22px 18px; max-width: 640px; max-height: 86vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.4); }

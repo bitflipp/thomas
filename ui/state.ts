@@ -106,6 +106,8 @@ export const showText = signal(false);
 export const showInspector = signal(true);
 export const space = signal<number | null>(null);
 export const showCollisions = signal(false);
+/** True while the PDF print dialog is being prepared: every page then generates its SVG, whether near the viewport or not. */
+export const printing = signal(false);
 export const voiceColors = signal(true);
 /** Ink colour of each voice when voice colours are on (voice 1 stays black). */
 export const VOICE_COLORS: Record<number, string> = { 2: '#1a8f4a', 3: '#d9780a', 4: '#8e44ad' };

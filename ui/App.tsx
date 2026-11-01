@@ -1,15 +1,14 @@
 // The application shell: toolbar (file, view, playback), the palette, score pane, inspector and the
-// optional text pane. It owns file handling (open/save text, MusicXML import, SVG export, printing to PDF) and
+// optional text pane. It owns file handling (open/save text, MusicXML import, printing to PDF) and
 // otherwise only wires the panes to the signals in state.ts.
 import { lazy, Suspense } from 'preact/compat';
 import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
-import { pageToSvg } from '../src/render.ts';
 import { importMusicXml } from '../src/musicxml.ts';
 import { writeText } from '../src/textformat.ts';
 import {
   score, zoom, fit, showText, showInspector, showCollisions, engraved, timing, engraveError, histLen, undo, redo, fileName, dirty,
-  loadText, load, toast, NEW_SCORE_TEXT, say, tool, voiceColors,
+  loadText, load, toast, NEW_SCORE_TEXT, say, tool, voiceColors, printing,
 } from './state.ts';
 import { menu, zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
@@ -31,7 +30,6 @@ function download(name: string, data: string, type = 'text/plain') {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-const base = () => fileName.value.replace(/\.[^.]+$/, '') || 'score';
 
 async function openFile(f: File) {
   if (dirty.value && !confirm('Discard unsaved changes?')) return;
@@ -42,17 +40,16 @@ async function openFile(f: File) {
   } else loadText(src, f.name);
 }
 
-function exportSvg() {
-  const res = engraved.value;
-  if (!res) return;
-  res.pages.forEach((p, i) => setTimeout(() => download(`${base()}-${i + 1}.svg`, pageToSvg(p, res.staffSpace), 'image/svg+xml'), i * 150));
-}
 function printPdf() {
   const res = engraved.value;
   if (!res) return;
   const st = document.getElementById('print-page') ?? document.head.appendChild(Object.assign(document.createElement('style'), { id: 'print-page' }));
-  st.textContent = `@page { size: ${res.pages[0].width * res.staffSpace}mm ${res.pages[0].height * res.staffSpace}mm; margin: 0 }`;
-  print();
+  st.textContent = `@page { size: ${res.pages[0].width * res.staffSpace}mm ${res.pages[0].height * res.staffSpace}mm; margin: 0 }\n@media print { .page { height: ${res.pages[0].height * res.staffSpace - 1}mm !important; } }`; // a hair shorter than the sheet: rounding must not push an empty page after each one
+  // Pages far from the viewport have no SVG yet: render all of them, wait for the DOM, then print.
+  printing.value = true;
+  const done = () => { printing.value = false; removeEventListener('afterprint', done); };
+  addEventListener('afterprint', done);
+  requestAnimationFrame(() => setTimeout(() => print(), 300));
 }
 
 export function App() {
@@ -83,8 +80,7 @@ export function App() {
           {Object.keys(examples).map((k) => <option value={k}>{k.replace(/^.*\//, '')}</option>)}
         </select>
         <button title="Save as text file (Ctrl S)" onClick={() => { download(fileName.value, writeText(score.value)); dirty.value = false; }}>Save{dirty.value ? ' •' : ''}</button>
-        <button title="Export every page as SVG" onClick={exportSvg}>SVG</button>
-        <button title="Print or save as PDF" onClick={printPdf}>PDF</button>
+        <button title="Print, or save as PDF from the print dialog" onClick={printPdf}>Print</button>
         <span class="sep" />
         <button class="play" aria-pressed={playing.value} title="Play / stop (Space). Resumes where it stopped; Alt+click moves the playhead, Home rewinds" onClick={toggle}>{playing.value ? '■ Stop' : '▶ Play'}</button>
         {midiPorts.value.length > 0 && (

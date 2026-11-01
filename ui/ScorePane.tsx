@@ -13,7 +13,7 @@ import { dependentNotes, noteBoxes, primRef, type HitIndex } from '../src/editor
 import type { Engraved } from '../src/engrave/system.ts';
 import type { Page, Prim } from '../src/engrave/scene.ts';
 import { findCollisions } from '../src/engrave/collide.ts';
-import { engraved, hit, selection, zoom, fit, tool, score, showCollisions, voiceColors, VOICE_COLORS } from './state.ts';
+import { engraved, hit, selection, zoom, fit, tool, score, showCollisions, printing, voiceColors, VOICE_COLORS } from './state.ts';
 import { playhead, playing } from './player.ts';
 import { zoomBy, takeZoomAnchor, ghost, hover, pageEls, onPointerDown, onPointerMove, onPointerUp, onDoubleClick, onContextMenu, cancelDrag, type Ghost } from './interact.ts';
 
@@ -67,7 +67,8 @@ function GhostSvg({ g, page }: { g: Ghost | null; page: number }) {
 /** One page: its SVG is only generated while it is near the viewport, and again only when something on it changed. */
 function PageView({ i, res, h, sig, keys, cssW, cursor }: { i: number; res: Engraved; h: HitIndex; sig: string; keys: Set<string>; cssW: number; cursor: string }) {
   const el = useRef<HTMLDivElement | null>(null);
-  const [near, setNear] = useState(i < 2);
+  const [nearView, setNear] = useState(i < 2);
+  const near = nearView || printing.value;
   useEffect(() => {
     const e = el.current!;
     const io = new IntersectionObserver((en) => setNear(en[0].isIntersecting), { rootMargin: '1800px 0px' });
@@ -78,7 +79,7 @@ function PageView({ i, res, h, sig, keys, cssW, cursor }: { i: number; res: Engr
   const svg = useMemo(() => {
     if (!near) return '';
     const colorFor = (q: Prim): string | undefined => {
-      if (!q.r) return undefined;
+      if (!q.r || printing.value) return undefined; // print output is plain black: no selection or voice colours
       const r = primRef(h.index, q);
       if (!r) return undefined;
       if (keys.size && q.k !== 'beam') {
@@ -91,7 +92,7 @@ function PageView({ i, res, h, sig, keys, cssW, cursor }: { i: number; res: Engr
       return undefined;
     };
     return pageToSvg(p, res.staffSpace, { color: colorFor, index: true }).replace(/^<\?xml[^>]*>\s*/, '');
-  }, [res, h, sig, near, voiceColors.value]);
+  }, [res, h, sig, near, voiceColors.value, printing.value]);
   // The hovered element is recoloured in place, like a selected one but lighter. Generating
   // new SVG on every pointer move would be far too slow, so only the matching primitives change.
   const wrap = useRef<HTMLDivElement | null>(null);
