@@ -53,3 +53,25 @@ export const Icon = {
   tuplet: () => <svg width="36" height="36" viewBox="0 0 40 40"><path d="M8 25v-6h24v6" fill="none" stroke="currentColor" stroke-width="2.4" /><text x="20" y="17" text-anchor="middle" font-size="14" font-weight="700" font-style="italic" font-family="Georgia, serif" fill="currentColor">3</text></svg>,
   rest: () => <Glyph cp={CPS.restQuarter} />,
 };
+
+/** Small line icons for toolbar and inspector buttons (24 px grid, drawn in the text colour; sized by CSS). */
+const S = (d: preact.ComponentChildren, fill = false) => (
+  <svg viewBox="0 0 24 24" fill={fill ? 'currentColor' : 'none'} stroke={fill ? 'none' : 'currentColor'} stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{d}</svg>
+);
+export const Ui = {
+  undo: () => S(<><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-3" /></>),
+  redo: () => S(<><path d="M15 14l5-5-5-5" /><path d="M20 9H10a6 6 0 0 0 0 12h3" /></>),
+  plus: () => S(<path d="M12 5v14M5 12h14" />),
+  minus: () => S(<path d="M5 12h14" />),
+  play: () => S(<path d="M7 4.5v15l12-7.5z" />, true),
+  stop: () => S(<rect x="6" y="6" width="12" height="12" rx="1" />, true),
+  help: () => S(<><circle cx="12" cy="12" r="9" /><path d="M9.6 9.5a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2.9-1.2 1.8" /><path d="M12 17h.01" /></>),
+  up: () => S(<path d="M12 19V5M6 11l6-6 6 6" />),
+  down: () => S(<path d="M12 5v14M6 13l6 6 6-6" />),
+  accent: () => S(<path d="M5 8l14 4-14 4" />),
+  marcato: () => S(<path d="M6 18l6-12 6 12" />),
+  staccato: () => S(<circle cx="12" cy="12" r="2.6" />, true),
+  tie: () => S(<path d="M4 10c3 8 13 8 16 0" />),
+  arpeggio: () => S(<path d="M12 3q3 2 0 4t0 4 0 4 0 4 0 4" />),
+  noBeam: () => S(<><path d="M7 7v11M17 7v11M7 7h10" stroke-width="3" /><path d="M3 21L21 3" /></>),
+};

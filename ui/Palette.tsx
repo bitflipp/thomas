@@ -2,19 +2,18 @@
 // marks. It only sets tool state (state.ts); the pointer handling that uses it is in interact.ts.
 import type { BaseDur } from '../src/model.ts';
 import { Glyph, Label, CPS, Icon } from './icons.tsx';
+import { DurationButtons, AccidentalButtons } from './pickers.tsx';
 import { voiceColors, VOICE_COLORS, tool, dur, dots, acc, voice, dynText, clefArg, tupletArg, tempoArg, textArg, type Tool } from './state.ts';
 import { chooseDuration, chooseDots, setAccidentalSel } from './actions.ts';
 
-const DURS: [BaseDur, number, string][] = [[1, CPS.whole, '1'], [2, CPS.half, '2'], [4, CPS.quarter, '3'], [8, CPS.eighth, '4'], [16, CPS.sixteenth, '5'], [32, CPS.thirty2, '6'], [64, CPS.sixty4, '7']];
-const ACCS: [number, number, string][] = [[-2, CPS.dflat, 'Double flat'], [-1, CPS.flat, 'Flat'], [0, CPS.natural, 'Natural'], [1, CPS.sharp, 'Sharp'], [2, CPS.dsharp, 'Double sharp']];
 export const DYNAMICS = ['pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'ffff', 'sf', 'sfz', 'fp', 'rfz', 'fz'];
 const CLEFS: [string, { sign: 'G' | 'F' | 'C'; line: number; octave?: number }][] = [
   ['Treble', { sign: 'G', line: 2 }], ['Bass', { sign: 'F', line: 4 }], ['Alto', { sign: 'C', line: 3 }], ['Tenor', { sign: 'C', line: 4 }], ['Treble 8vb', { sign: 'G', line: 2, octave: -1 }],
 ];
 const RATIOS: [number, number][] = [[3, 2], [2, 1], [4, 3], [5, 4], [6, 4], [7, 4], [5, 2], [7, 8]];
 
-function Btn({ on, title, onClick, children, wide, color }: { on?: boolean; title: string; onClick: () => void; children: preact.ComponentChildren; wide?: boolean; color?: string }) {
-  return <button class={`pbtn${wide ? ' wide' : ''}`} style={color ? { boxShadow: `inset 0 -4px 0 ${color}` } : undefined} aria-pressed={!!on} title={title} onClick={onClick}>{children}</button>;
+function Btn({ on, title, onClick, children, color }: { on?: boolean; title: string; onClick: () => void; children: preact.ComponentChildren; color?: string }) {
+  return <button style={color ? { boxShadow: `inset 0 -4px 0 ${color}` } : undefined} aria-pressed={!!on} title={title} onClick={onClick}>{children}</button>;
 }
 
 function ToolBtn({ t, title, children }: { t: Tool; title: string; children: preact.ComponentChildren }) {
@@ -33,14 +32,14 @@ export function Palette() {
       </div>
       <h4>Duration</h4>
       <div class="grid">
-        {DURS.map(([b, cp, k]) => <Btn on={dur.value === b} title={`${b === 1 ? 'Whole' : `1/${b}`} (${k})`} onClick={() => chooseDuration(b)}><Glyph cp={cp} /></Btn>)}
+        <DurationButtons value={dur.value} onPick={chooseDuration} />
         <Btn on={dots.value > 0} title="Dot (.)" onClick={() => chooseDots((dots.value + 1) % 3)}>
           {dots.value === 2 ? <Label size={26}>··</Label> : <Glyph cp={CPS.dot} cap={24} max={6} />}
         </Btn>
       </div>
       <h4>Accidental</h4>
       <div class="grid">
-        {ACCS.map(([a, cp, name]) => <Btn on={acc.value === a} title={name} onClick={() => { acc.value = acc.value === a ? undefined : a; setAccidentalSel(acc.value); }}><Glyph cp={cp} max={22} cap={10} /></Btn>)}
+        <AccidentalButtons value={acc.value} onPick={(a) => { acc.value = acc.value === a ? undefined : a; setAccidentalSel(acc.value); }} />
       </div>
       <h4>Voice</h4>
       <div class="grid">

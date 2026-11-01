@@ -7,9 +7,11 @@ import { timeAt, keyAt, type Event, type MarkBody, type NoteEvent, type Score } 
 import * as C from '../src/editor/commands.ts';
 import { eventOf, markOf, tupletOf, type Ref } from '../src/editor/addr.ts';
 import { score, selection, run, space } from './state.ts';
-import { chooseDuration, chooseDots, nudge, flipStem, slurSelection, tieSelection } from './actions.ts';
+import { chooseDuration, chooseDots, nudge, flipStem, slurSelection, tieSelection, setAccidentalSel } from './actions.ts';
 import { deleteSelection, evRefs, menu } from './interact.ts';
 import { DYNAMICS } from './Palette.tsx';
+import { Ui } from './icons.tsx';
+import { DurationButtons, AccidentalButtons } from './pickers.tsx';
 
 function Row({ label, children }: { label: string; children: preact.ComponentChildren }) { return <div class="row"><span>{label}</span><div class="ctl">{children}</div></div>; }
 /** A dropdown over (value, label) pairs; a mixed selection shows an empty entry. */
@@ -176,27 +178,30 @@ function EventSection() {
       </div>
       </Group>
       <Group id="rhythm" title="Rhythm">
-        <div class="g7">{([1, 2, 4, 8, 16, 32, 64] as const).map((b) => <button aria-pressed={same(evs.map((e) => e.dur.base)) === b} onClick={() => chooseDuration(b)}>{b === 1 ? '1' : `1/${b}`}</button>)}</div>
+        <div class="seg fill big"><DurationButtons value={same(evs.map((e) => e.dur.base))} onPick={chooseDuration} /></div>
         <Row label="Dot"><Pick value={same(evs.map((e) => e.dur.dots))} opts={[[0, 'none'], [1, '·'], [2, '··']]} onChange={(n) => chooseDots(n)} /></Row>
         {evs.some((e) => e.kind === 'rest') && <Row label="Rest"><Pick value={same(evs.filter((e) => e.kind === 'rest').map((e) => (e as { style: string }).style))} opts={[['normal', 'rest shown'], ['hidden', 'hidden']]} onChange={(v) => run((x) => C.updateEvents(x, refs, (e) => { if (e.kind === 'rest' && e.style !== 'measure') e.style = v as 'normal' | 'hidden'; }))} /></Row>}
       </Group>
       {notes.length > 0 && <>
         <Group id="pitch" title="Pitch">
-          <div class="tg3">
-            <button title="Semitone up (↑)" onClick={() => nudge(1)}>♯↑</button><button title="Octave up (Ctrl ↑)" onClick={() => nudge(12)}>8va↑</button><button title="Letter name up (Shift ↑)" onClick={() => nudge(undefined, 1)}>step↑</button>
-            <button title="Semitone down (↓)" onClick={() => nudge(-1)}>♭↓</button><button title="Octave down (Ctrl ↓)" onClick={() => nudge(-12)}>8vb↓</button><button title="Letter name down (Shift ↓)" onClick={() => nudge(undefined, -1)}>step↓</button>
+          <div class="seg fill">
+            <button title="Semitone up (↑)" onClick={() => nudge(1)}><Ui.up /> Semitone</button><button title="Octave up (Ctrl ↑)" onClick={() => nudge(12)}><Ui.up /> Octave</button><button title="Letter name up (Shift ↑)" onClick={() => nudge(undefined, 1)}><Ui.up /> Step</button>
           </div>
+          <div class="seg fill">
+            <button title="Semitone down (↓)" onClick={() => nudge(-1)}><Ui.down /> Semitone</button><button title="Octave down (Ctrl ↓)" onClick={() => nudge(-12)}><Ui.down /> Octave</button><button title="Letter name down (Shift ↓)" onClick={() => nudge(undefined, -1)}><Ui.down /> Step</button>
+          </div>
+          <div class="seg fill big"><AccidentalButtons value={same(notes.flatMap((n) => n.pitches.map((p) => p.pitch.alter)))} onPick={setAccidentalSel} /></div>
             <Row label="Accidental"><Pick value={same(notes.flatMap((n) => n.pitches.map((p) => p.acc)))} opts={[[undefined, 'auto'], ['force', 'show'], ['cautionary', '( )']]} onChange={(v) => run((x) => C.updateNotes(x, refs, (n) => { for (const p of n.pitches) if (v) p.acc = v; else delete p.acc; }))} /></Row>
             {nonHome.length > 0 && <Row label="Staff"><Pick value={same(notes.map((n) => n.staff ?? r0.staff))} opts={[[r0.staff, `own (${r0.staff})`], ...nonHome.map((s): [string, string] => [s.id, s.name ? `${s.name} (${s.id})` : s.id])]} onChange={(v) => run((x) => C.setStaffOf(x, refs, v === r0.staff ? undefined : v))} /></Row>}
         </Group>
         <Group id="notation" title="Notation">
-          <div class="tg">
-            <Tog on={art('accent')} title="Accent" onClick={() => run((x) => C.toggleArticulation(x, refs, 'accent'))}>&gt;</Tog>
-            <Tog on={art('marcato')} title="Marcato" onClick={() => run((x) => C.toggleArticulation(x, refs, 'marcato'))}>^</Tog>
-            <Tog on={art('staccato')} title="Staccato" onClick={() => run((x) => C.toggleArticulation(x, refs, 'staccato'))}>·</Tog>
-            <Tog on={notes.every((n) => n.pitches.every((p) => p.tie))} title="Tie to next (T)" onClick={tieSelection}>⁀</Tog>
-            <Tog on={notes.every((n) => n.arpeggio)} title="Arpeggio (wavy line)" onClick={() => flag('arpeggio', true)}>≀</Tog>
-            <Tog on={notes.some((n) => n.noBeam)} title="Do not beam" onClick={() => flag('noBeam', false)}>⌐</Tog>
+          <div class="seg fill">
+            <Tog on={art('accent')} title="Accent" onClick={() => run((x) => C.toggleArticulation(x, refs, 'accent'))}><Ui.accent /></Tog>
+            <Tog on={art('marcato')} title="Marcato" onClick={() => run((x) => C.toggleArticulation(x, refs, 'marcato'))}><Ui.marcato /></Tog>
+            <Tog on={art('staccato')} title="Staccato" onClick={() => run((x) => C.toggleArticulation(x, refs, 'staccato'))}><Ui.staccato /></Tog>
+            <Tog on={notes.every((n) => n.pitches.every((p) => p.tie))} title="Tie to next (T)" onClick={tieSelection}><Ui.tie /></Tog>
+            <Tog on={notes.every((n) => n.arpeggio)} title="Arpeggio (wavy line)" onClick={() => flag('arpeggio', true)}><Ui.arpeggio /></Tog>
+            <Tog on={notes.some((n) => n.noBeam)} title="Do not beam" onClick={() => flag('noBeam', false)}><Ui.noBeam /></Tog>
           </div>
             <Row label="Stem"><Pick value={same(notes.map((n) => n.stem))} opts={[[undefined, 'auto'], ['up', '↑'], ['down', '↓']]} onChange={(v) => upd((n) => { if (v) n.stem = v; else delete n.stem; })} /></Row>
             {notes.some((n) => n.art?.length) && <Row label="Articulation"><Pick value={same(notes.map((n) => n.artSide))} opts={[[undefined, 'auto'], ['above', '▲'], ['below', '▼']]} onChange={(v) => upd((n) => { if (v) n.artSide = v; else delete n.artSide; })} /></Row>}

@@ -13,6 +13,7 @@ import {
 import { menu, zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
 import { Palette } from './Palette.tsx';
+import { Ui } from './icons.tsx';
 import { Inspector } from './Inspector.tsx';
 import { ScorePane } from './ScorePane.tsx';
 import { parseText } from '../src/textformat.ts';
@@ -83,30 +84,36 @@ export function App() {
     <div class="app">
       <header class="toolbar">
         <strong class="brand">Thomas</strong>
-        <button title="New score" onClick={() => { if (!dirty.value || confirm('Discard unsaved changes?')) { loadText(NEW_SCORE_TEXT, 'untitled.txt'); } }}>New</button>
-        <button title="Open a score (.txt) or MusicXML" onClick={() => fileIn.current?.click()}>Open…</button>
+        <div class="seg">
+          <button title="New score" onClick={() => { if (!dirty.value || confirm('Discard unsaved changes?')) { loadText(NEW_SCORE_TEXT, 'untitled.txt'); } }}>New</button>
+          <button title="Open a score (.txt) or MusicXML" onClick={() => fileIn.current?.click()}>Open…</button>
+          <button title="Save as text file (Ctrl S)" onClick={() => { download(fileName.value, writeText(score.value)); dirty.value = false; }}>Save{dirty.value ? ' •' : ''}</button>
+          <button title="Print, or save as PDF from the print dialog" onClick={printPdf}>Print</button>
+        </div>
         <input ref={fileIn} type="file" accept=".txt,.musicxml,.xml" hidden onChange={(e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) openFile(f); (e.target as HTMLInputElement).value = ''; }} />
         <select value="" title="Open an example" onChange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v && (!dirty.value || confirm('Discard unsaved changes?'))) loadText(examples[v], v.replace(/^.*\//, '')); }}>
           <option value="">Examples…</option>
           {Object.keys(examples).map((k) => <option value={k}>{k.replace(/^.*\//, '')}</option>)}
         </select>
-        <button title="Save as text file (Ctrl S)" onClick={() => { download(fileName.value, writeText(score.value)); dirty.value = false; }}>Save{dirty.value ? ' •' : ''}</button>
-        <button title="Print, or save as PDF from the print dialog" onClick={printPdf}>Print</button>
         <span class="sep" />
-        <button class="play" aria-pressed={playing.value} title="Play / stop (Space). Resumes where it stopped; Alt+click moves the playhead, Home rewinds" onClick={toggle}>{playing.value ? '■ Stop' : '▶ Play'}</button>
+        <button class="play" aria-pressed={playing.value} title="Play / stop (Space). Resumes where it stopped; Alt+click moves the playhead, Home rewinds" onClick={toggle}>{playing.value ? <><Ui.stop /> Stop</> : <><Ui.play /> Play</>}</button>
         {midiPorts.value.length > 0 && (
           <select title="MIDI output" value={midiOut.value ?? ''} onChange={(e) => chooseOutput((e.target as HTMLSelectElement).value)}>
             {midiPorts.value.map((p) => <option value={p.id}>{p.name}</option>)}
           </select>
         )}
         <span class="sep" />
-        <button disabled={!h.undo} title="Undo (Ctrl Z)" onClick={undo}>↶</button>
-        <button disabled={!h.redo} title="Redo (Ctrl Shift Z)" onClick={redo}>↷</button>
+        <div class="seg">
+          <button class="icon" disabled={!h.undo} title="Undo (Ctrl Z)" onClick={undo}><Ui.undo /></button>
+          <button class="icon" disabled={!h.redo} title="Redo (Ctrl Shift Z)" onClick={redo}><Ui.redo /></button>
+        </div>
         <span class="sep" />
-        <button title="Zoom out" onClick={() => zoomBy(1 / 1.2)}>−</button>
-        <span class="status zoomv">{fit.value ? 'fit' : `${Math.round(zoom.value * 100)}%`}</span>
-        <button title="Zoom in" onClick={() => zoomBy(1.2)}>+</button>
-        <button aria-pressed={fit.value} title="Fit the pages to the window" onClick={() => { fit.value = !fit.value; zoom.value = 1; }}>Fit</button>
+        <div class="seg">
+          <button class="icon" title="Zoom out" onClick={() => zoomBy(1 / 1.2)}><Ui.minus /></button>
+          <span class="val">{fit.value ? 'fit' : `${Math.round(zoom.value * 100)}%`}</span>
+          <button class="icon" title="Zoom in" onClick={() => zoomBy(1.2)}><Ui.plus /></button>
+          <button aria-pressed={fit.value} title="Fit the pages to the window" onClick={() => { fit.value = !fit.value; zoom.value = 1; }}>Fit</button>
+        </div>
         <div class="viewmenu" onPointerDown={(e) => e.stopPropagation()}>
           <button aria-pressed={viewOpen.value} onClick={() => (viewOpen.value = !viewOpen.value)}>View ▾</button>
           {viewOpen.value && (
@@ -120,9 +127,11 @@ export function App() {
         <span class={`status${engraveError.value ? ' err' : ''}`}>
           {engraveError.value || (res ? `${res.systems} systems · ${res.pages.length} pages · ${Math.round(timing.value)} ms` : '')}
         </span>
-        <button aria-pressed={showInspector.value} title="Properties (Ctrl I)" onClick={() => (showInspector.value = !showInspector.value)}>Properties</button>
-        <button aria-pressed={showText.value} title="Text view (Ctrl E)" onClick={() => (showText.value = !showText.value)}>Text</button>
-        <button title="Keyboard shortcuts (?)" onClick={() => (showHelp.value = !showHelp.value)}>?</button>
+        <div class="seg">
+          <button aria-pressed={showInspector.value} title="Properties (Ctrl I)" onClick={() => (showInspector.value = !showInspector.value)}>Properties</button>
+          <button aria-pressed={showText.value} title="Text view (Ctrl E)" onClick={() => (showText.value = !showText.value)}>Text</button>
+          <button class="icon" aria-pressed={showHelp.value} title="Keyboard shortcuts (?)" onClick={() => (showHelp.value = !showHelp.value)}><Ui.help /></button>
+        </div>
       </header>
       <div class="main">
         <Palette />
