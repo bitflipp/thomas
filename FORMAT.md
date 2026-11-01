@@ -18,7 +18,7 @@ staff lh clef=F4
 brace rh lh                                   # or: bracket a b c
 
 m1 time=2/4 key=0                             # key = number of sharps (+) / flats (-)
-  rh.1: 12:4(bracket,above,label=6){ trem2{ \tempo 4=115 \p g#3:4. a3:4. } }
+  rh.1: 12:4(bracket,above,label=6){trem2{\tempo 4=115 \p g#3:4. a3:4.}}
   lh.1: \ped ( d3:2~
 m2
   rh.1: ...
@@ -48,10 +48,10 @@ Voice numbers are local to a staff (`rh.1`, `rh.2`, `lh.1`, ...). Every voice of
 | Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |
 | Accidental override | `!` force, `?` cautionary (after the pitch) | `c#4!` `e4?` |
 | Arpeggio | `\arp` before a chord | `\arp <c3 g3 e4>:8` |
-| Grace notes | `\acc{ … }` (slashed) or `\grace{ … }` before a note; each grace note has an explicit value (8, 16, 32 …), no dots, no time in the measure | `\acc{ d5:8 } c5:4`, `\grace{ b4:16 c5:16 } d5:4` |
+| Grace notes | `\acc{…}` (slashed) or `\grace{…}` before a note; each grace note has an explicit value (8, 16, 32 …), no dots, no time in the measure | `\acc{d5:8} c5:4`, `\grace{b4:16 c5:16} d5:4` |
 | No beam | `\nobeam` keeps a note out of the automatic beaming | `\nobeam c5:8 d5` |
 | Stem override | `\stemup`, `\stemdown` (else automatic) | `\stemdown c5:4` |
-| Cross-staff | `\staff <id>` draws the following events of the voice on that staff, until `\staff <home>` switches back (resets at each line) | `lh.1: [ c3:16 e3 g3 \staff rh c4 e4 g4 ] \staff lh r:8` |
+| Cross-staff | `\staff <id>` draws the following events of the voice on that staff, until `\staff <home>` switches back (resets at each line) | `lh.1: [c3:16 e3 g3 \staff rh c4 e4 g4] \staff lh r:8` |
 
 Pitches are written with sounding octave. Under an octave shift (`\8va`/`\8vb`) the engraver writes them an octave away;
 you never write the shifted pitch yourself.
@@ -60,10 +60,10 @@ you never write the shifted pitch yourself.
 
 | Element | Syntax | Meaning |
 |---|---|---|
-| Tuplet | `A:N{ ... }` — A notes in the time of N; durations inside are the *written* values | `3:2{ c5:8 d5 e5 }` |
-| Tuplet options | `A:N(opts){ }` with `bracket`, `nobracket`, `nonum`, `above`, `below`, `label=K` | `6:4(nobracket,below){ ... }` |
-| Beam group | `[ ... ]` forces exactly these events (at least two notes) into one beam | `[ c5:16 d5 e5 f5 ]` |
-| Two-note tremolo | `tremN{ ... }` around exactly two notes, drawn with `N` beams between them | `trem2{ c4:4 e4:4 }` |
+| Tuplet | `A:N{...}` — A notes in the time of N; durations inside are the *written* values | `3:2{c5:8 d5 e5}` |
+| Tuplet options | `A:N(opts){ }` with `bracket`, `nobracket`, `nonum`, `above`, `below`, `label=K` | `6:4(nobracket,below){...}` |
+| Beam group | `[...]` forces exactly these events (at least two notes) into one beam | `[c5:16 d5 e5 f5]` |
+| Two-note tremolo | `tremN{...}` around exactly two notes, drawn with `N` beams between them | `trem2{c4:4 e4:4}` |
 
 A cross-staff note keeps its voice (timing, slurs, ties' voice, beams, tuplets) but its head, clef, octave shift and accidentals belong to the staff it is drawn on.
 A beam whose notes sit on two staves runs flat between them: stems of the upper staff point down, those of the lower staff up, and the gap between the staves grows to fit it.

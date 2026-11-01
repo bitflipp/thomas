@@ -50,7 +50,7 @@ test('tuplets: make, enter inside, refuse to overflow', () => {
   const q = (PPQ4 * 2) / 3; // third of the half-note span... tuplet written 4th
   void q;
   s = ok(C.enterNote(s, loc, 0, { base: 4, dots: 0 }, c4));
-  assert.match(show(s), /3:2\{ c4:4 /);
+  assert.match(show(s), /3:2\{c4:4 /);
   assert.throws(() => C.enterNote(s, loc, 0, { base: 1, dots: 0 }, c4), /fit/);
 });
 test('slurs get free numbers and tidy removes dangling ones', () => {
@@ -141,7 +141,7 @@ test('beam groups and tremolos', () => {
   let s = load();
   for (let i = 0; i < 4; i++) s = C.enterNote(s, loc, i * 3360 / 2, { base: 8, dots: 0 }, c4);
   s = ok(C.makeBeam(s, loc, 0, 3));
-  assert.match(show(s), /\[ c4:8 c4 c4 c4 \]/);
+  assert.match(show(s), /\[c4:8 c4 c4 c4\]/);
   s = ok(C.ungroup(s, { ...loc, idx: 1 }));
   assert.doesNotMatch(show(s), /\[/);
   s = ok(C.makeTremolo(s, loc, 0, 1, 2));

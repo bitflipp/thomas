@@ -63,8 +63,8 @@ test('simplifyBeams drops groups the automatic rules reproduce and keeps the oth
   assert.deepEqual(beamGroups(v, 3360).map((g) => g.length).sort(), [...before].sort());
   const rest = writeText(s).split('\n').find((l) => l.includes('rh.1'))!;
   // [g a b c] spans two beats, which automatic beaming would split: it stays explicit
-  assert.match(rest, /\[ g5/);
-  assert.ok(!/\[ c5:8 d5 \]/.test(rest));
+  assert.match(rest, /\[g5/);
+  assert.ok(!/\[c5:8 d5\]/.test(rest));
 });
 
 test('simplifyTupletBrackets drops a bracket choice equal to the default', () => {

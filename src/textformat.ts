@@ -53,6 +53,7 @@ function markStr(m: MarkBody): string {
 class VoiceWriter {
   out: string[] = [];
   lastBase: BaseDur | 0 = 0;
+  glue = false; // the next token continues the previous one (inside the delimiters of a group)
   home: string;
   curStaff: string; // staff the following events are drawn on (see \staff)
   constructor(home: string) { this.home = this.curStaff = home; }
@@ -94,13 +95,19 @@ class VoiceWriter {
         this.group(`${it.actual}:${it.normal}${o.length ? `(${o.join(',')})` : ''}{`, '}', it.items);
       } else if (isBeam(it)) this.group('[', ']', it.items);
       else if (isTremolo(it)) this.group(`trem${it.beams}{`, '}', it.items);
-      else this.out.push(this.eventStr(it));
+      else this.push(this.eventStr(it));
     }
   }
+  push(tok: string): void {
+    if (this.glue) { this.out[this.out.length - 1] += tok; this.glue = false; } else this.out.push(tok);
+  }
+  /** A group is written without padding inside its delimiters: `3:2{c5:16 d5 e5}`. */
   group(open: string, close: string, items: Item[]): void {
-    this.out.push(open);
+    this.push(open);
+    this.glue = true;
     this.items(items);
-    this.out.push(close);
+    this.glue = false;
+    this.out[this.out.length - 1] += close;
   }
 }
 
@@ -115,7 +122,7 @@ function graceStrs(gs: Grace[]): string[] {
       const ps = g.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : '') + (p.tie ? '~' : ''));
       return (ps.length === 1 ? ps[0] : `<${ps.join(' ')}>`) + ':' + g.base;
     });
-    out.push(`\\${slash ? 'acc' : 'grace'}{ ${body.join(' ')} }`);
+    out.push(`\\${slash ? 'acc' : 'grace'}{${body.join(' ')}}`);
     i = j;
   }
   return out;
