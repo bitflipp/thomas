@@ -144,8 +144,16 @@ test('beam groups and tremolos', () => {
   assert.match(show(s), /\[c4:8 c4 c4 c4\]/);
   s = ok(C.ungroup(s, { ...loc, idx: 1 }));
   assert.doesNotMatch(show(s), /\[/);
-  s = ok(C.makeTremolo(s, loc, 0, 1, 2));
+  s = ok(C.makeBeam(s, loc, 0, 3));
+  assert.throws(() => C.makeTremolo(s, loc, 0, 1, 2), /longer beam/);
+  s = ok(C.ungroup(s, { ...loc, idx: 1 }));
+  s = ok(C.makeBeam(s, loc, 0, 1));
+  s = ok(C.makeTremolo(s, loc, 0, 1, 2)); // replaces the two-note beam
+  assert.doesNotMatch(show(s), /\[/);
   assert.match(show(s), /trem2\{/);
+  s = ok(C.makeTremolo(s, loc, 0, 1, 3)); // changes the beams, no nesting
+  assert.match(show(s), /trem3\{/);
+  assert.doesNotMatch(show(s), /trem\d\{trem/);
   assert.throws(() => C.makeTremolo(s, loc, 2, 4), /exactly two/);
   s = ok(C.deleteEvents(s, [{ ...loc, idx: 1 }]));
   assert.doesNotMatch(show(s), /trem/);

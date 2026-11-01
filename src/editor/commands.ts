@@ -728,7 +728,42 @@ export function makeBeam(score: Score, loc: Loc, from: number, to: number): Scor
 /** Two-note tremolo with `beams` beams between exactly two notes. */
 export function makeTremolo(score: Score, loc: Loc, from: number, to: number, beams = 2): Score {
   if (to - from !== 1) throw new EditError('A tremolo joins exactly two notes');
-  return edit(score, (d) => wrapRange(d, loc, from, to, (items) => ({ kind: 'tremolo', beams, items })));
+  return edit(score, (d) => {
+    // already a tremolo over exactly these two notes: change its beams instead of nesting another
+    const v = voiceIn(d, loc);
+    const flat = flattenVoice(v as Voice);
+    const ea = flat[from]?.ev, eb = flat[to]?.ev;
+    const again = (items: Draft<Item>[]): boolean => {
+      for (const it of items) {
+        if (isEvent(it as Item)) continue;
+        const g = it as Draft<TupletGroup>;
+        if (isTremolo(g as unknown as Item)) {
+          const evs = flattenVoice({ id: 0, items: g.items as Item[] }).map((t) => t.ev as unknown);
+          if (evs.includes(ea as unknown) && evs.includes(eb as unknown)) { (g as unknown as { beams: number }).beams = beams; return true; }
+        }
+        if (again(g.items as Draft<Item>[])) return true;
+      }
+      return false;
+    };
+    if (again(v.items as Draft<Item>[])) return;
+    // a tremolo does not go inside a beam group: it replaces a beam over exactly these two notes, otherwise refuse
+    const inBeam = (items: Draft<Item>[]): boolean => {
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i] as Item;
+        if (isEvent(it)) continue;
+        if (isBeam(it)) {
+          const evs = flattenVoice({ id: 0, items: it.items }).map((t) => t.ev as unknown);
+          if (!evs.includes(ea as unknown) && !evs.includes(eb as unknown)) continue;
+          if (evs.length !== 2 || !evs.includes(ea as unknown) || !evs.includes(eb as unknown)) throw new EditError('Notes in a longer beam group cannot become a tremolo: ungroup them first');
+          items[i] = { kind: 'tremolo', beams, items: it.items } as Draft<Item>;
+          return true;
+        }
+        if (inBeam((it as Draft<TupletGroup>).items)) return true;
+      }
+      return false;
+    };
+    if (!inBeam(v.items as Draft<Item>[])) wrapRange(d, loc, from, to, (items) => ({ kind: 'tremolo', beams, items }));
+  });
 }
 /** Dissolve the beam group or tremolo that holds the event. */
 export function ungroup(score: Score, a: EvAddr): Score {
