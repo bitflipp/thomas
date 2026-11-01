@@ -110,27 +110,30 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
   const y = posToY(h.pos) + (above ? -0.38 : 0.38);
   const ledgerExt = D.legerLineExtension as number;
   // a ledger line in the space next to the tie's end would be crossed: start/stop beyond its extension
-  const ledgerNear = (ev: EvL, hh: { pos: number }): boolean => {
-    const q = above ? hh.pos + 1 : hh.pos - 1;
+  const ledgerNear = (ev: EvL, hh: { pos: number }, ab = above): boolean => {
+    const q = ab ? hh.pos + 1 : hh.pos - 1;
     if (q % 2 !== 0) return false;
     const own = ev.heads.filter((x) => !x.shared);
     return (q <= -2 && own.some((x) => x.pos <= q)) || (q >= 10 && own.some((x) => x.pos >= q));
   };
+  // the tied heads of a chord share their reach and arch height, so that the upper and lower ties are mirror images
+  const sibs = e.heads.map((x, i) => i).filter((i) => e.heads[i].tie);
+  const nextOf = (i: number): number => (next ? next.heads.findIndex((x) => pitchStep(x.pitch) === pitchStep(e.heads[i].pitch) && x.pitch.alter === e.heads[i].pitch.alter) : -1);
   const flagged = e.stem === (above ? 'up' : 'down') && e.te.ev.dur.base >= 8 && !e.beam && !e.tremPair;
   let x0 = e.x + h.dx + g.hw + 0.12 + (dots ? 0.4 + DOT_STEP * dots : 0);
-  if (ledgerNear(e, h)) x0 = Math.max(x0, e.x + h.dx + g.hw + ledgerExt + 0.1);
+  if (sibs.some((i) => ledgerNear(e, e.heads[i], tieAbove(e, i)))) x0 = Math.max(x0, e.x + h.dx + g.hw + ledgerExt + 0.1);
   if (flagged) x0 = Math.max(x0, g.stemX + sm.bbox(`flag${e.te.ev.dur.base >= 32 ? '32nd' : e.te.ev.dur.base >= 16 ? '16th' : '8th'}${above ? 'Up' : 'Down'}`).x1 + 0.1);
   const si = systems[e.mi >= 0 ? sysOfIndex(systems, e.mi) : 0];
   const thick = D.tieMidpointThickness as number;
   // between ledger lines of the chord there is little room for the arc
-  const ledgerCap = (ev: EvL, hh: { pos: number }): number => {
+  const ledgerCap = (ev: EvL, hh: { pos: number }, above: boolean): number => {
     const own = ev.heads.filter((x) => !x.shared);
     const lo = Math.min(...own.map((x) => x.pos)), hi = Math.max(...own.map((x) => x.pos));
     const q0 = above ? (hh.pos % 2 === 0 ? hh.pos + 2 : hh.pos + 1) : (hh.pos % 2 === 0 ? hh.pos - 2 : hh.pos - 1);
     const exists = (q0 <= -2 && lo <= q0) || (q0 >= 10 && hi >= q0);
     return exists ? Math.abs(q0 - hh.pos) / 2 - 0.38 - 0.25 : Infinity;
   };
-  const cap = Math.max(0.25, Math.min(ledgerCap(e, h), next && nh >= 0 ? ledgerCap(next, next.heads[nh]) : Infinity));
+  const cap = Math.max(0.25, Math.min(...sibs.flatMap((i) => [ledgerCap(e, e.heads[i], tieAbove(e, i)), next && nextOf(i) >= 0 ? ledgerCap(next, next.heads[nextOf(i)], tieAbove(e, i)) : Infinity])));
   const place = (ctx: SysCtx, xa: number, xb: number, y: number): { hgt: number; draw: (hh: number) => void } | undefined => {
     const len = xb - xa;
     if (len < 0.4) return undefined;
@@ -157,7 +160,7 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
   if (!next || nh < 0) { solo(place(si, x0, Math.min(x0 + 2.6, si.width), y)); return; }
   const sj = systems[sysOfIndex(systems, next.mi)];
   let x1 = next.x + next.heads[nh].dx - 0.12;
-  if (ledgerNear(next, next.heads[nh])) x1 = Math.min(x1, next.x + next.heads[nh].dx - ledgerExt - 0.1);
+  if (sibs.some((i) => nextOf(i) >= 0 && ledgerNear(next, next.heads[nextOf(i)], tieAbove(e, i)))) x1 = Math.min(x1, next.x + next.heads[nh].dx - ledgerExt - 0.1);
   const yN = posToY(next.heads[nh].pos) + (above ? -0.38 : 0.38);
   if (sj === si) solo(place(si, x0, x1, y));
   else {
@@ -328,7 +331,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
           // never straddle a barline: slide the run to the left of it
           for (let k = sys.a; k <= sys.b; k++) {
             const bx = sys.mx[k] + sys.placed[k].endX;
-            if (bx > left + r.ink0 - 0.2 && bx < left + r.ink1 + 0.2) left = bx - 0.35 - r.ink1;
+            if (bx > left + r.ink0 - 0.2 && bx < left + r.ink1 + 0.2) left = m.tick === 0 && k === mi - 1 ? bx + 0.35 - r.ink0 : bx - 0.35 - r.ink1; // a dynamic at a measure's start stays in that measure
           }
           items[si].push({ kind: 'dyn', x0: left + r.ink0, x1: left + r.ink1, side, up: r.up, down: r.down, row: 0, order: 0, draw: (ref) => { let px = left; return r.names.map((n) => { const p: Prim = { t: 'glyph', name: n, x: px, y: ref }; px += sm.adv(n); return p; }); } });
           break;
