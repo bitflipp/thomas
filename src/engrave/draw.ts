@@ -516,7 +516,7 @@ function drawTupletPrims(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number, for
     return above ? Math.min(base, o) : Math.max(base, o);
   });
   const hh = (sm.bbox('tuplet6').y1 - sm.bbox('tuplet6').y0) / 2;
-  const clearance = bracket ? 1.1 : hh + 0.75; // number sits clear of beams / stems
+  const clearance = bracket ? 1.1 : hh + 0.5; // number sits clear of beams / stems
   // slope: follow the beam if present, else flat
   const idxFirst = 0, idxLast = evs.length - 1;
   let ya: number, yb: number;
@@ -551,7 +551,8 @@ function drawTupletPrims(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number, for
     ya = yb = e0 + (above ? -clearance : clearance);
   }
   const bx0 = xa - (bracket ? 0 : 0), bx1 = xb;
-  const cx = (bx0 + bx1) / 2;
+  // a bare number is centred over the beam (first to last stem), a bracketed one over the whole group
+  const cx = !bracket && x1 > x0 && notes.length > 1 ? (x0 + x1) / 2 : (bx0 + bx1) / 2;
   const cy = ya + ((yb - ya) * (cx - x0)) / Math.max(0.001, x1 - x0);
   const tw = label.length * 1.0;
   if (dry) return cy;

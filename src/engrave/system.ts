@@ -369,14 +369,23 @@ function alignDynamics(ctx: SysCtx, nS: number): void {
       const top = p.t === 'glyph' ? p.y - sm.bbox(p.name).y1 : p.t === 'line' ? Math.min(p.y1, p.y2) - 0.3 : 0;
       for (const b of ctx.sky[s].boxes) if (!b.spanner && b.x1 > x0 - 0.3 && b.x0 < x1 + 0.3) dyMin = Math.max(dyMin, ctx.staffY[s] - ctx.staffY[s + 1] + b.y1 + 0.3 - top);
     }
-    const dyAdj = Math.max(dy, dyMin);
-    if (dyAdj >= 0) continue;
+    const dyAdj = Math.min(0, Math.max(dy, dyMin));
     const clash = above.some((a) => below.some((b) => { const [a0, a1] = span(a), [b0, b1] = span(b); return a1 > b0 - 0.5 && a0 < b1 + 0.5; }));
     if (clash) continue;
-    for (const p of above) {
+    for (const p of dyAdj < 0 ? above : []) {
       if (p.t === 'glyph') p.y += dyAdj;
       else if (p.t === 'line') { p.y1 += dyAdj; p.y2 += dyAdj; }
       p.a! += dyAdj;
+    }
+    // the lower marks could not rise all the way (content of the upper staff hangs into the gap): the upper staff's marks
+    // sink to the same row instead, so that dynamics and hairpins of the two staves still read as one line
+    const deficit = dyAdj - dy;
+    if (deficit > 0.01) {
+      for (const p of below) {
+        if (p.t === 'glyph') p.y += deficit;
+        else if (p.t === 'line') { p.y1 += deficit; p.y2 += deficit; }
+        p.a! += deficit;
+      }
     }
   }
 }

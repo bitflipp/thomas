@@ -20,7 +20,7 @@ m4
   lh.1: b2:2
 m5
   rh.1: 12:4(nobracket,nonum,below,label=6){ \trem2 g#3:4. \tremend a3:4. } 12:4(nobracket,nonum,below,label=6){ \trem2 g#3:4. \tremend a3:4. }
-  lh.1: bb2:4-^) r:16 [ \< (^ cb3 bb2 cb3 ]
+  lh.1: bb2:4-^_) r:16 [ \< (^ cb3 bb2 cb3 ]
 m6
   rh.1: 12:4(nobracket,nonum,below,label=6){ \trem2 g#3:4. \tremend a3:4. } 12:4(nobracket,nonum,below,label=6){ \trem2 g#3:4. \tremend a3:4. }
   lh.1: [ bb2:16 cb3 bb2 cb3 ] [ \! \> bb2 cb3 bb2 cb3) ] \unped \!
@@ -46,7 +46,7 @@ m12
   lh.1: g2:2
 m13
   rh.1: 12:4(nobracket,nonum,below,label=6){ \trem2 a#3:4. \tremend b3:4. } 12:4(nobracket,nonum,below,label=6){ \trem2 a#3:4. \tremend b3:4. }
-  lh.1: gb2:4-^) r:16 [ \< (^ abb2 gb2 abb2 ]
+  lh.1: gb2:4-^_) r:16 [ \< (^ abb2 gb2 abb2 ]
 m14
   rh.1: 12:4(nobracket,nonum,below,label=6){ \trem2 a#3:4. \tremend b3:4. } 5:4(nobracket){ [ \<2 a#3:16 b3 a#3 b3 bb3 ] }
   lh.1: [ gb2:16 abb2 gb2 abb2 ] [ \! \> f#2 g2 f#2 g#2) ] \unped \!
@@ -114,7 +114,7 @@ m32
   lh.1: d#2:2
 m33
   rh.1: 12:4(nobracket,nonum,below,label=6){ \trem2 eb3:4. \tremend fb3:4. } 12:4(nobracket,nonum,below,label=6){ \trem2 eb3:4. \tremend fb3:4. }
-  lh.1: d2:4-^) r:16 [ \< eb2 d2 eb2 ]
+  lh.1: d2:4-^_) r:16 [ \< eb2 d2 eb2 ]
 m34
   rh.1: 12:4(nobracket,nonum,below,label=6){ \trem2 eb3:4. \tremend fb3:4. } 12:4(nobracket,nonum,below,label=6){ \trem2 eb3:4. \tremend fb3:4. }
   lh.1: [ d2:16 eb2 d2 eb2 ] 5:4(nobracket){ [ \! \> d2 eb2 d2 eb2 d2 ] } \unped \!
@@ -138,7 +138,7 @@ m40
   lh.1: b#1:2
 m41
   rh.1: 12:4(nobracket,nonum,below,label=6){ \trem2 b3:4. \tremend c4:4. } 12:4(nobracket,nonum,below,label=6){ \trem2 b3:4. \tremend c4:4. }
-  lh.1: b1:4-^) r:16 [ \< c2 b1 c2 ]
+  lh.1: b1:4-^_) r:16 [ \< c2 b1 c2 ]
 m42
   rh.1: 5:4(nobracket){ [ b3:16 c4 b3 c4 b3 ] } 5:4(nobracket,nonum){ [ \clef F4 c4 b3 c4 b3 c4 ] }
   lh.1: [ b1:16 c2 b1 c2 ] 3:2(nobracket){ [ b1:8 c2 b1 ] } \unped \!
@@ -281,7 +281,7 @@ m83
   lh.1: \ped <f#1 f#2>:2-> \unped
 m84
   rh.1: 6:4(nobracket,nonum){ [ <e4 c5>:16 a4 e4 <c4 a4> e4 c4 ] } 6:4(nobracket,nonum){ [ <a3 e4> c4 a3 <e3 c4> a3 e3 ] }
-  lh.1: \ped <f1 f2>:4-^ \unped \ped r:16 [ \< gb1 f1 gb1 ] \unped
+  lh.1: \ped <f1 f2>:4-^_ \unped \ped r:16 [ \< gb1 f1 gb1 ] \unped
 m85
   rh.1: 6:4(nobracket,nonum){ [ \clef F4 <c3 a3>:16 e3 c3 <a2 e3> c3 a2 ] } 6:4(nobracket,nonum){ [ <e2 c3> a2 e2 <c2 a2> e2 c2 ] }
   lh.1: [ \ped f1:16 gb1 f1 gb1 ] [ \! \> f1-> gb1 f1 gb1 ] \unped \!
@@ -307,7 +307,7 @@ m91
   lh.1: \ped \8vb <b0 b1>:2-> \unped
 m92
   rh.1: 6:4(nobracket,nonum){ [ <a3 f4>:16 d4 a3 <f3 d4> a3 f3 ] } 6:4(nobracket,nonum){ [ \clef F4 <d3 a3> f3 d3 <a2 f3> d3 a2 ] }
-  lh.1: \ped <bb0 bb1>:4-^ \unped \ped r:16 [ \< cb1 bb0 cb1 ] \unped
+  lh.1: \ped <bb0 bb1>:4-^_ \unped \ped r:16 [ \< cb1 bb0 cb1 ] \unped
 m93
   rh.1: 6:4(nobracket,nonum){ [ <f2 d3>:16 a2 f2 <d2 a2> f2 d2 ] } 6:4(nobracket,nonum){ [ <a1 f2> d2 a1 <f1 d2> a1 f1 ] }
   lh.1: [ \ped bb0:16 cb1 bb0 cb1 ] [ \! \> bb0-> cb1 bb0 cb1 ] \unped \!

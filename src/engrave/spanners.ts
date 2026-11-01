@@ -162,7 +162,7 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
   if (sj === si) solo(place(si, x0, x1, y));
   else {
     // halves of a tie broken across systems
-    const outgoing = place(si, x0, si.width - 0.2, y), incoming = place(sj, Math.max(sj.prefix - 0.6, 0.5), x1, yN);
+    const outgoing = place(si, x0, si.width - 0.2, y), incoming = place(sj, Math.max(0.4, Math.min(Math.max(sj.prefix - 0.6, 0.5), x1 - 2.4)), x1, yN); // a continuation is never a stub
     // the halves of a broken tie match in height, except that an obstacle-driven outgoing half does not turn the
     // incoming half into a bowl: that one only follows part of the way
     const ho = outgoing?.hgt ?? 0, hi = incoming?.hgt ?? 0;
@@ -518,7 +518,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
             const b = sky.bottom(it.x0, it.x1, 4);
             ref = Math.max(ref, b + clear + it.up + (it.kind === 'hair' ? 0 : 0) + hairOff);
           } else {
-            const t = sky.top(it.x0, it.x1, 0);
+            const t = sky.top(it.x0, it.x1, 0, it.kind === 'dyn'); // a dynamic stays close to the notes, under any slur arching over them
             ref = Math.min(ref, t - clear - it.down + hairOff * 0);
           }
         }
