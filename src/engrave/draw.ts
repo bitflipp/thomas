@@ -113,13 +113,13 @@ export function drawSystemNotes(ctx: SysCtx): void {
       const sml = prep.measures[mi][s];
       // ---- 1. position events
       for (const e of sml.evs) {
-        if (e.ev.kind === 'rest' && e.ev.measure) { e.x = ctx.mx[mi] + (sp.lead + pl.endX) / 2 - sm.adv('restWhole') / 2; continue; }
+        if (e.ev.kind === 'rest' && e.ev.style === 'measure') { e.x = ctx.mx[mi] + (sp.lead + pl.endX) / 2 - sm.adv('restWhole') / 2; continue; }
         const j = colIndex.get(e.start);
         e.x = j === undefined ? xAtTick(ctx, mi, e.start) : ctx.mx[mi] + pl.xs[j];
       }
       // ---- 2. notes: heads, ledger, accidentals, dots, arpeggio, stems (unbeamed)
       for (const e of sml.evs) {
-        if (e.ev.kind === 'rest') { if (!e.ev.hidden) drawRest(ctx, e, s); continue; }
+        if (e.ev.kind === 'rest') { if (e.ev.style !== 'hidden') drawRest(ctx, e, s); continue; }
         drawNoteBasics(ctx, e, s);
       }
       // ---- 3. stems & beams per voice
@@ -286,8 +286,8 @@ function drawRest(ctx: SysCtx, e: EvL, s: number): void {
 }
 function drawRestPrims(ctx: SysCtx, e: EvL, s: number): void {
   const base = e.te.ev.dur.base;
-  const name = restGlyph(base, e.ev.kind === 'rest' ? e.ev.measure : false);
-  let y = base === 1 || (e.ev.kind === 'rest' && e.ev.measure) ? 1 : 2;
+  const name = restGlyph(base, e.ev.kind === 'rest' && e.ev.style === 'measure');
+  let y = base === 1 || (e.ev.kind === 'rest' && e.ev.style === 'measure') ? 1 : 2;
   if (e.ev.kind === 'rest' && e.ev.display) {
     const clef = e.clef;
     y = posToY(Math.round(((e.ev.display.octave * 7 + ['c', 'd', 'e', 'f', 'g', 'a', 'b'].indexOf(e.ev.display.step)) - clefBottom(clef))));
@@ -430,7 +430,7 @@ function drawTremoloPair(ctx: SysCtx, e1: EvL, e2: EvL, s: number): void {
   }
   // the beams must clear accidentals between the stems
   {
-    const nb = e1.ev.kind === 'note' && e1.ev.tremolo2 ? e1.ev.tremolo2.beams : 2;
+    const nb = e1.tremBeams ?? 2;
     const inner0 = (nb - 1) * ((D.beamThickness as number) + (D.beamSpacing as number)) + (D.beamThickness as number);
     for (const [e, g] of [[e1, g1], [e2, g2]] as [EvL, Geom][]) {
       for (const h of e.heads) {
@@ -456,7 +456,7 @@ function drawTremoloPair(ctx: SysCtx, e1: EvL, e2: EvL, s: number): void {
   drawStem(ctx, e2, g2, s, false);
   const bt = D.beamThickness as number, bs = D.beamSpacing as number;
   const inward = up ? 1 : -1;
-  const n = e1.ev.kind === 'note' && e1.ev.tremolo2 ? e1.ev.tremolo2.beams : 2;
+  const n = e1.tremBeams ?? 2;
   const DETACH = 0.3; // tremolo beams stop short of the stems so they read differently from ordinary beams
   const xa = g1.stemX + STEM_T / 2 + DETACH, xb = g2.stemX - STEM_T / 2 - DETACH;
   const slopeAt = (x: number) => g1.stemTip + ((g2.stemTip - g1.stemTip) * (x - g1.stemX)) / Math.max(0.001, g2.stemX - g1.stemX);

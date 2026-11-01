@@ -2,10 +2,11 @@
 import { parseXml, child, children, text, type XNode } from './xml.ts';
 import {
   PPQ, STEPS, baseTicks, measureTicks,
-  type Score, type Measure, type StaffMeasure, type Voice, type Item, type Event, type NoteEvent, type RestEvent,
+  type Score, type Measure, type Item, type Event, type NoteEvent, type RestEvent,
   type Dur, type BaseDur, type Clef, type Mark, type TupletGroup, type BeamGroup, type Step, type StaffDef,
   type Articulation, type Pitch, type TimeSig,
 } from './model.ts';
+import { beatTicks, simplifyBeams, simplifyTupletBrackets } from './beams.ts';
 
 export interface ImportOptions { keepStems?: boolean; keepBreaks?: boolean; warn?: (msg: string) => void }
 
@@ -24,6 +25,7 @@ interface RawNote {
   tupStart?: { bracket?: boolean; number?: 'none'; placement?: 'above' | 'below'; label?: number }[];
   tupStop: number;
   beam1?: string;
+  trem?: { role: 'start' | 'stop'; beams: number };
 }
 
 export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
@@ -95,7 +97,7 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
   const curDivisions: number[] = parts.map(() => 1);
 
   for (let mi = 0; mi < nMeasures; mi++) {
-    const measure: Measure = { number: mi + 1, staves: {} };
+    const measure: Measure = { staves: {} };
     measures.push(measure);
     const raws = new Map<string, RawNote[]>();
     raw.push(raws);
@@ -158,16 +160,16 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
                   if (name) marks.push({ staffId, mark: { type: 'dynamic', text: name === 'other-dynamics' ? d.children[0].text.trim() : name, placement: placement === 'above' ? 'above' : undefined, tick } });
                 } else if (d.tag === 'wedge') {
                   const id = Number(d.attrs.number ?? 1);
-                  if (d.attrs.type === 'stop') marks.push({ staffId, mark: { type: 'hairpin-stop', id, tick } });
+                  if (d.attrs.type === 'stop') marks.push({ staffId, mark: { type: 'stop', of: 'hairpin', id, tick } });
                   else marks.push({ staffId, mark: { type: 'hairpin', kind: d.attrs.type === 'crescendo' ? 'cresc' : 'dim', id, placement: placement === 'above' ? 'above' : undefined, tick } });
                 } else if (d.tag === 'pedal') {
                   const ty = d.attrs.type;
-                  if (ty === 'stop' || ty === 'change') marks.push({ staffId, mark: { type: 'pedal-stop', tick } });
-                  if (ty === 'start' || ty === 'change') marks.push({ staffId, mark: { type: 'pedal-start', tick } });
+                  if (ty === 'stop' || ty === 'change') marks.push({ staffId, mark: { type: 'stop', of: 'pedal', tick } });
+                  if (ty === 'start' || ty === 'change') marks.push({ staffId, mark: { type: 'pedal', tick } });
                 } else if (d.tag === 'octave-shift') {
                   if (d.attrs.size && d.attrs.size !== '8') throw new Error(`octave-shift size ${d.attrs.size} unsupported`);
-                  if (d.attrs.type === 'stop') marks.push({ staffId, mark: { type: 'ottava-stop', tick } });
-                  else marks.push({ staffId, mark: { type: 'ottava-start', dir: d.attrs.type === 'down' ? 'up' : 'down', tick } });
+                  if (d.attrs.type === 'stop') marks.push({ staffId, mark: { type: 'stop', of: 'ottava', tick } });
+                  else marks.push({ staffId, mark: { type: 'ottava', dir: d.attrs.type === 'down' ? 'up' : 'down', tick } });
                 } else if (d.tag === 'metronome') {
                   const unit = TYPE_BASE[text(d, 'beat-unit') ?? 'quarter'];
                   const dots = children(d, 'beat-unit-dot').length;
@@ -195,21 +197,20 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
             else d = ticksToDur(t(dur)) ?? { base: 1, dots: 0 };
             if (isChord && prev) {
               const ev = prev.ev as NoteEvent;
-              ev.pitches.push(readPitch(el, mi, opts));
-              readNotations(el, ev, true, opts);
+              ev.pitches.push(readPitch(el, mi));
+              readNotations(el, ev, true);
               break;
             }
             const tick = t(cursor);
             const rn: RawNote = { tick, ticks: t(dur), staff: staffN, voice, ev: undefined as unknown as Event, tupStop: 0 };
             if (rest) {
-              const ev: RestEvent = { kind: 'rest', dur: d };
-              if (isMeasureRest) ev.measure = true;
+              const ev: RestEvent = { kind: 'rest', style: isMeasureRest ? 'measure' : 'normal', dur: d };
               const ds = text(rest, 'display-step'), dop = text(rest, 'display-octave');
               if (ds && dop) ev.display = { step: ds.toLowerCase() as Step, alter: 0, octave: Number(dop) };
               rn.ev = ev;
             } else {
-              const ev: NoteEvent = { kind: 'note', dur: d, pitches: [readPitch(el, mi, opts)] };
-              readNotations(el, ev, false, opts);
+              const ev: NoteEvent = { kind: 'note', dur: d, pitches: [readPitch(el, mi)] };
+              rn.trem = readNotations(el, ev, false);
               rn.ev = ev;
             }
             const tmEl = child(el, 'time-modification');
@@ -262,9 +263,12 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
     for (const [key, notes] of raw[mi]) {
       const [sid, v] = key.split('|');
       const vid = voiceNums.get(sid)!.indexOf(Number(v)) + 1;
-      const items = buildVoice(notes, mlen, mi + 1, warn);
+      const voice = { id: vid, items: buildVoice(notes, mlen, mi + 1, warn) };
+      // leave out what the engraver's automatic beaming / bracket choice does anyway
+      simplifyBeams(voice, beatTicks(timeNow));
+      simplifyTupletBrackets(voice, beatTicks(timeNow));
       const sm = (measure.staves[sid] ??= { voices: [], marks: [] });
-      sm.voices.push({ id: vid, items });
+      sm.voices.push(voice);
     }
     for (const sm of Object.values(measure.staves)) sm.voices.sort((a, b) => a.id - b.id);
     for (const { staffId, mark } of rawMarks[mi]) (measure.staves[staffId] ??= { voices: [], marks: [] }).marks.push(mark);
@@ -276,7 +280,7 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
 
 function round(x: number, d: number): number { const f = 10 ** d; return Math.round(x * f) / f; }
 
-function readPitch(el: XNode, mi: number, opts: ImportOptions): import('./model.ts').NotePitch {
+function readPitch(el: XNode, mi: number): import('./model.ts').NotePitch {
   const p = child(el, 'pitch');
   if (!p) throw new Error(`m${mi + 1}: unpitched notes not supported`);
   const step = text(p, 'step')!.toLowerCase() as Step;
@@ -287,12 +291,10 @@ function readPitch(el: XNode, mi: number, opts: ImportOptions): import('./model.
   if (children(el, 'tie').some((t) => t.attrs.type === 'start')) np.tie = true;
   const acc = child(el, 'accidental');
   if (acc?.attrs.cautionary === 'yes') np.acc = 'force';
-  void opts;
   return np;
 }
 
-function readNotations(el: XNode, ev: NoteEvent | RestEvent, isChord: boolean, opts: ImportOptions): void {
-  void opts;
+function readNotations(el: XNode, ev: NoteEvent | RestEvent, isChord: boolean): RawNote['trem'] {
   if (ev.kind !== 'note') return;
   const n = child(el, 'notations');
   if (!n) return;
@@ -320,8 +322,8 @@ function readNotations(el: XNode, ev: NoteEvent | RestEvent, isChord: boolean, o
   }
   const orn = child(n, 'ornaments');
   const trem = child(orn, 'tremolo');
-  if (trem && (trem.attrs.type === 'start' || trem.attrs.type === 'stop'))
-    ev.tremolo2 = { role: trem.attrs.type, beams: Number(trem.text.trim() || 2) };
+  if (trem && (trem.attrs.type === 'start' || trem.attrs.type === 'stop') && !isChord)
+    return { role: trem.attrs.type, beams: Number(trem.text.trim() || 2) };
 }
 
 function decomposeGap(ticks: number): Dur[] {
@@ -342,29 +344,29 @@ function decomposeGap(ticks: number): Dur[] {
 
 function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: string) => void): Item[] {
   // 1. fill gaps with hidden rests; check continuity
-  const evs: { ev: Event; tm?: [number, number]; tupStart?: RawNote['tupStart']; tupStop: number; beam1?: string }[] = [];
+  const evs: { ev: Event; tm?: [number, number]; tupStart?: RawNote['tupStart']; tupStop: number; beam1?: string; trem?: RawNote['trem'] }[] = [];
   let pos = 0;
   for (const n of notes) {
     if (n.tick < pos) throw new Error(`m${mnum}: overlapping events in one voice`);
-    if (n.tick > pos) for (const d of decomposeGap(n.tick - pos)) evs.push({ ev: { kind: 'rest', dur: d, hidden: true }, tupStop: 0 });
-    evs.push({ ev: n.ev, tm: n.tmRatio, tupStart: n.tupStart, tupStop: n.tupStop, beam1: n.beam1 });
+    if (n.tick > pos) for (const d of decomposeGap(n.tick - pos)) evs.push({ ev: { kind: 'rest', style: 'hidden', dur: d }, tupStop: 0 });
+    evs.push({ ev: n.ev, tm: n.tmRatio, tupStart: n.tupStart, tupStop: n.tupStop, beam1: n.beam1, trem: n.trem });
     pos = n.tick + n.ticks;
     // consistency check of notated duration vs. real duration
     let expect = baseTicks(n.ev.dur);
     if (n.tmRatio) expect = (expect * n.tmRatio[1]) / n.tmRatio[0];
-    if (expect !== n.ticks && !(n.ev.kind === 'rest' && n.ev.measure)) warn(`m${mnum}: notated duration ${expect} != sounding ${n.ticks}`);
+    if (expect !== n.ticks && !(n.ev.kind === 'rest' && n.ev.style === 'measure')) warn(`m${mnum}: notated duration ${expect} != sounding ${n.ticks}`);
   }
   if (pos > mlen) warn(`m${mnum}: voice longer than measure`);
 
   // 2. tuplet ranges
-  type Range = { a: number; b: number; make: () => Item };
+  type Range = { a: number; b: number; make: () => Item; rank: number }; // rank: nesting order for identical ranges, outer first
   const ranges: Range[] = [];
   const open: { a: number; o: NonNullable<RawNote['tupStart']>[number]; ratio: [number, number] }[] = [];
   let implicit: { a: number; ratio: [number, number] } | null = null;
   const closeImplicit = (b: number) => {
     if (!implicit) return;
     const { a, ratio } = implicit;
-    ranges.push({ a, b, make: () => ({ kind: 'tuplet', actual: ratio[0], normal: ratio[1], bracket: false, number: 'none', items: [] }) });
+    ranges.push({ a, b, rank: 3, make: () => ({ kind: 'tuplet', actual: ratio[0], normal: ratio[1], bracket: false, number: 'none', items: [] }) });
     implicit = null;
   };
   evs.forEach((e, i) => {
@@ -385,7 +387,7 @@ function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: stri
       if (!t) continue;
       const { a, o, ratio } = t;
       ranges.push({
-        a, b: i, make: () => {
+        a, b: i, rank: 3, make: () => {
           const g: TupletGroup = { kind: 'tuplet', actual: ratio[0], normal: ratio[1], items: [] };
           if (o.bracket !== undefined) g.bracket = o.bracket;
           if (o.number) g.number = o.number;
@@ -399,18 +401,26 @@ function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: stri
   closeImplicit(evs.length - 1);
   if (open.length) warn(`m${mnum}: unterminated tuplet`);
 
+  // two-note tremolos
+  let tstart: { i: number; beams: number } | null = null;
+  evs.forEach((e, i) => {
+    if (e.trem?.role === 'start') tstart = { i, beams: e.trem.beams };
+    else if (e.trem?.role === 'stop' && tstart) { const { i: a, beams } = tstart; ranges.push({ a, b: i, rank: 2, make: () => ({ kind: 'tremolo', beams, items: [] }) }); tstart = null; }
+  });
+  if (tstart) warn(`m${mnum}: tremolo without end`);
+
   // 3. beam ranges (beam level 1) incl. singletons for beamable-but-unbeamed events
   const brs: Range[] = [];
   let bstart = -1;
   evs.forEach((e, i) => {
     if (e.beam1 === 'begin') bstart = i;
-    else if (e.beam1 === 'end' && bstart >= 0) { brs.push({ a: bstart, b: i, make: () => ({ kind: 'beam', items: [] }) }); bstart = -1; }
+    else if (e.beam1 === 'end' && bstart >= 0) { brs.push({ a: bstart, b: i, rank: 1, make: () => ({ kind: 'beam', items: [] }) }); bstart = -1; }
     else if (!e.beam1 && bstart < 0 && e.ev.kind === 'note' && e.ev.dur.base >= 8)
-      brs.push({ a: i, b: i, make: () => ({ kind: 'beam', items: [] }) });
+      brs.push({ a: i, b: i, rank: 1, make: () => ({ kind: 'beam', items: [] }) });
   });
-  const all = [...ranges.map((r) => ({ ...r, tup: true })), ...brs.map((r) => ({ ...r, tup: false }))];
-  // outer first: start asc, end desc; for identical ranges tuplet outside beam
-  all.sort((x, y) => x.a - y.a || y.b - x.b || Number(y.tup) - Number(x.tup));
+  const all = [...ranges, ...brs];
+  // outer first: start asc, end desc; for identical ranges tuplet outside tremolo outside beam
+  all.sort((x, y) => x.a - y.a || y.b - x.b || y.rank - x.rank);
 
   // 4. nest
   interface Open { b: number; node: { items: Item[] } }
@@ -423,8 +433,8 @@ function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: stri
       const r = all[ri++];
       const parent = stack[stack.length - 1];
       let b = r.b;
-      if (b > parent.b) { warn(`m${mnum}: ${r.tup ? 'tuplet' : 'beam'} crosses group boundary, truncated`); b = parent.b; }
-      const node = r.make() as TupletGroup | BeamGroup;
+      if (b > parent.b) { warn(`m${mnum}: ${r.rank === 3 ? 'tuplet' : r.rank === 2 ? 'tremolo' : 'beam'} crosses group boundary, truncated`); b = parent.b; }
+      const node = r.make() as TupletGroup | BeamGroup | TremoloGroup;
       parent.node.items.push(node);
       stack.push({ b, node });
     }

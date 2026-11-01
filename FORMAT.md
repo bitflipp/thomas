@@ -18,7 +18,7 @@ staff lh clef=F4
 brace rh lh                                   # or: bracket a b c
 
 m1 time=2/4 key=0                             # key = number of sharps (+) / flats (-)
-  rh.1: 12:4(bracket,above,label=6){ \tempo 4=115 \p \trem2 g#3:4. \tremend a3:4. }
+  rh.1: 12:4(bracket,above,label=6){ trem2{ \tempo 4=115 \p g#3:4. a3:4. } }
   lh.1: \ped ( d3:2~
 m2
   rh.1: ...
@@ -30,7 +30,7 @@ rescales the music and re-flows measures, systems and pages, while the page size
 stay fixed. `thomas render --space <mm>` overrides it without editing the file.
 
 Header attributes of a measure: `time=B/T`, `key=N`, `break=system|page`, `barline=single|double|final`.
-Lines indented by two spaces belong to the preceding measure: `<staff>.<voice>: <items>`.
+The number in `m<N>` is only a label (the measure's number is its position). Lines indented by two spaces belong to the preceding measure: `<staff>.<voice>: <items>`.
 Voice numbers are local to a staff (`rh.1`, `rh.2`, `lh.1`, ...). Every voice of a measure must fill the measure exactly
 (use `s` spacers to skip time). `thomas check` validates this.
 
@@ -43,12 +43,12 @@ Voice numbers are local to a staff (`rh.1`, `rh.2`, `lh.1`, ...). Every voice of
 | Rest | `r` (visible), `s` (invisible spacer), `R` (whole-measure rest) | `r:8` `s:4` `R:2` |
 | Displaced rest | `r@<pitch>` | `r@b4:4` |
 | Chord | `<pitches>` then duration | `<c4 e4 g4>:2` |
-| Tie | `~` after a note, or after the chord (all notes), or after a pitch inside a chord | `c4:2~ c4:4` `<c4~ e4>` |
+| Tie | `~` after the duration of a single note; inside a chord after each tied pitch | `c4:2~ c4:4` `<c4~ e4>:2` |
 | Slur | `(` before the first note, `)` after the last. Optional number (overlap) and side `^` `_` | `( c5:8 d5 e5 )` `(2^ ... )2` |
 | Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |
 | Accidental override | `!` force, `?` cautionary (after the pitch) | `c#4!` `e4?` |
 | Arpeggio | `\arp` before a chord | `\arp <c3 g3 e4>:8` |
-| Two-note tremolo | `\tremN` on the first, `\tremend` on the second note | `\trem2 c4:4 \tremend e4:4` |
+| No beam | `\nobeam` keeps a note out of the automatic beaming | `\nobeam c5:8 d5` |
 | Stem override | `\stemup`, `\stemdown` (else automatic) | `\stemdown c5:4` |
 
 Pitches are written with sounding octave. Under an octave shift (`\8va`/`\8vb`) the engraver writes them an octave away;
@@ -60,10 +60,12 @@ you never write the shifted pitch yourself.
 |---|---|---|
 | Tuplet | `A:N{ ... }` — A notes in the time of N; durations inside are the *written* values | `3:2{ c5:8 d5 e5 }` |
 | Tuplet options | `A:N(opts){ }` with `bracket`, `nobracket`, `nonum`, `above`, `below`, `label=K` | `6:4(nobracket,below){ ... }` |
-| Beam group | `[ ... ]` forces exactly these events into one beam. A group with one note means "unbeamed" | `[ c5:16 d5 e5 f5 ]` |
+| Beam group | `[ ... ]` forces exactly these events (at least two notes) into one beam | `[ c5:16 d5 e5 f5 ]` |
+| Two-note tremolo | `tremN{ ... }` around exactly two notes, drawn with `N` beams between them | `trem2{ c4:4 e4:4 }` |
 
-Without explicit `[ ]`, eighth notes and shorter are beamed automatically per beat (and not across tuplet boundaries or rests).
-Tuplet brackets are omitted automatically when one beam covers the whole group.
+Without explicit `[ ]`, eighth notes and shorter are beamed automatically per beat (and not across tuplet boundaries or rests);
+write a group only where you want something else, and `\nobeam` to opt a note out. Tuplet brackets are omitted automatically when one
+beam covers the whole group; `bracket`/`nobracket` override that. The importer writes only what differs from these defaults.
 
 ## Marks (before the event they apply to; at the end of a line they apply to the end of the measure)
 
@@ -78,7 +80,7 @@ Tuplet brackets are omitted automatically when one beam covers the whole group.
 | Text | `\text "dolce"`, `^`/`_` for above/below |
 
 Marks are stored per staff with their time position. When no voice has an event boundary at that position
-the writer emits them on a separate mark line:
+the writer emits them on a separate mark line, which holds nothing but `@position` tokens and marks:
 
 ```
   rh@: @1/4 \< @3/4 \!        # positions in quarter notes: 1/4 = a 16th into the measure

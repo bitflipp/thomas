@@ -1,9 +1,10 @@
 // Analysis pass: turns the Score into per-event layout records (written pitch positions,
 // accidentals, stem directions, beam groups ...) before any horizontal/vertical layout.
 import {
-  PPQ, STEPS, flattenVoice, isEvent, measureTicks, pitchStep, timeAt, keyAt, isBeam,
-  type Score, type Clef, type TimedEvent, type NoteEvent, type Event, type TupletGroup, type BeamGroup, type Pitch, type Item, type Mark, type Voice,
+  STEPS, flattenVoice, measureTicks, pitchStep, timeAt, keyAt,
+  type Score, type Clef, type TimedEvent, type NoteEvent, type Event, type TupletGroup, type TremoloGroup, type Pitch, type Mark, type Voice,
 } from '../model.ts';
+import { beamGroups, beatTicks } from '../beams.ts';
 
 export const HALF = 1; // staff positions are in half spaces above the bottom line
 
@@ -46,6 +47,7 @@ export interface EvL {
   beam?: BeamL;
   tremPair?: EvL; // partner of a two-note tremolo (set on both)
   tremIsFirst?: boolean;
+  tremBeams?: number;
   tupletKeys: TupletGroup[];
   // layout results
   x: number; // absolute x within system of normal notehead left edge
@@ -85,11 +87,6 @@ export function keyAlter(fifths: number, step: string): number {
   return 0;
 }
 
-function beatTicks(ts: { beats: number; beatType: number }): number {
-  if (ts.beatType === 8 && ts.beats % 3 === 0 && ts.beats > 3) return (PPQ * 3) / 2;
-  return (PPQ * 4) / ts.beatType;
-}
-
 function levels(base: number): number { return base >= 8 ? Math.log2(base) - 2 : 0; }
 export { levels as beamLevels };
 
@@ -114,8 +111,8 @@ export function prepare(score: Score): Prepared {
   const ottChanges: Ott[][] = score.staves.map(() => []);
   score.measures.forEach((m, mi) => {
     for (const [sid, sm] of Object.entries(m.staves)) for (const mk of sm.marks) {
-      if (mk.type === 'ottava-start') ottChanges[staffIdx.get(sid)!].push({ mi, tick: mk.tick, shift: mk.dir === 'up' ? -1 : 1 });
-      else if (mk.type === 'ottava-stop') ottChanges[staffIdx.get(sid)!].push({ mi, tick: mk.tick, shift: 0 });
+      if (mk.type === 'ottava') ottChanges[staffIdx.get(sid)!].push({ mi, tick: mk.tick, shift: mk.dir === 'up' ? -1 : 1 });
+      else if (mk.type === 'stop' && mk.of === 'ottava') ottChanges[staffIdx.get(sid)!].push({ mi, tick: mk.tick, shift: 0 });
     }
   });
   const ottAt = (s: number, mi: number, tick: number, isStartIncl: boolean): number => {
@@ -140,7 +137,7 @@ export function prepare(score: Score): Prepared {
       const sid = score.staves[si].id;
       const sm = m.staves[sid] ?? { voices: [], marks: [] };
       const voices: { id: number; evs: EvL[] }[] = [];
-      const soundingVoices = sm.voices.filter((v) => flattenVoice(v).some((e) => e.ev.kind === 'note' || (e.ev.kind === 'rest' && !e.ev.hidden && !e.ev.measure)));
+      const soundingVoices = sm.voices.filter((v) => flattenVoice(v).some((e) => e.ev.kind === 'note' || (e.ev.kind === 'rest' && e.ev.style === 'normal')));
       sm.voices.forEach((v) => {
         const flat = flattenVoice(v);
         const rank = soundingVoices.findIndex((x) => x.id === v.id);
@@ -194,13 +191,9 @@ export function prepare(score: Score): Prepared {
 
       // ----- two-note tremolos
       for (const v of voices) {
-        let pending: EvL | null = null;
-        for (const e of v.evs) {
-          if (e.ev.kind !== 'note') continue;
-          const t = e.ev.tremolo2;
-          if (t?.role === 'start') pending = e;
-          else if (t?.role === 'stop' && pending) { pending.tremPair = e; e.tremPair = pending; pending.tremIsFirst = true; pending = null; }
-        }
+        const pairs = new Map<TremoloGroup, EvL[]>();
+        for (const e of v.evs) if (e.te.tremolo && e.ev.kind === 'note') (pairs.get(e.te.tremolo) ?? pairs.set(e.te.tremolo, []).get(e.te.tremolo)!).push(e);
+        for (const [g, [a, b]] of pairs) if (b) { a.tremPair = b; b.tremPair = a; a.tremIsFirst = true; a.tremBeams = b.tremBeams = g.beams; }
       }
 
       // ----- stem directions
@@ -266,47 +259,11 @@ function displaceHeads(e: EvL): void {
   }
 }
 
-function eligible(e: EvL): boolean { return e.ev.kind === 'note' && e.ev.dur.base >= 8; }
-
 function assignBeams(vl: { id: number; evs: EvL[] }, voice: Voice, beatLen: number): void {
-  const evs = vl.evs;
-  const grouped = new Set<EvL>();
-  // explicit groups
-  const walk = (items: Item[]) => {
-    for (const it of items) {
-      if (isEvent(it)) continue;
-      if (isBeam(it)) {
-        const members = collect(it);
-        const ems = members.map((ev) => evs.find((x) => x.ev === ev)!);
-        for (const m of ems) grouped.add(m);
-        makeBeam(ems);
-      }
-      walk(it.items);
-    }
-  };
-  const collect = (g: BeamGroup | TupletGroup): Event[] => g.items.flatMap((i) => (isEvent(i) ? [i] : collect(i)));
-  const makeBeam = (ems: EvL[]) => {
-    const notes = ems.filter((x) => x.ev.kind === 'note');
-    if (notes.length < 2) return; // singleton: explicit "no beam"
-    const b: BeamL = { evs: ems, notes, dir: 'up' };
+  const byEv = new Map(vl.evs.map((e) => [e.ev, e]));
+  for (const g of beamGroups(voice, beatLen)) {
+    const ems = g.map((ev) => byEv.get(ev)!);
+    const b: BeamL = { evs: ems, notes: ems.filter((x) => x.ev.kind === 'note'), dir: 'up' };
     for (const x of ems) x.beam = b;
-  };
-  walk(voice.items);
-  // automatic grouping on the rest
-  let run: EvL[] = [];
-  const flush = () => {
-    if (run.length >= 2) makeBeam(run);
-    run = [];
-  };
-  for (const e of evs) {
-    if (grouped.has(e) || !eligible(e)) { flush(); continue; }
-    if (run.length) {
-      const prev = run[run.length - 1];
-      const sameTuplets = prev.tupletKeys.length === e.tupletKeys.length && prev.tupletKeys.every((t, i) => t === e.tupletKeys[i]);
-      const beatCross = Math.floor(prev.start / beatLen) !== Math.floor(e.start / beatLen);
-      if (beatCross || (!sameTuplets && prev.tupletKeys.length + e.tupletKeys.length > 0 && !prev.tupletKeys.some((t) => e.tupletKeys.includes(t)))) flush();
-    }
-    run.push(e);
   }
-  flush();
 }

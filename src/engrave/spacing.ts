@@ -56,8 +56,8 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
   for (let s = 0; s < nS; s++) {
     const sml = prep.measures[mi][s];
     for (const e of sml.evs) {
-      if (e.ev.kind === 'rest' && e.ev.hidden) continue;
-      if (e.ev.kind === 'rest' && e.ev.measure) { mk(e.start).evs.push(e); continue; }
+      if (e.ev.kind === 'rest' && e.ev.style === 'hidden') continue;
+      if (e.ev.kind === 'rest' && e.ev.style === 'measure') { mk(e.start).evs.push(e); continue; }
       anyVisible = true;
       const c = mk(e.start);
       c.evs.push(e);
@@ -148,9 +148,9 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
         R = Math.max(R, r);
       }
       if (e.stem === 'up' && e.te.ev.dur.base >= 8 && !e.beam && !e.tremPair) R = Math.max(R, Math.max(...e.heads.map((h) => h.dx)) + w + 0.9);
-    } else if (!e.ev.hidden) {
-      const g = restGlyph(e.te.ev.dur.base, e.ev.measure);
-      R = Math.max(R, e.ev.measure ? 0 : sm.adv(g) + (e.te.ev.dur.dots ? 0.4 + DOT_STEP * e.te.ev.dur.dots : 0));
+    } else if (e.ev.style !== 'hidden') {
+      const g = restGlyph(e.te.ev.dur.base, e.ev.style === 'measure');
+      R = Math.max(R, e.ev.style === 'measure' ? 0 : sm.adv(g) + (e.te.ev.dur.dots ? 0.4 + DOT_STEP * e.te.ev.dur.dots : 0));
     }
   }
   // --- accidental stacking (all heads of this staff column together)

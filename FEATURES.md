@@ -65,7 +65,7 @@ The numbers are occurrence counts in the file, so they show how much each featur
   - Features: bracket yes or no (4 yes, 101 no), number shown or hidden (35 hidden), placement above or below.
   - **Beams carry tuplets:** a bracket is often omitted when a beam covers the group.
   - Tuplets can span a beamed group together with ties and slurs.
-- **Tremolos:** 63 *two-note* (fingered) tremolos with 2 beams, as `start`/`stop` pairs. These are drawn as beams between the two notes, with the stems joined.
+- **Tremolos:** 63 *two-note* (fingered) tremolos with 2 beams, as `trem2{ }` groups. These are drawn as beams between the two notes, with the stems joined.
   - They frequently occur inside tuplets.
 
 ### 2.5 Articulation, expression, ornaments

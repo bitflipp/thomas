@@ -225,7 +225,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       const list = mode === 'all' ? Array.from({ length: ctx.b - ctx.a + 1 }, (_, k) => ctx.a + k) : [ctx.a];
       for (const mi of list) {
         if (mi === 0) continue;
-        const label = String(score.measures[mi].number);
+        const label = String(mi + 1);
         const x = mi === ctx.a ? 0.2 : ctx.mx[mi] + 0.3;
         const w = label.length * size * 0.5 + 0.4;
         let y = Math.min(-0.8, ctx.sky[0].top(x, x + w, 0) - 0.5);

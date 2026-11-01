@@ -1,9 +1,9 @@
 // Human-readable text format <-> Score.   See FORMAT.md for the grammar.
 import {
-  PPQ, STEPS, gcd, baseTicks, flattenVoice, isBeam, isTuplet, measureTicks, timeAt,
+  PPQ, gcd, flattenVoice, isBeam, isTuplet, isTremolo,
   type Score, type Item, type Event, type NoteEvent, type RestEvent, type Dur, type BaseDur, type Mark, type Clef,
-  type Pitch, type NotePitch, type Voice, type TupletGroup, type BeamGroup, type Measure, type Articulation, type StaffMeasure,
-  type MarkBody,
+  type Pitch, type NotePitch, type TupletGroup, type BeamGroup, type TremoloGroup, type Measure, type StaffMeasure,
+  type MarkBody, type Placement,
 } from './model.ts';
 
 const DYNAMICS = new Set(['pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'ffff', 'sf', 'sfz', 'sfp', 'sfpp', 'fp', 'fz', 'rf', 'rfz', 'pf', 'n', 'z']);
@@ -33,19 +33,26 @@ function clefStr(c: Clef): string {
 function durStr(d: Dur): string { return `${d.base}${'.'.repeat(d.dots)}`; }
 function quote(s: string): string { return JSON.stringify(s); }
 
+const sideStr = (p?: Placement) => (p === 'above' ? '^' : p === 'below' ? '_' : '');
+const idStr = (n: number | undefined) => (n && n !== 1 ? String(n) : ''); // overlap numbers: 1 is implicit
+
+// Marks without arguments; the writer looks them up by value, the parser by name.
+const SIMPLE: Record<string, MarkBody> = {
+  ped: { type: 'pedal' }, unped: { type: 'stop', of: 'pedal' },
+  '8va': { type: 'ottava', dir: 'up' }, '8vb': { type: 'ottava', dir: 'down' }, '8off': { type: 'stop', of: 'ottava' },
+};
+const simpleKey = (m: MarkBody) => JSON.stringify([m.type, 'of' in m ? m.of : '', 'dir' in m ? m.dir : '']);
+const SIMPLE_NAME = new Map(Object.entries(SIMPLE).map(([name, m]) => [simpleKey(m), name]));
+
 function markStr(m: MarkBody): string {
-  const pl = (p?: string) => (p === 'above' ? '^' : p === 'below' ? '_' : '');
   switch (m.type) {
-    case 'dynamic': return `\\${m.text}${pl(m.placement)}`;
-    case 'hairpin': return `\\${m.kind === 'cresc' ? '<' : '>'}${m.id !== 1 ? m.id : ''}${pl(m.placement)}`;
-    case 'hairpin-stop': return `\\!${m.id !== 1 ? m.id : ''}`;
-    case 'pedal-start': return '\\ped';
-    case 'pedal-stop': return '\\unped';
-    case 'ottava-start': return m.dir === 'up' ? '\\8va' : '\\8vb';
-    case 'ottava-stop': return '\\8off';
+    case 'dynamic': return `\\${m.text}${sideStr(m.placement)}`;
+    case 'hairpin': return `\\${m.kind === 'cresc' ? '<' : '>'}${idStr(m.id)}${sideStr(m.placement)}`;
+    case 'stop': if (m.of === 'hairpin') return `\\!${idStr(m.id)}`; return `\\${SIMPLE_NAME.get(simpleKey(m))}`;
+    case 'pedal': case 'ottava': return `\\${SIMPLE_NAME.get(simpleKey(m))}`;
     case 'clef': return `\\clef ${clefStr(m.clef)}`;
     case 'tempo': return `\\tempo ${m.unit}${'.'.repeat(m.dots)}=${m.bpm}${m.text ? ' ' + quote(m.text) : ''}`;
-    case 'text': return `\\text ${quote(m.text)}${pl(m.placement)}`;
+    case 'text': return `\\text ${quote(m.text)}${sideStr(m.placement)}`;
   }
 }
 
@@ -62,29 +69,25 @@ class VoiceWriter {
     const t = this.flat[this.eventIdx++].start;
     const mk = this.marksAt.get(t);
     if (mk) { pre.push(...mk); this.marksAt.delete(t); }
-    for (const s of e.slurStart ?? []) pre.push('(' + (s.id !== 1 ? s.id : '') + (s.side === 'above' ? '^' : s.side === 'below' ? '_' : ''));
+    for (const s of e.slurStart ?? []) pre.push('(' + idStr(s.id) + sideStr(s.side));
     if (e.stem) pre.push(e.stem === 'up' ? '\\stemup' : '\\stemdown');
     let core: string;
-    let post = '';
+    let tie = '';
+    let arts = '';
     if (e.kind === 'note') {
       if (e.arpeggio) pre.push('\\arp');
-      if (e.tremolo2) pre.push(e.tremolo2.role === 'start' ? `\\trem${e.tremolo2.beams}` : '\\tremend');
-      const allTied = e.pitches.length > 0 && e.pitches.every((p) => p.tie);
-      const ps = e.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : '') + (!allTied && p.tie ? '~' : ''));
-      core = e.pitches.length === 1 ? ps[0] : `<${ps.join(' ')}>`;
-      if (allTied) post += '~';
-      for (const a of e.art ?? []) post += a === 'accent' ? '->' : a === 'marcato' ? '-^' : '-.';
-      if (e.art?.length && e.artSide) post += e.artSide === 'above' ? '^' : '_';
-    } else core = e.hidden ? 's' : e.measure ? 'R' : e.display ? `r@${pitchStr(e.display)}` : 'r';
+      if (e.noBeam) pre.push('\\nobeam');
+      const ps = e.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : ''));
+      if (e.pitches.length === 1) { core = ps[0]; if (e.pitches[0].tie) tie = '~'; } // a chord ties per pitch, inside <>
+      else core = `<${ps.map((x, i) => x + (e.pitches[i].tie ? '~' : '')).join(' ')}>`;
+      for (const a of e.art ?? []) arts += a === 'accent' ? '->' : a === 'marcato' ? '-^' : '-.';
+      if (e.art?.length && e.artSide) arts += sideStr(e.artSide);
+    } else core = e.style === 'hidden' ? 's' : e.style === 'measure' ? 'R' : e.display ? `r@${pitchStr(e.display)}` : 'r';
     // duration (sticky, base only; dots always written)
-    let d = '';
-    if (e.dur.base !== this.lastBase || e.dur.dots) d = ':' + durStr(e.dur);
+    const d = e.dur.base !== this.lastBase || e.dur.dots ? ':' + durStr(e.dur) : '';
     this.lastBase = e.dur.base;
-    // tie marker must follow the duration
-    const slurEnd = (e.slurStop ?? []).map((i) => ')' + (i !== 1 ? i : '')).join('');
-    const tie = post.startsWith('~') ? '~' : '';
-    const rest = tie ? post.slice(1) : post;
-    return [...pre, core + d + tie + rest + slurEnd].join(' ');
+    const slurEnd = (e.slurStop ?? []).map((i) => ')' + idStr(i)).join('');
+    return [...pre, core + d + tie + arts + slurEnd].join(' ');
   }
 
   items(items: Item[]): void {
@@ -95,15 +98,16 @@ class VoiceWriter {
         if (it.number === 'none') o.push('nonum');
         if (it.placement) o.push(it.placement);
         if (it.label !== undefined) o.push(`label=${it.label}`);
-        this.out.push(`${it.actual}:${it.normal}${o.length ? `(${o.join(',')})` : ''}{`);
-        this.items(it.items);
-        this.out.push('}');
-      } else if (isBeam(it)) {
-        this.out.push('[');
-        this.items(it.items);
-        this.out.push(']');
-      } else this.out.push(this.eventStr(it));
+        this.group(`${it.actual}:${it.normal}${o.length ? `(${o.join(',')})` : ''}{`, '}', it.items);
+      } else if (isBeam(it)) this.group('[', ']', it.items);
+      else if (isTremolo(it)) this.group(`trem${it.beams}{`, '}', it.items);
+      else this.out.push(this.eventStr(it));
     }
+  }
+  group(open: string, close: string, items: Item[]): void {
+    this.out.push(open);
+    this.items(items);
+    this.out.push(close);
   }
 }
 
@@ -142,7 +146,7 @@ export function writeText(score: Score): string {
   for (const g of score.groups) L.push(`${g.kind} ${g.staves.join(' ')}`);
   L.push('');
   score.measures.forEach((m, mi) => {
-    const h = [`m${m.number}`];
+    const h = [`m${mi + 1}`];
     if (m.time) h.push(`time=${m.time.beats}/${m.time.beatType}`);
     if (m.key !== undefined) h.push(`key=${m.key}`);
     if (m.breakBefore) h.push(`break=${m.breakBefore}`);
@@ -152,7 +156,6 @@ export function writeText(score: Score): string {
       const sm = m.staves[s.id];
       if (sm) writeStaffMeasure(sm, s.id, L);
     }
-    void mi;
   });
   return L.join('\n') + '\n';
 }
@@ -203,45 +206,60 @@ function parseDur(sc: Scanner): Dur {
   return { base: base as BaseDur, dots };
 }
 
-function parseVoiceLine(line: string, where: string, marksOut: Mark[]): Item[] {
+type Side = 'above' | 'below';
+interface PendingEv { stem?: 'up' | 'down'; arpeggio?: boolean; noBeam?: boolean }
+
+/**
+ * Parses the items of one voice line, or of a mark line (`markLine`: only marks, each placed by an `@position`).
+ * A mark in a voice line belongs to the event that follows it (or to the end of the measure); its tick is
+ * resolved afterwards from the parsed tree, so tuplet arithmetic lives in `flattenVoice` only.
+ */
+function parseVoiceLine(line: string, where: string, markLine = false): { items: Item[]; marks: Mark[] } {
   const sc = new Scanner(line, where);
-  type Frame = { kind: 'root' | 'tuplet' | 'beam'; items: Item[]; node?: TupletGroup | BeamGroup };
+  type Frame = { kind: 'root' | 'tuplet' | 'beam' | 'tremolo'; items: Item[] };
   const stack: Frame[] = [{ kind: 'root', items: [] }];
   const top = () => stack[stack.length - 1];
   let sticky: BaseDur = 4;
-  let tick = 0;
+  let at: number | null = markLine ? 0 : null; // explicit position (mark lines)
   let pending: MarkBody[] = [];
-  let pendingSlurs: { id: number; side?: 'above' | 'below' }[] = [];
-  let pendingEv: Partial<NoteEvent & RestEvent> = {};
+  let pendingSlurs: { id: number; side?: Side }[] = [];
+  let pendingEv: PendingEv = {};
   let lastEv: Event | null = null;
-  // time-modification stack for tick tracking
-  const tmStack: [number, number][] = [];
-  const flush = () => { for (const p of pending) marksOut.push({ ...p, tick } as Mark); pending = []; };
+  const marks: Mark[] = [];
+  const later: { body: MarkBody; ev: Event | null }[] = [];
 
-  const evTicks = (d: Dur) => {
-    let t = baseTicks(d);
-    for (const [a, n] of tmStack) t = (t * n) / a;
-    return t;
-  };
-  const placement = (): 'above' | 'below' | undefined => {
+  const flush = (ev: Event | null) => { for (const body of pending) later.push({ body, ev }); pending = []; };
+  const num = () => { const n = sc.take(/\d+/y); return n ? Number(n) : 1; };
+  const placement = (): Side | undefined => {
     const c = sc.peek();
     if (c === '^') { sc.i++; return 'above'; }
     if (c === '_') { sc.i++; return 'below'; }
     return undefined;
   };
+  const withSide = <T extends object>(o: T, side?: Side): T & { placement?: Side } => (side ? { ...o, placement: side } : o);
+  const addMark = (body: MarkBody) => { if (at !== null) marks.push({ ...body, tick: at } as Mark); else pending.push(body); };
+  const open = (kind: Frame['kind'], node: TupletGroup | BeamGroup | TremoloGroup) => { top().items.push(node); stack.push({ kind, items: node.items }); };
+  const close = (kind: Frame['kind'], ch: string) => { sc.i++; if (top().kind !== kind) sc.fail(`unmatched ${ch}`); stack.pop(); };
 
   while (!sc.eof()) {
     const c = sc.peek();
-    if (c === '[') { sc.i++; const g: BeamGroup = { kind: 'beam', items: [] }; top().items.push(g); stack.push({ kind: 'beam', items: g.items, node: g }); continue; }
-    if (c === ']') { sc.i++; if (top().kind !== 'beam') sc.fail('unmatched ]'); stack.pop(); continue; }
-    if (c === '}') { sc.i++; if (top().kind !== 'tuplet') sc.fail('unmatched }'); stack.pop(); tmStack.pop(); continue; }
+    if (c === '[') { sc.i++; open('beam', { kind: 'beam', items: [] }); continue; }
+    if (c === ']') { close('beam', ']'); continue; }
+    if (c === '}') { // closes a tuplet or a tremolo
+      if (top().kind !== 'tremolo') close('tuplet', '}'); else close('tremolo', '}');
+      continue;
+    }
+    if (c === '@') {
+      if (!markLine) sc.fail('@ only valid in mark lines');
+      sc.i++;
+      at = fracParse(sc.take(/[\d/]+/y) ?? sc.fail('position expected'));
+      continue;
+    }
     if (/\d/.test(c)) { // tuplet header  a:b(opts){
-      const h = sc.take(/(\d+):(\d+)/y)!;
-      const [a, b] = h.split(':').map(Number);
+      const [a, b] = sc.take(/(\d+):(\d+)/y)!.split(':').map(Number);
       const g: TupletGroup = { kind: 'tuplet', actual: a, normal: b, items: [] };
       if (sc.peek() === '(') {
-        const o = sc.take(/\([^)]*\)/y)!.slice(1, -1).split(',').map((x) => x.trim()).filter(Boolean);
-        for (const x of o) {
+        for (const x of sc.take(/\([^)]*\)/y)!.slice(1, -1).split(',').map((x) => x.trim()).filter(Boolean)) {
           if (x === 'bracket') g.bracket = true; else if (x === 'nobracket') g.bracket = false;
           else if (x === 'nonum') g.number = 'none';
           else if (x === 'above' || x === 'below') g.placement = x;
@@ -250,63 +268,52 @@ function parseVoiceLine(line: string, where: string, marksOut: Mark[]): Item[] {
         }
       }
       if (sc.take(/\{/y) === null) sc.fail('{ expected after tuplet');
-      top().items.push(g);
-      stack.push({ kind: 'tuplet', items: g.items, node: g });
-      tmStack.push([a, b]);
+      open('tuplet', g);
       continue;
     }
+    const trem = sc.take(/trem(\d+)\{/y);
+    if (trem) { open('tremolo', { kind: 'tremolo', beams: Number(trem.slice(4, -1)), items: [] }); continue; }
     if (c === '(') {
       sc.i++;
-      const num = sc.take(/\d+/y);
+      const id = num();
       const side = placement();
-      pendingSlurs.push({ id: num ? Number(num) : 1, ...(side ? { side } : {}) });
+      pendingSlurs.push({ id, ...(side ? { side } : {}) });
       continue;
     }
     if (c === ')') {
       sc.i++;
-      const num = sc.take(/\d+/y);
+      const id = num();
       if (!lastEv) sc.fail(') without event');
-      (lastEv!.slurStop ??= []).push(num ? Number(num) : 1);
+      (lastEv!.slurStop ??= []).push(id);
       continue;
     }
     if (c === '\\') {
       sc.i++;
       const name = sc.take(/[A-Za-z0-9]+|[<>!]/y);
       if (!name) sc.fail('command expected');
-      if (DYNAMICS.has(name!)) { const p = placement(); pending.push({ type: 'dynamic', text: name!, ...(p ? { placement: p } : {}) }); }
-      else if (name === '<' || name === '>') {
-        const num = sc.take(/\d+/y); const p = placement();
-        pending.push({ type: 'hairpin', kind: name === '<' ? 'cresc' : 'dim', id: num ? Number(num) : 1, ...(p ? { placement: p } : {}) });
-      } else if (name === '!') { const num = sc.take(/\d+/y); pending.push({ type: 'hairpin-stop', id: num ? Number(num) : 1 }); }
-      else if (name === 'ped') pending.push({ type: 'pedal-start' });
-      else if (name === 'unped') pending.push({ type: 'pedal-stop' });
-      else if (name === '8va') pending.push({ type: 'ottava-start', dir: 'up' });
-      else if (name === '8vb') pending.push({ type: 'ottava-start', dir: 'down' });
-      else if (name === '8off') pending.push({ type: 'ottava-stop' });
-      else if (name === 'clef') { sc.ws(); pending.push({ type: 'clef', clef: parseClef(sc.take(/\S+/y)!) }); }
+      if (DYNAMICS.has(name!)) addMark(withSide({ type: 'dynamic', text: name! }, placement()));
+      else if (name === '<' || name === '>') addMark(withSide({ type: 'hairpin', kind: name === '<' ? 'cresc' : 'dim', id: num() }, placement()));
+      else if (name === '!') addMark({ type: 'stop', of: 'hairpin', id: num() });
+      else if (Object.hasOwn(SIMPLE, name!)) addMark(SIMPLE[name!]);
+      else if (name === 'clef') { sc.ws(); addMark({ type: 'clef', clef: parseClef(sc.take(/\S+/y)!) }); }
       else if (name === 'tempo') {
         sc.ws();
-        const m = sc.take(/(\d+)(\.*)=(\d+)/y);
-        if (!m) sc.fail('tempo like 4=115 expected');
-        const mm = /(\d+)(\.*)=(\d+)/.exec(m!)!;
-        const tm: Mark = { type: 'tempo', unit: Number(mm[1]) as BaseDur, dots: mm[2].length, bpm: Number(mm[3]), tick };
+        const m = /(\d+)(\.*)=(\d+)/.exec(sc.take(/(\d+)(\.*)=(\d+)/y) ?? sc.fail('tempo like 4=115 expected'))!;
+        const tm: MarkBody = { type: 'tempo', unit: Number(m[1]) as BaseDur, dots: m[2].length, bpm: Number(m[3]) };
         sc.ws();
         if (sc.peek() === '"') tm.text = readString(sc);
-        pending.push(tm);
-      } else if (name === 'text') {
-        sc.ws(); const str = readString(sc); const p = placement();
-        pending.push({ type: 'text', text: str, ...(p ? { placement: p } : {}) });
-      } else if (name === 'arp') pendingEv.arpeggio = true;
+        addMark(tm);
+      } else if (name === 'text') { sc.ws(); addMark(withSide({ type: 'text', text: readString(sc) }, placement())); }
+      else if (name === 'arp') pendingEv.arpeggio = true;
+      else if (name === 'nobeam') pendingEv.noBeam = true;
       else if (name === 'stemup') pendingEv.stem = 'up';
       else if (name === 'stemdown') pendingEv.stem = 'down';
-      else if (name === 'tremend') pendingEv.tremolo2 = { role: 'stop', beams: 2 };
-      else if (/^trem\d$/.test(name!)) pendingEv.tremolo2 = { role: 'start', beams: Number(name!.slice(4)) };
       else sc.fail(`unknown command \\${name}`);
       continue;
     }
-    if (c === '@') { sc.fail('@ only valid in mark lines'); }
 
     // ---- event
+    if (markLine) sc.fail('events not allowed in mark lines');
     let ev: Event;
     const readDur = (): Dur => {
       if (sc.peek() === ':') { sc.i++; const d = parseDur(sc); sticky = d.base; return d; }
@@ -314,9 +321,7 @@ function parseVoiceLine(line: string, where: string, marksOut: Mark[]): Item[] {
     };
     if (c === 'r' || c === 's' || c === 'R') {
       sc.i++;
-      const rest: RestEvent = { kind: 'rest', dur: { base: 4, dots: 0 } };
-      if (c === 's') rest.hidden = true;
-      if (c === 'R') rest.measure = true;
+      const rest: RestEvent = { kind: 'rest', style: c === 's' ? 'hidden' : c === 'R' ? 'measure' : 'normal', dur: { base: 4, dots: 0 } };
       if (c === 'r' && sc.peek() === '@') { sc.i++; rest.display = parsePitch(sc); }
       rest.dur = readDur();
       ev = rest;
@@ -331,34 +336,42 @@ function parseVoiceLine(line: string, where: string, marksOut: Mark[]): Item[] {
       if (c === '<') {
         sc.i++;
         for (;;) { sc.ws(); if (sc.peek() === '>') { sc.i++; break; } ne.pitches.push(readNP()); }
+        if (!ne.pitches.length) sc.fail('empty chord');
       } else ne.pitches.push(readNP());
       ne.dur = readDur();
-      if (sc.peek() === '~') { sc.i++; for (const p of ne.pitches) p.tie = true; }
+      if (sc.peek() === '~') {
+        if (ne.pitches.length !== 1) sc.fail('tie the pitches of a chord inside <>');
+        sc.i++; ne.pitches[0].tie = true;
+      }
       for (;;) {
-        if (sc.take(/->/y)) (ne.art ??= []).push('accent' as Articulation);
+        if (sc.take(/->/y)) (ne.art ??= []).push('accent');
         else if (sc.take(/-\^/y)) (ne.art ??= []).push('marcato');
         else if (sc.take(/-\./y)) (ne.art ??= []).push('staccato');
         else break;
       }
-      if (ne.art) { if (sc.take(/\^/y)) ne.artSide = 'above'; else if (sc.take(/_/y)) ne.artSide = 'below'; }
+      if (ne.art) { const side = placement(); if (side) ne.artSide = side; }
+      if (pendingEv.arpeggio) ne.arpeggio = true;
+      if (pendingEv.noBeam) ne.noBeam = true;
       ev = ne;
     }
     if (pendingSlurs.length) ev.slurStart = pendingSlurs;
     pendingSlurs = [];
     if (pendingEv.stem) ev.stem = pendingEv.stem;
-    if (ev.kind === 'note') {
-      if (pendingEv.arpeggio) ev.arpeggio = true;
-      if (pendingEv.tremolo2) ev.tremolo2 = pendingEv.tremolo2;
-    }
     pendingEv = {};
-    flush();
+    flush(ev);
     top().items.push(ev);
     lastEv = ev;
-    tick += evTicks(ev.dur);
   }
   if (stack.length !== 1) sc.fail('unclosed group');
-  flush();
-  return stack[0].items;
+  flush(null);
+  const items = stack[0].items;
+  if (later.length) {
+    const flat = flattenVoice({ id: 0, items });
+    const start = new Map(flat.map((t) => [t.ev, t.start]));
+    const end = flat.length ? flat[flat.length - 1].start + flat[flat.length - 1].ticks : 0;
+    for (const { body, ev } of later) marks.push({ ...body, tick: ev ? start.get(ev)! : end } as Mark);
+  }
+  return { items, marks };
 }
 
 function readString(sc: Scanner): string {
@@ -392,28 +405,10 @@ export function parseText(src: string): Score {
         const sid = m[1];
         if (!score.staves.some((s) => s.id === sid)) throw new Error(`unknown staff ${sid}`);
         const sm = (cur.staves[sid] ??= { voices: [], marks: [] });
-        if (m[2] !== undefined) {
-          const marks: Mark[] = [];
-          const v: Voice = { id: Number(m[2]), items: parseVoiceLine(m[3], where, marks) };
-          sm.voices.push(v);
-          sm.marks.push(...marks);
-        } else { // mark line: @pos \mark ...
-          const sc = new Scanner(m[3], where);
-          let tick = 0;
-          const pend: Mark[] = [];
-          while (!sc.eof()) {
-            if (sc.peek() === '@') { sc.i++; tick = fracParse(sc.take(/[\d/]+/y)!); continue; }
-            const rest = m[3].slice(sc.i);
-            const end = rest.search(/\s@/);
-            const chunk = end < 0 ? rest : rest.slice(0, end);
-            const mk: Mark[] = [];
-            const tmp = parseVoiceLine(chunk, where, mk);
-            if (tmp.length) throw new Error('events not allowed in mark line');
-            for (const x of mk) pend.push({ ...x, tick });
-            sc.i += chunk.length;
-          }
-          sm.marks.push(...pend);
-        }
+        const markLine = m[2] === undefined;
+        const { items, marks } = parseVoiceLine(m[3], where, markLine);
+        if (!markLine) sm.voices.push({ id: Number(m[2]), items });
+        sm.marks.push(...marks);
         return;
       }
       const t = tokens(raw.trim());
@@ -429,7 +424,7 @@ export function parseText(src: string): Score {
       } else if (head === 'brace' || head === 'bracket') score.groups.push({ kind: head, staves: t.slice(1) });
       else if (/^m\d+$/.test(head)) {
         const o = kv(t.slice(1));
-        cur = { number: Number(head.slice(1)), staves: {} };
+        cur = { staves: {} }; // the number in `m<N>` is only a label
         if (o.time) { const [b, bt] = o.time.split('/').map(Number); cur.time = { beats: b, beatType: bt }; }
         if (o.key !== undefined) cur.key = Number(o.key);
         if (o.break) cur.breakBefore = o.break as 'system' | 'page';
@@ -441,6 +436,5 @@ export function parseText(src: string): Score {
     }
   });
   for (const m of score.measures) for (const sm of Object.values(m.staves)) { sm.voices.sort((a, b) => a.id - b.id); sm.marks.sort((a, b) => a.tick - b.tick); }
-  void STEPS; void measureTicks; void timeAt;
   return score;
 }

@@ -37,12 +37,12 @@ export interface NoteEvent extends EventBase {
   art?: Articulation[];
   artSide?: 'above' | 'below'; // forced side of the articulations (default: by stem / voice)
   arpeggio?: boolean;
-  tremolo2?: { role: 'start' | 'stop'; beams: number };
+  noBeam?: boolean; // stays unbeamed although the automatic beaming would join it to its neighbours
 }
+export type RestStyle = 'normal' | 'hidden' | 'measure'; // hidden = spacer; measure = whole-measure rest (dur is informational)
 export interface RestEvent extends EventBase {
   kind: 'rest';
-  hidden?: boolean; // spacer
-  measure?: boolean; // whole-measure rest (dur = measure length, informational)
+  style: RestStyle;
   display?: Pitch; // forced vertical position
 }
 export type Event = NoteEvent | RestEvent;
@@ -57,10 +57,12 @@ export interface TupletGroup {
   placement?: 'above' | 'below';
   items: Item[];
 }
-// Explicit beam group (events must be consecutive in the voice, possibly inside tuplets).
-// A group of size 1 means "do not beam".
+// Explicit beam group (events must be consecutive in the voice, possibly inside tuplets) with at least two notes.
+// Events outside explicit groups are beamed automatically (see beams.ts); `noBeam` opts a note out.
 export interface BeamGroup { kind: 'beam'; items: Item[] }
-export type Item = Event | TupletGroup | BeamGroup;
+// Two-note (fingered) tremolo: exactly two notes, drawn as `beams` beams between them.
+export interface TremoloGroup { kind: 'tremolo'; beams: number; items: Item[] }
+export type Item = Event | TupletGroup | BeamGroup | TremoloGroup;
 
 export interface Voice { id: number; items: Item[] }
 
@@ -68,11 +70,10 @@ export type Placement = 'above' | 'below';
 export type MarkBody =
   | { type: 'dynamic'; text: string; placement?: Placement }
   | { type: 'hairpin'; kind: 'cresc' | 'dim'; id: number; placement?: Placement }
-  | { type: 'hairpin-stop'; id: number }
-  | { type: 'pedal-start' }
-  | { type: 'pedal-stop' }
-  | { type: 'ottava-start'; dir: 'up' | 'down' } // up = 8va (written lower than sounding... above staff)
-  | { type: 'ottava-stop' }
+  | { type: 'pedal' } // press; a press while the pedal is down is a change
+  | { type: 'ottava'; dir: 'up' | 'down' } // up = 8va (written lower than sounding, line above the staff)
+  | { type: 'stop'; of: 'pedal' | 'ottava' }
+  | { type: 'stop'; of: 'hairpin'; id: number }
   | { type: 'clef'; clef: Clef }
   | { type: 'tempo'; unit: BaseDur; dots: number; bpm: number; text?: string }
   | { type: 'text'; text: string; placement?: Placement };
@@ -84,7 +85,6 @@ export interface TimeSig { beats: number; beatType: number }
 export interface Clef { sign: 'G' | 'F' | 'C'; line: number; octave?: number }
 
 export interface Measure {
-  number: number;
   time?: TimeSig; // set when changed (always set on first measure)
   key?: number; // fifths; set when changed
   breakBefore?: 'system' | 'page';
@@ -125,6 +125,7 @@ export function measureTicks(t: TimeSig): number { return (t.beats * PPQ * 4) / 
 
 export function isTuplet(i: Item): i is TupletGroup { return i.kind === 'tuplet'; }
 export function isBeam(i: Item): i is BeamGroup { return i.kind === 'beam'; }
+export function isTremolo(i: Item): i is TremoloGroup { return i.kind === 'tremolo'; }
 export function isEvent(i: Item): i is Event { return i.kind === 'note' || i.kind === 'rest'; }
 
 export interface TimedEvent {
@@ -134,6 +135,7 @@ export interface TimedEvent {
   tm: { actual: number; normal: number }[]; // enclosing tuplets, outermost first
   tuplets: TupletGroup[]; // enclosing tuplets, outermost first
   beamGroup?: BeamGroup;
+  tremolo?: TremoloGroup;
   index: number;
 }
 
@@ -141,16 +143,17 @@ export interface TimedEvent {
 export function flattenVoice(v: Voice): TimedEvent[] {
   const out: TimedEvent[] = [];
   let t = 0;
-  const walk = (items: Item[], tuplets: TupletGroup[], bg?: BeamGroup) => {
+  const walk = (items: Item[], tuplets: TupletGroup[], bg?: BeamGroup, tr?: TremoloGroup) => {
     for (const it of items) {
       if (isEvent(it)) {
         let ticks = baseTicks(it.dur);
         for (const tg of tuplets) ticks = (ticks * tg.normal) / tg.actual;
         if (!Number.isInteger(ticks)) throw new Error(`non-integer duration ${ticks}`);
-        out.push({ ev: it, start: t, ticks, tm: tuplets.map((x) => ({ actual: x.actual, normal: x.normal })), tuplets, beamGroup: bg, index: out.length });
+        out.push({ ev: it, start: t, ticks, tm: tuplets.map((x) => ({ actual: x.actual, normal: x.normal })), tuplets, beamGroup: bg, tremolo: tr, index: out.length });
         t += ticks;
-      } else if (isTuplet(it)) walk(it.items, [...tuplets, it], bg);
-      else walk(it.items, tuplets, it);
+      } else if (isTuplet(it)) walk(it.items, [...tuplets, it], bg, tr);
+      else if (isBeam(it)) walk(it.items, tuplets, it, tr);
+      else walk(it.items, tuplets, bg, it);
     }
   };
   walk(v.items, []);
@@ -182,17 +185,29 @@ export function keyAt(score: Score, mi: number): number {
 export function validate(score: Score): string[] {
   const errs: string[] = [];
   const ids = new Set(score.staves.map((s) => s.id));
+  const groupErrs = (items: Item[], where: string) => {
+    for (const it of items) {
+      if (isEvent(it)) continue;
+      const flat = flattenVoice({ id: 0, items: it.items });
+      const notes = flat.filter((t) => t.ev.kind === 'note').length;
+      if (isBeam(it) && notes < 2) errs.push(`${where}: beam group needs at least two notes (use \\nobeam to keep a note unbeamed)`);
+      if (isTremolo(it) && (notes !== 2 || flat.length !== 2)) errs.push(`${where}: tremolo must contain exactly two notes`);
+      groupErrs(it.items, where);
+    }
+  };
   score.measures.forEach((m, mi) => {
     const len = measureTicks(timeAt(score, mi));
     for (const [sid, sm] of Object.entries(m.staves)) {
-      if (!ids.has(sid)) errs.push(`m${m.number}: unknown staff ${sid}`);
+      const at = `m${mi + 1} ${sid}`;
+      if (!ids.has(sid)) errs.push(`m${mi + 1}: unknown staff ${sid}`);
       for (const v of sm.voices) {
         let t: number;
-        try { t = voiceTicks(v); } catch (e) { errs.push(`m${m.number} ${sid}.${v.id}: ${(e as Error).message}`); continue; }
-        if (t > len) errs.push(`m${m.number} ${sid}.${v.id}: voice too long (${t} > ${len})`);
-        else if (t < len && t > 0) errs.push(`m${m.number} ${sid}.${v.id}: voice too short (${t} < ${len})`);
+        try { t = voiceTicks(v); } catch (e) { errs.push(`${at}.${v.id}: ${(e as Error).message}`); continue; }
+        if (t > len) errs.push(`${at}.${v.id}: voice too long (${t} > ${len})`);
+        else if (t < len && t > 0) errs.push(`${at}.${v.id}: voice too short (${t} < ${len})`);
+        groupErrs(v.items, `${at}.${v.id}`);
       }
-      for (const mk of sm.marks) if (mk.tick < 0 || mk.tick > len) errs.push(`m${m.number} ${sid}: mark outside measure`);
+      for (const mk of sm.marks) if (mk.tick < 0 || mk.tick > len) errs.push(`${at}: mark outside measure`);
     }
   });
   return errs;
