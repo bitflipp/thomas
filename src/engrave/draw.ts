@@ -6,7 +6,7 @@ import { headGlyph, headWidth, HEAD_SCALE, restGlyph, STEM_T, DOT_STEP, type Mea
 import { Skyline, tagFrom, oid, type Prim } from './scene.ts';
 
 const sm = loadSmufl();
-export const D = sm.def;
+export const D = new Proxy({} as typeof sm.def, { get: (_, k) => sm.def[k as string] }); // lazy: the font may not be loaded yet
 
 export interface SysCtx {
   prep: Prepared;
@@ -296,10 +296,11 @@ function drawNoteBasics(ctx: SysCtx, e: EvL, s: number): void {
   const yTop = Math.min(...ys), yBot = Math.max(...ys);
   const minDx = Math.min(...e.heads.map((h) => h.dx));
   const maxDx = Math.max(...e.heads.map((h) => h.dx));
-  for (const h of e.heads) {
+  for (const [hi, h] of e.heads.entries()) {
     if (h.shared) continue;
     prims.push({ t: 'glyph', name: gl, x: e.x + h.dx, y: posToY(h.pos), sx: HEAD_SCALE, sy: 1 });
     tagFrom(prims, prims.length - 1, 'head', e, h.sharers);
+    prims[prims.length - 1].n = hi;
     const nAcc = prims.length;
     if (h.acc) {
       const ax = e.x + h.accX!;
@@ -318,6 +319,7 @@ function drawNoteBasics(ctx: SysCtx, e: EvL, s: number): void {
       }
     }
     tagFrom(prims, nAcc, 'acc', e);
+    for (let i = nAcc; i < prims.length; i++) prims[i].n = hi;
   }
   // ledger lines
   const ledgerExt = D.legerLineExtension as number;
@@ -330,7 +332,7 @@ function drawNoteBasics(ctx: SysCtx, e: EvL, s: number): void {
       const d0 = Math.min(...reach.map((h) => h.dx)), d1 = Math.max(...reach.map((h) => h.dx));
       const lx0 = e.x + d0 - ledgerExt, lx1 = e.x + d1 + hw + ledgerExt;
       const prim: Prim = { t: 'line', x1: lx0, x2: lx1, y1: posToY(p), y2: posToY(p), w: D.legerLineThickness as number };
-      prim.k = 'ledger'; prim.o = oid(e);
+      prim.k = 'ledger'; prim.o = oid(e); prim.r = e.ev;
       prims.push(prim);
       ledgerSegs.push({ prim, s, y: posToY(p), x0: lx0, x1: lx1, hx0: e.x + d0, hx1: e.x + d1 + hw });
     };

@@ -17,6 +17,21 @@ Requires Node ≥ 22.18 (runs TypeScript directly, no build step) and `rsvg-conv
 Render options: `--pdf`, `--no-breaks` (ignore `break=` in the score), `--numbers` (number every measure; default is the first measure of each system but the first), `--no-numbers`.
 Import options: `--keep-breaks`, `--keep-stems`.
 
+## Editor
+
+```
+npm run ui          # dev server (Vite); open the printed URL
+npm run ui:build    # static build in out/ui
+```
+
+A mouse-first score editor in the browser, running the same engraver. Pick a tool on the left and click or drag on the score:
+enter notes and rests (a ghost note shows where it lands; clicking a note adds or removes a chord tone), drag a note to change its
+pitch or move it to the other staff, drag between notes for slurs, along a staff for hairpins, pedal and 8va/8vb, click for dynamics,
+text, tempo and clef changes, click a note or rest to make a tuplet. The panel on the right edits whatever is selected (duration, dots,
+accidentals, stems, articulations, ties, grouping, marks, tuplets, measures: time, key, barlines, breaks). Undo/redo everywhere, copy/paste
+of notes, autosave in the browser, SVG and PDF (print) export. `Ctrl E` shows the score as text (the format of FORMAT.md) next to it, editable;
+`?` lists the keyboard shortcuts. Opens `.txt` scores and MusicXML.
+
 ## Layout of the code
 
 | File | Purpose |
@@ -31,6 +46,8 @@ Import options: `--keep-breaks`, `--keep-stems`.
 | `src/engrave/spanners.ts` | Ties, slurs, dynamics, hairpins, pedal, octave shifts, tempo (collision-aware via skylines) |
 | `src/engrave/system.ts` | Line breaking (dynamic programming), justification, staff spacing, pagination |
 | `src/render.ts` | Scene → SVG (glyphs are embedded as paths, so the SVG is self-contained apart from text) |
+| `src/editor/` | Editing without a UI: Immer-based commands (`commands.ts`, `voice.ts`), addresses, musical context, hit testing and snapping (`hit.ts`) |
+| `ui/` | The browser editor (Vite + Preact + CodeMirror) |
 | `tools/crop.py` | Dev helper: render a region of a page SVG to PNG |
 
 Pipeline: parse → `prepare` → `spaceMeasure` per measure → `planSystems` → justify → draw notes → spanners/marks →

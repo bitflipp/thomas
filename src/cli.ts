@@ -51,7 +51,7 @@ try {
     const s = withSpace(loadScore(args.find((a) => !a.startsWith('--'))!));
     console.log(`ok: ${s.measures.length} measures, ${s.staves.length} staves`);
     if (args.includes('--collisions')) {
-      const res = engrave(s, { respectBreaks: true, measureNumbers: 'system' });
+      const res = engrave(s, { respectBreaks: true, measureNumbers: s.page.measureNumbers ?? 'system' });
       const cs = findCollisions(res.pages);
       cs.forEach((c) => console.log(describe(c)));
       console.log(`${cs.length} collision${cs.length === 1 ? '' : 's'}`);
@@ -70,7 +70,7 @@ try {
     const flags = new Set(args.filter((a) => a.startsWith('--')));
     const [inp, base] = args.filter((a) => !a.startsWith('--'));
     const score = withSpace(loadScore(inp, flags));
-    const res = engrave(score, { respectBreaks: !flags.has('--no-breaks'), measureNumbers: flags.has('--no-numbers') ? 'none' : flags.has('--numbers') ? 'all' : 'system', warn: (m) => console.error('warn:', m) });
+    const res = engrave(score, { respectBreaks: !flags.has('--no-breaks'), measureNumbers: flags.has('--no-numbers') ? 'none' : flags.has('--numbers') ? 'all' : score.page.measureNumbers ?? 'system', warn: (m) => console.error('warn:', m) });
     mkdirSync(dirname(base) || '.', { recursive: true });
     const files = res.pages.map((p, i) => {
       const f = `${base}-${i + 1}.svg`;

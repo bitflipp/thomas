@@ -144,7 +144,7 @@ export function writeText(score: Score): string {
   L.push('# music typesetter score');
   const { meta, page } = score;
   for (const k of ['title', 'subtitle', 'composer', 'rights'] as const) if (meta[k]) L.push(`${k} ${quote(meta[k]!)}`);
-  L.push(`page ${page.width}x${page.height} margin=${page.margin} space=${page.staffSpace}`);
+  L.push(`page ${page.width}x${page.height} margin=${page.margin} space=${page.staffSpace}${page.measureNumbers ? ` numbers=${page.measureNumbers}` : ''}`);
   for (const s of score.staves) L.push(`staff ${s.id} clef=${clefStr(s.clef)}${s.name ? ` name=${quote(s.name)}` : ''}`);
   for (const g of score.groups) L.push(`${g.kind} ${g.staves.join(' ')}`);
   L.push('');
@@ -423,7 +423,7 @@ export function parseText(src: string): Score {
       else if (head === 'page') {
         const [w, h] = t[1].split('x').map(Number);
         const o = kv(t.slice(2));
-        score.page = { width: w, height: h, margin: Number(o.margin ?? 10), staffSpace: Number(o.space ?? 1.91) };
+        score.page = { width: w, height: h, margin: Number(o.margin ?? 10), staffSpace: Number(o.space ?? 1.91), ...(o.numbers === 'all' || o.numbers === 'none' ? { measureNumbers: o.numbers } : {}) };
       } else if (head === 'staff') {
         const o = kv(t.slice(2));
         score.staves.push({ id: t[1], clef: parseClef(o.clef ?? 'G2'), ...(o.name ? { name: JSON.parse(o.name) } : {}) });

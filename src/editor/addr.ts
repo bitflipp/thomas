@@ -1,0 +1,62 @@
+// Addresses: stable ways to name things in a Score across edits (objects are replaced by Immer, indices are not).
+import { flattenVoice, isTuplet, type Event, type Mark, type Score, type TupletGroup, type Voice } from '../model.ts';
+
+/** An event: measure, staff id, voice id and its index in the voice's flattened event order. */
+export interface EvAddr { mi: number; staff: string; voice: number; idx: number }
+export interface MarkAddr { mi: number; staff: string; i: number }
+
+export type Ref =
+  | ({ t: 'ev'; pi?: number } & EvAddr) // a note/rest; `pi`: one head of a chord
+  | ({ t: 'tie'; pi: number } & EvAddr)
+  | ({ t: 'slur'; id: number } & EvAddr) // addressed by the event it starts at
+  | ({ t: 'tuplet'; depth: number } & EvAddr) // by its first event; depth = nesting level (0 = outermost)
+  | ({ t: 'mark' } & MarkAddr)
+  | { t: 'measure'; mi: number };
+
+export const refKey = (r: Ref): string => {
+  switch (r.t) {
+    case 'ev': return `ev:${r.mi}:${r.staff}:${r.voice}:${r.idx}${r.pi === undefined ? '' : ':' + r.pi}`;
+    case 'tie': return `tie:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.pi}`;
+    case 'slur': return `slur:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.id}`;
+    case 'tuplet': return `tup:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.depth}`;
+    case 'mark': return `mark:${r.mi}:${r.staff}:${r.i}`;
+    case 'measure': return `m:${r.mi}`;
+  }
+};
+
+export interface ScoreIndex {
+  ev: Map<Event, EvAddr>;
+  mark: Map<Mark, MarkAddr>;
+  tuplet: Map<TupletGroup, EvAddr & { depth: number }>;
+}
+
+export function indexScore(score: Score): ScoreIndex {
+  const ev = new Map<Event, EvAddr>(), mark = new Map<Mark, MarkAddr>(), tuplet = new Map<TupletGroup, EvAddr & { depth: number }>();
+  score.measures.forEach((m, mi) => {
+    for (const [staff, sm] of Object.entries(m.staves)) {
+      sm.marks.forEach((mk, i) => mark.set(mk, { mi, staff, i }));
+      for (const v of sm.voices) {
+        for (const te of flattenVoice(v)) {
+          const a = { mi, staff, voice: v.id, idx: te.index };
+          ev.set(te.ev, a);
+          te.tuplets.forEach((t, depth) => { if (!tuplet.has(t)) tuplet.set(t, { ...a, depth }); });
+        }
+      }
+    }
+  });
+  return { ev, mark, tuplet };
+}
+
+export function voiceOf(score: Score, a: { mi: number; staff: string; voice: number }): Voice | undefined {
+  return score.measures[a.mi]?.staves[a.staff]?.voices.find((v) => v.id === a.voice);
+}
+export function eventOf(score: Score, a: EvAddr): Event | undefined {
+  const v = voiceOf(score, a);
+  return v ? flattenVoice(v)[a.idx]?.ev : undefined;
+}
+export function markOf(score: Score, a: MarkAddr): Mark | undefined { return score.measures[a.mi]?.staves[a.staff]?.marks[a.i]; }
+export function tupletOf(score: Score, a: EvAddr & { depth: number }): TupletGroup | undefined {
+  const v = voiceOf(score, a);
+  return v ? flattenVoice(v)[a.idx]?.tuplets[a.depth] : undefined;
+}
+void isTuplet;

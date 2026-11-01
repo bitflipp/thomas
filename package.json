@@ -5,10 +5,24 @@
   "type": "module",
   "description": "Music typesetter: text model -> SVG/PDF",
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "ui": "vite",
+    "ui:build": "vite build"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@preact/signals": "^2.11.4",
     "@vexflow-fonts/bravura": "^1.0.2",
-    "opentype.js": "^2.0.0"
+    "codemirror": "^6.0.2",
+    "immer": "^11.2.9",
+    "opentype.js": "^2.0.0",
+    "preact": "^11.1.1"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1",
+    "vite": "^8.3.5"
   }
 }

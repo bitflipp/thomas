@@ -101,6 +101,7 @@ export interface PageSetup {
   width: number; height: number; // mm
   margin: number; // mm
   staffSpace: number; // mm per staff space
+  measureNumbers?: 'all' | 'none'; // default (undefined): the first measure of every system but the first
 }
 
 export interface Score {

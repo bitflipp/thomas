@@ -12,7 +12,7 @@ title    "Gewitter"
 subtitle "임윤찬 gewidmet"
 composer "Philipp Naumann (2026)"
 rights   "© Philipp Naumann, licensed under CC BY-SA 4.0"
-page 210.1x296.9 margin=10 space=1.91         # mm: width x height, margin, staff space (= the global scale)
+page 210.1x296.9 margin=10 space=1.91         # mm: width x height, margin, staff space (= the global scale); optional numbers=all|none (measure numbers; default: per system)
 staff rh clef=F4 name="Piano"                 # clef: G2, F4, C3, G2_8 (8 below), G2^8 (8 above)
 staff lh clef=F4
 brace rh lh                                   # or: bracket a b c

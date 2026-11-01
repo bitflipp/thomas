@@ -8,6 +8,8 @@ export interface Tag {
   o?: number; // owner: the object this primitive is a part of (event, mark, slur ...)
   a?: number; // dynamics/hairpins: staff-local baseline they were placed on (for alignment across staves)
   g?: number[]; // groups the owner belongs to (beam, tuplet, two-note tremolo)
+  r?: object; // the model object (Event, TupletGroup, Mark) this primitive depicts, for hit testing in editors
+  n?: number; // slur id / tied head index, to tell apart several spanners that start at the same event
 }
 
 const ids = new WeakMap<object, number>();
@@ -25,7 +27,8 @@ export function oid(x: object): number {
 export function tagFrom(prims: Prim[], from: number, k: Kind, o?: object | number, g?: (object | number | undefined)[]): void {
   const oo = o === undefined ? undefined : typeof o === 'number' ? o : oid(o);
   const gg = g?.filter((x): x is object | number => x !== undefined).map((x) => (typeof x === 'number' ? x : oid(x)));
-  for (let i = from; i < prims.length; i++) { prims[i].k = k; if (oo !== undefined) prims[i].o = oo; if (gg?.length) prims[i].g = gg; }
+  const rr = typeof o === 'object' ? ((o as { ev?: object }).ev ?? ((o as { kind?: string }).kind === 'tuplet' ? o : (o as { notes?: { ev: object }[] }).notes?.[0]?.ev)) : undefined;
+  for (let i = from; i < prims.length; i++) { prims[i].k = k; if (oo !== undefined) prims[i].o = oo; if (gg?.length) prims[i].g = gg; if (rr) prims[i].r = rr; }
 }
 
 export type Prim = Tag & (

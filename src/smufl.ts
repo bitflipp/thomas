@@ -1,5 +1,4 @@
 // SMuFL font access (Bravura): glyph outlines as SVG path data, metrics in staff spaces.
-import { readFileSync } from 'node:fs';
 import opentype from 'opentype.js';
 
 export const CP: Record<string, number> = {
@@ -32,6 +31,7 @@ export interface BBox { x0: number; y0: number; x1: number; y1: number } // y up
 
 export interface Smufl {
   has(name: string): boolean;
+  pathCp(cp: number): string; // path data of any codepoint (UI icons)
   path(name: string): string; // path data in staff spaces, origin at glyph origin, y down
   bbox(name: string): BBox;
   adv(name: string): number;
@@ -40,13 +40,36 @@ export interface Smufl {
 }
 
 let cached: Smufl | null = null;
+let source: { buf: ArrayBuffer; meta: any } | null = null;
 
-export function loadSmufl(): Smufl {
-  if (cached) return cached;
+/** Provide the font data explicitly (browser); without it, loadSmufl reads it from node_modules. */
+export function setSmuflSource(buf: ArrayBuffer, meta: unknown): void { source = { buf, meta }; cached = null; }
+
+function nodeSource(): { buf: ArrayBuffer; meta: any } {
+  const fs = (process as any).getBuiltinModule('node:fs');
   const base = new URL('../node_modules/@vexflow-fonts/bravura/', import.meta.url);
-  const buf = readFileSync(new URL('bravura.otf', base));
-  const font = opentype.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
-  const meta = JSON.parse(readFileSync(new URL('metadata.json', base), 'utf8'));
+  const b = fs.readFileSync(new URL('bravura.otf', base)) as Uint8Array;
+  return { buf: b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, meta: JSON.parse(fs.readFileSync(new URL('metadata.json', base), 'utf8')) };
+}
+
+/** A facade that reads the font on first use, so modules may call this at import time (before a browser has fetched the font). */
+export function loadSmufl(): Smufl {
+  return facade;
+}
+const facade: Smufl = {
+  has: (n) => n in CP,
+  path: (n) => real().path(n),
+  pathCp: (cp) => real().pathCp(cp),
+  bbox: (n) => real().bbox(n),
+  adv: (n) => real().adv(n),
+  anchor: (n, k) => real().anchor(n, k),
+  get def() { return real().def; },
+};
+
+function real(): Smufl {
+  if (cached) return cached;
+  const { buf, meta } = (source ??= nodeSource());
+  const font = opentype.parse(buf);
   const paths = new Map<string, string>();
   const sm: Smufl = {
     has: (n) => n in CP,
@@ -61,6 +84,7 @@ export function loadSmufl(): Smufl {
       }
       return p;
     },
+    pathCp(cp) { return font.charToGlyph(String.fromCodePoint(cp)).getPath(0, 0, 4).toPathData(3); },
     bbox(name) {
       const b = meta.glyphBBoxes[name];
       if (!b) throw new Error(`no bbox for ${name}`);
@@ -80,16 +104,14 @@ export function loadSmufl(): Smufl {
 
 /** debugging helper: check my codepoint table against the font's metadata advances */
 export function checkCodepoints(): string[] {
-  const base = new URL('../node_modules/@vexflow-fonts/bravura/', import.meta.url);
-  const buf = readFileSync(new URL('bravura.otf', base));
-  const font = opentype.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
-  const meta = JSON.parse(readFileSync(new URL('metadata.json', base), 'utf8'));
+  const { buf, meta } = (source ??= nodeSource());
+  const font = opentype.parse(buf);
   const bad: string[] = [];
   for (const [name, cp] of Object.entries(CP)) {
     const g = font.charToGlyph(String.fromCodePoint(cp));
     const a = meta.glyphAdvanceWidths[name];
-    const fa = g.advanceWidth / 250;
     if (a === undefined) { bad.push(`${name}: not in metadata`); continue; }
+    const fa = g.advanceWidth / 250;
     if (Math.abs(a - fa) > 0.01) bad.push(`${name}: metadata adv ${a} vs font ${fa.toFixed(3)} at U+${cp.toString(16)}`);
   }
   return bad;

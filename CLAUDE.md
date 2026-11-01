@@ -14,6 +14,7 @@ node src/cli.ts check examples/gewitter.txt --collisions --mark out/mk   # list 
 node src/cli.ts import gewitter.musicxml examples/gewitter.txt     # MusicXML -> text format
 node src/cli.ts check <file>                      # validate measure lengths
 python3 tools/crop.py out/gewitter-2.svg x y w h out.png [px]      # render a region (staff spaces) to PNG
+npm run ui                                        # editor UI (Vite dev server, ui/); npm run ui:build -> out/ui
 ```
 
 Because `node` strips types only: no enums, no constructor parameter properties, and imports need the `.ts` extension.
@@ -34,6 +35,19 @@ Pipeline: text/MusicXML → `Score` model → `prepare` → per-measure spacing 
   - Drawing is staff-local per system; `spanners.ts` runs after all systems exist (slurs/ties/marks can cross systems) and uses `Skyline` boxes for collision avoidance. `finalize` in `system.ts` then fixes staff distances from the skyline extents.
 - **Collisions (`src/engrave/collide.ts`)**: every prim carries `k` (kind), `o` (owner) and `g` (groups) tags set where it is pushed (`tagFrom`/`oid` in `scene.ts`). `findCollisions(pages)` reports any overlap not in `ALLOW` (pairs of kinds, scope `own`/`any`); staff lines and untagged prims are ignored. Pairs of box-like shapes are compared by bounding box, others by outline. `test/collisions.test.ts` runs it on the whole piece; `KNOWN` there lists tolerated leftovers. New drawing code must tag its prims.
 - **`src/smufl.ts`**: Bravura outlines via opentype.js; `CP` maps glyph names to codepoints. `checkCodepoints()` verifies the table against the font metadata advances; run it when adding glyphs.
+
+## Editor (`src/editor/`, `ui/`)
+
+- **Headless editing, `src/editor/`** (testable with `node --test`, `test/editor.test.ts`):
+  - `commands.ts`: pure `Score -> Score` functions on Immer drafts. A refusal throws `EditError` (message for the user). Every command leaves each voice exactly as long as its measure; `edit()` re-runs `tidy()` on the touched measures (dissolves beam/tremolo groups that lost notes, drops dangling slurs).
+  - `voice.ts`: `putEvent` writes an event at a tick: it overwrites what is there, leftovers become rests (`splitTicks`), a tick inside a tuplet descends into it (positions are *written* ticks per level), `overwrite` refuses to cut a tuplet/tremolo in half.
+  - `addr.ts`: `Ref`s name things by (measure, staff id, voice id, flat event index), not by object, so they survive edits; `indexScore` maps model objects to addresses.
+  - `context.ts`: clef/ottava/key/accidentals in force at a position, staff position <-> pitch, transposition.
+  - `hit.ts`: `buildHitIndex(score, engraved)` turns prims into targets via the engraver's tags (`Prim.r` = model object, `Prim.n` = head index / slur id), `hitTest`, `marquee`, `measureAt`, `snapTick` (uses `Engraved.layout`: per staff-measure x/y and column positions).
+- **UI, `ui/`** (Vite + Preact + signals + CodeMirror 6; `npm run ui`): `state.ts` holds the score signal with undo history (`commit`/`run`), selection, tool settings, and the engraving effect (full re-engrave per edit, 70-200 ms on the big piece; one-system scores are re-engraved with `fillLast`). `interact.ts` is the pointer state machine (select/marquee/drag head/note and rest input/spans/marks/tuplet/context menu); `ScorePane.tsx` renders pages (SVG generated only near the viewport and only when the page's selection changed) with an overlay for ghosts; `Palette.tsx`, `Inspector.tsx`, `keys.ts`, `TextPane.tsx` (the score as text, hidden by default, Ctrl+E; edits re-parse after a pause into one undoable commit).
+- In dev builds `window.__t` exposes the state signals (`score`, `hit`, `engraved`, `selection`, ...), used for scripted tests with `playwright-core` + the system Chromium (`executablePath: '/usr/bin/chromium'`, `--no-sandbox`).
+- The engraver runs in the page: `ui/fonts.ts` feeds Bravura to `setSmuflSource`; `loadSmufl()` is a lazy facade (and `D` in `draw.ts` a lazy proxy), so engraver modules may touch the font at import time. Nothing under `src/` may import `node:*` at top level. UI files are `.tsx` and Vite-only.
+- Not done: MIDI keyboard input, range selection of measures, playback, multi-staff-part scores beyond the model's own limits.
 
 ## Conventions worth knowing
 

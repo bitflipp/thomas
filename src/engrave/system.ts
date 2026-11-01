@@ -12,6 +12,7 @@ const sm = loadSmufl();
 export interface EngraveOptions {
   respectBreaks?: boolean; // honour breakBefore flags from the score (default true)
   justifyVertical?: boolean;
+  fillLast?: boolean; // justify the last system however short it is (editors: room to click in)
   measureNumbers?: 'system' | 'all' | 'none'; // default 'system': first measure of every system but the first
   warn?: (m: string) => void;
 }
@@ -103,7 +104,11 @@ function planSystems(prep: Prepared, spN: MeasureSpacing[], spF: MeasureSpacing[
   return plans;
 }
 
-export interface Engraved { pages: Page[]; systems: number; staffSpace: number }
+/** Where a measure of a staff sits on its page (staff spaces); `cols` are the x positions of its rhythmic columns. */
+export interface MeasureGeom { page: number; sys: number; mi: number; staff: number; x0: number; x1: number; y: number; cols: { tick: number; x: number }[] }
+export interface SystemGeom { page: number; sys: number; a: number; b: number; x0: number; x1: number; staffY: number[] }
+export interface Layout { systems: SystemGeom[]; measures: MeasureGeom[] }
+export interface Engraved { pages: Page[]; systems: number; staffSpace: number; layout: Layout }
 
 export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const warn = opts.warn ?? (() => {});
@@ -138,14 +143,14 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     };
     let f = 1;
     const nat = widthAt(1);
-    if (!plan.last || nat / W > 0.55) {
+    if (!plan.last || nat / W > 0.55 || opts.fillLast) {
       let lo = 0.3, hi = 20;
       if (widthAt(lo) > W) f = lo;
       else {
         for (let it = 0; it < 50; it++) { const mid = (lo + hi) / 2; if (widthAt(mid) > W) hi = mid; else lo = mid; }
         f = lo;
       }
-      if (plan.last) f = Math.min(f, 1.6);
+      if (plan.last) f = Math.min(f, opts.fillLast ? 4 : 1.6);
     }
     const placed = [];
     const mx: number[] = [];
@@ -359,14 +364,23 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       list.forEach((si, k) => { placeY[si] += per * k; });
     });
   }
+  const layout: Layout = { systems: [], measures: [] };
   pageSystems.forEach((list, pi) => {
     if (pi > 0) page = newPage();
     const x0 = margin + braceRoom;
     for (const si of list) for (const p of sysPrims[si]) page.prims.push(shift(p, x0, placeY[si]));
+    for (const si of list) {
+      const ctx = systems[si];
+      layout.systems.push({ page: pi, sys: si, a: ctx.a, b: ctx.b, x0, x1: x0 + ctx.width, staffY: ctx.staffY.map((y) => placeY[si] + y) });
+      for (let mi = ctx.a; mi <= ctx.b; mi++) for (let st = 0; st < nS; st++) {
+        const cols = ctx.spacing[mi].cols.map((c, j) => ({ tick: c.tick, x: x0 + ctx.mx[mi] + ctx.placed[mi].xs[j] }));
+        layout.measures.push({ page: pi, sys: si, mi, staff: st, x0: x0 + ctx.mx[mi], x1: x0 + ctx.mx[mi] + ctx.placed[mi].endX, y: placeY[si] + ctx.staffY[st], cols });
+      }
+    }
     if (meta.rights) page.prims.push({ t: 'text', x: pageW / 2, y: pageH - margin, s: meta.rights, size: 9 * pt, anchor: 'middle' });
     if (pi > 0) page.prims.push({ t: 'text', x: pageW - margin, y: margin + 1.2, s: String(pi + 1), size: 10 * pt, anchor: 'end' });
   });
-  return { pages, systems: systems.length, staffSpace: S };
+  return { pages, systems: systems.length, staffSpace: S, layout };
 }
 
 /** Distance between the bottom line of staff s-1 and the top line of staff s that the content of both requires. */

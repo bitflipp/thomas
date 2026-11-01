@@ -65,14 +65,14 @@ export function drawSpanners(systems: SysCtx[]): void {
       });
     }
     // ---- slurs (collected; those between staves are drawn first so that the others nest around them)
-    const open = new Map<string, { ev: EvL; side?: 'above' | 'below' }>();
+    const open = new Map<string, { ev: EvL; side?: 'above' | 'below'; id: number }>();
     for (const e of timeOrder) {
       for (const id of e.ev.slurStop ?? []) {
         const k = `${e.voice}|${id}`;
         const st = open.get(k);
-        if (st) { const ve = voiceEvs.get(e.voice)!, a0 = st.ev, sd = st.side; (a0.staff !== a0.home || e.staff !== a0.home ? crossSlurs : slurs).push(() => drawSlur(systems, sysOf, a0, e, sd, ve)); open.delete(k); }
+        if (st) { const ve = voiceEvs.get(e.voice)!, a0 = st.ev, sd = st.side, sid = st.id; (a0.staff !== a0.home || e.staff !== a0.home ? crossSlurs : slurs).push(() => drawSlur(systems, sysOf, a0, e, sd, ve, sid)); open.delete(k); }
       }
-      for (const ss of e.ev.slurStart ?? []) open.set(`${e.voice}|${ss.id}`, { ev: e, side: ss.side });
+      for (const ss of e.ev.slurStart ?? []) open.set(`${e.voice}|${ss.id}`, { ev: e, side: ss.side, id: ss.id });
     }
   }
   for (const f of [...crossSlurs, ...slurs]) f();
@@ -145,7 +145,7 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
     return {
       hgt,
       draw: (hh: number) => {
-        ctx.prims[e.staff].push({ t: 'path', d: crescent(xa, y, xb, y, hh, thick, above), k: 'tie', o: oid(h) });
+        ctx.prims[e.staff].push({ t: 'path', d: crescent(xa, y, xb, y, hh, thick, above), k: 'tie', o: oid(h), r: e.ev, n: hi });
         ctx.sky[e.staff].add(xa, xb, above ? y - hh - 0.1 : y, above ? y : y + hh + 0.1, true);
       },
     };
@@ -173,7 +173,7 @@ function sysOfIndex(systems: SysCtx[], mi: number): number {
   return 0;
 }
 
-function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 'above' | 'below' | undefined, voice: EvL[]): void {
+function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 'above' | 'below' | undefined, voice: EvL[], id: number): void {
   if (a.ev.kind !== 'note' || b.ev.kind !== 'note') return;
   // side
   let side: 'above' | 'below';
@@ -260,7 +260,7 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
     return {
       h, L,
       draw: (hh: number) => {
-        ctx.prims[staff].push({ t: 'path', d: crescent(x0, y0, x1, y1, hh, thick, above), k: 'slur', o: slurId });
+        ctx.prims[staff].push({ t: 'path', d: crescent(x0, y0, x1, y1, hh, thick, above), k: 'slur', o: slurId, r: a.ev, n: id });
         const ym = Math.min(y0, y1), yM = Math.max(y0, y1);
         // (a slur between staves reaches into the other staff: it is not recorded, or it would push the staves apart for good)
         sky.add(x0, x1, above ? ym - hh : ym, above ? yM : yM + hh, true);
@@ -286,6 +286,7 @@ interface Item {
   side: 'above' | 'below';
   up: number; down: number; // extent above / below the reference line
   draw: (ref: number) => Prim[];
+  src?: Mark; // the model mark (start mark of a span)
   row: number;
   order: number;
 }
@@ -338,7 +339,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
             const bx = sys.mx[k] + sys.placed[k].endX;
             if (bx > left + r.ink0 - 0.2 && bx < left + r.ink1 + 0.2) left = m.tick === 0 && k === mi - 1 ? bx + 0.35 - r.ink0 : bx - 0.35 - r.ink1; // a dynamic at a measure's start stays in that measure
           }
-          items[si].push({ kind: 'dyn', x0: left + r.ink0, x1: left + r.ink1, side, up: r.up, down: r.down, row: 0, order: 0, draw: (ref) => { let px = left; return r.names.map((n) => { const p: Prim = { t: 'glyph', name: n, x: px, y: ref }; px += sm.adv(n); return p; }); } });
+          items[si].push({ src: m, kind: 'dyn', x0: left + r.ink0, x1: left + r.ink1, side, up: r.up, down: r.down, row: 0, order: 0, draw: (ref) => { let px = left; return r.names.map((n) => { const p: Prim = { t: 'glyph', name: n, x: px, y: ref }; px += sm.adv(n); return p; }); } });
           break;
         }
         case 'hairpin': { const sp: Span = { mark: m, mi }; openHair.set(m.id, sp); hairs.push(sp); break; }
@@ -358,7 +359,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
           const wText = label.length * size * 0.55;
           const dotsW = m.dots * 0.5;
           items[si].push({
-            kind: 'tempo', x0: x, x1: x + nb.x1 + dotsW + 0.5 + wText, side: 'above', up: 1.6, down: 0.2, row: 0, order: 0,
+            src: m, kind: 'tempo', x0: x, x1: x + nb.x1 + dotsW + 0.5 + wText, side: 'above', up: 1.6, down: 0.2, row: 0, order: 0,
             draw: (ref) => {
               const out: Prim[] = [{ t: 'glyph', name: unit, x, y: ref }];
               for (let k = 0; k < m.dots; k++) out.push({ t: 'glyph', name: 'metAugmentationDot', x: x + nb.x1 + 0.2 + k * 0.5, y: ref });
@@ -371,7 +372,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
         case 'text': {
           const side = m.placement ?? 'above';
           const size = 2.0;
-          items[si].push({ kind: 'text', x0: x, x1: x + m.text.length * size * 0.5, side, up: 1.5, down: 0.5, row: 0, order: 1, draw: (ref) => [{ t: 'text', x, y: ref, s: m.text, size, italic: true }] });
+          items[si].push({ src: m, kind: 'text', x0: x, x1: x + m.text.length * size * 0.5, side, up: 1.5, down: 0.5, row: 0, order: 1, draw: (ref) => [{ t: 'text', x, y: ref, s: m.text, size, italic: true }] });
           break;
         }
         default: break;
@@ -429,7 +430,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
       void f0; void f1;
       const th = D.hairpinThickness as number;
       const item: Item = {
-        kind: 'hair', x0: p.x0, x1: p.x1, side: m.placement ?? 'below', up: Math.max(o0, o1) / 2 + th, down: Math.max(o0, o1) / 2 + th, row: 0, order: 0,
+        src: sp.mark as Mark, kind: 'hair', x0: p.x0, x1: p.x1, side: m.placement ?? 'below', up: Math.max(o0, o1) / 2 + th, down: Math.max(o0, o1) / 2 + th, row: 0, order: 0,
         draw: (ref) => [
           { t: 'line', x1: item.x0, y1: ref - o0 / 2, x2: item.x1, y2: ref - o1 / 2, w: th },
           { t: 'line', x1: item.x0, y1: ref + o0 / 2, x2: item.x1, y2: ref + o1 / 2, w: th },
@@ -447,7 +448,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
     for (const p of ps) {
       const upExt = pedB.y1, downExt = -pedB.y0;
       items[p.si].push({
-        kind: 'pedal', x0: p.x0, x1: p.x1, side: 'below', up: upExt, down: downExt, row: 1, order: 0,
+        src: sp.mark as Mark, kind: 'pedal', x0: p.x0, x1: p.x1, side: 'below', up: upExt, down: downExt, row: 1, order: 0,
         draw: (ref) => {
           const out: Prim[] = [];
           let lx = p.x0;
@@ -478,7 +479,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
     for (const p of ps) {
       const up = Math.max(gb.y1, 0.8), down = Math.max(-gb.y0, 0.8);
       items[p.si].push({
-        kind: 'ott', x0: p.x0, x1: p.x1, side: above ? 'above' : 'below', up, down, row: 0, order: -1,
+        src: m, kind: 'ott', x0: p.x0, x1: p.x1, side: above ? 'above' : 'below', up, down, row: 0, order: -1,
         draw: (ref) => {
           const out: Prim[] = [];
           const ly = ref - (gb.y1 + gb.y0) / 2 + (above ? 0 : 0);
@@ -536,7 +537,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
         for (const it of g) {
           const r = it.kind === 'hair' ? ref - 0.55 : ref;
           const kind: Kind = it.kind === 'hair' ? 'hairpin' : it.kind === 'ott' ? 'ottava' : it.kind;
-          for (const p of it.draw(r)) { p.k = kind; p.o = oid(it); if (it.kind === 'dyn' || it.kind === 'hair') p.a = ref; ctx.prims[s].push(p); }
+          for (const p of it.draw(r)) { p.k = kind; p.o = oid(it); p.r = it.src; if (it.kind === 'dyn' || it.kind === 'hair') p.a = ref; ctx.prims[s].push(p); }
           sky.add(it.x0, it.x1, r - it.up, r + it.down);
         }
       }
