@@ -1,4 +1,5 @@
 // Human-readable text format <-> Score.   See FORMAT.md for the grammar.
+import { refKey } from './editor/addr.ts';
 import {
   PPQ, gcd, anchorMarks, isBeam, isTuplet, isTremolo,
   type Score, type Item, type Event, type NoteEvent, type RestEvent, type Dur, type BaseDur, type TimedMark, type Clef,
@@ -50,17 +51,34 @@ function markStr(m: MarkBody): string {
   }
 }
 
+/**
+ * Source positions for editors: with tags on, the writer brackets what a model object is written as in private-use
+ * sentinels (`\uE000<n>\uE001 ... \uE002`, n indexing `keys`); `writeTextMap` strips them again and returns the ranges.
+ */
+class Tags {
+  keys: string[] = [];
+  open(key: string): string { this.keys.push(key); return `\uE000${this.keys.length - 1}\uE001`; }
+  tag(key: string, s: string): string { return this.open(key) + s + Tags.close; }
+  static close = '\uE002';
+}
+const tagged = (t: Tags | undefined, key: string, s: string): string => (t ? t.tag(key, s) : s);
+
 class VoiceWriter {
   out: string[] = [];
   lastBase: BaseDur | 0 = 0;
   glue = false; // the next token continues the previous one (inside the delimiters of a group)
   home: string;
   curStaff: string; // staff the following events are drawn on (see \staff)
-  constructor(home: string) { this.home = this.curStaff = home; }
+  tags?: Tags;
+  at: { mi: number; staff: string; voice: number };
+  evIdx = 0; // index of the next event in the voice (as in `flattenVoice`)
+  depth = 0; // tuplet nesting
+  constructor(home: string, at: { mi: number; staff: string; voice: number }, tags?: Tags) { this.home = this.curStaff = home; this.at = at; this.tags = tags; }
 
   eventStr(e: Event): string {
+    const idx = this.evIdx++, loc = { ...this.at, idx };
     const pre: string[] = [];
-    for (const m of e.marks ?? []) pre.push(markStr(m));
+    (e.marks ?? []).forEach((m, k) => pre.push(tagged(this.tags, refKey({ t: 'mark', ...loc, k }), markStr(m))));
     if ((e.staff ?? this.home) !== this.curStaff) { this.curStaff = e.staff ?? this.home; pre.push(`\\staff ${this.curStaff}`); }
     for (const s of e.slurStart ?? []) pre.push('(' + idStr(s.id) + sideStr(s.side));
     if (e.stem) pre.push(e.stem === 'up' ? '\\stemup' : '\\stemdown');
@@ -82,7 +100,7 @@ class VoiceWriter {
     this.lastBase = e.dur.base;
     const slurEnd = (e.slurStop ?? []).map((i) => ')' + idStr(i)).join('');
     // a slur start sticks to what follows it (what follows never starts with a digit, so `(2` stays unambiguous): `(f#2:16 ... d#2)`
-    const toks = [...pre, core + d + tie + arts + slurEnd];
+    const toks = [...pre, tagged(this.tags, refKey({ t: 'ev', ...loc }), core + d + tie + arts + slurEnd)];
     return toks.reduce((acc, t, i) => (i > 0 && /^\(\d*[\^_]?$/.test(toks[i - 1]) ? acc + t : acc ? acc + ' ' + t : t), '');
   }
 
@@ -94,7 +112,10 @@ class VoiceWriter {
         if (it.number === 'none') o.push('nonum');
         if (it.placement) o.push(it.placement);
         if (it.label !== undefined) o.push(`label=${it.label}`);
-        this.group(`${it.actual}:${it.normal}${o.length ? `(${o.join(',')})` : ''}{`, '}', it.items);
+        const key = refKey({ t: 'tuplet', ...this.at, idx: this.evIdx, depth: this.depth });
+        this.depth++;
+        this.group(`${it.actual}:${it.normal}${o.length ? `(${o.join(',')})` : ''}{`, '}', it.items, key);
+        this.depth--;
       } else if (isBeam(it)) this.group('[', ']', it.items);
       else if (isTremolo(it)) this.group(`trem${it.beams}{`, '}', it.items);
       else this.push(this.eventStr(it));
@@ -104,16 +125,16 @@ class VoiceWriter {
     if (this.glue) { this.out[this.out.length - 1] += tok; this.glue = false; } else this.out.push(tok);
   }
   /** A group is written without padding inside its delimiters: `3:2{c5:16 d5 e5}`. */
-  group(open: string, close: string, items: Item[]): void {
-    this.push(open);
+  group(open: string, close: string, items: Item[], key?: string): void {
+    this.push(this.tags && key ? this.tags.open(key) + open : open);
     this.glue = true;
     this.items(items);
     this.glue = false;
-    this.out[this.out.length - 1] += close;
+    this.out[this.out.length - 1] += close + (this.tags && key ? Tags.close : '');
   }
 }
 
-/** Runs of grace notes with the same slash: `\\acc{ d5:8 e5:8 }` (struck through) or `\\grace{ ... }`. */
+/** Runs of grace notes with the same slash: `\\acc{d5:8 e5:8}` (struck through) or `\\grace{...}`. */
 function graceStrs(gs: Grace[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < gs.length;) {
@@ -130,16 +151,17 @@ function graceStrs(gs: Grace[]): string[] {
   return out;
 }
 
-function writeStaffMeasure(sm: StaffMeasure, sid: string, lines: string[]): void {
+function writeStaffMeasure(sm: StaffMeasure, sid: string, mi: number, lines: string[], tags?: Tags): void {
   for (const v of sm.voices) {
-    const w = new VoiceWriter(sid);
+    const at = { mi, staff: sid, voice: v.id };
+    const w = new VoiceWriter(sid, at, tags);
     w.items(v.items);
-    for (const m of v.end ?? []) w.out.push(markStr(m));
+    (v.end ?? []).forEach((m, k) => w.out.push(tagged(tags, refKey({ t: 'mark', ...at, idx: -1, k }), markStr(m))));
     lines.push(`  ${sid}.${v.id}: ${w.out.join(' ')}`);
   }
 }
 
-export function writeText(score: Score): string {
+function write(score: Score, tags?: Tags): string {
   const L: string[] = [];
   L.push('# music typesetter score');
   const { meta, page } = score;
@@ -154,13 +176,38 @@ export function writeText(score: Score): string {
     if (m.key !== undefined) h.push(`key=${m.key}`);
     if (m.breakBefore) h.push(`break=${m.breakBefore}`);
     if (m.barline) h.push(`barline=${m.barline}`);
+    const first = L.length;
     L.push(h.join(' '));
     for (const s of score.staves) {
       const sm = m.staves[s.id];
-      if (sm) writeStaffMeasure(sm, s.id, L);
+      if (sm) writeStaffMeasure(sm, s.id, mi, L, tags);
     }
+    if (tags) { L[first] = tags.open(refKey({ t: 'measure', mi })) + L[first]; L[L.length - 1] += Tags.close; }
   });
   return L.join('\n') + '\n';
+}
+
+export function writeText(score: Score): string { return write(score); }
+
+/** The text and where each model object sits in it: `refKey` (see editor/addr.ts) -> [from, to) offsets. */
+export function writeTextMap(score: Score): { text: string; ranges: Map<string, [number, number][]> } {
+  const tags = new Tags();
+  const raw = write(score, tags);
+  const ranges = new Map<string, [number, number][]>();
+  const stack: { key: string; from: number }[] = [];
+  let text = '';
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (c === '\uE000') {
+      const j = raw.indexOf('\uE001', i);
+      stack.push({ key: tags.keys[Number(raw.slice(i + 1, j))], from: text.length });
+      i = j;
+    } else if (c === '\uE002') {
+      const { key, from } = stack.pop()!;
+      (ranges.get(key) ?? ranges.set(key, []).get(key)!).push([from, text.length]);
+    } else text += c;
+  }
+  return { text, ranges };
 }
 
 // ------------------------------------------------------------------ parsing

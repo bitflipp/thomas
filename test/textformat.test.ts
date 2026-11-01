@@ -97,3 +97,18 @@ m1 time=2/4
   const bad = parseText(src.replace('\\staff rh', '\\staff lh').replace('staff lh r:8', 'staff xx r:8'));
   assert.ok(validate(bad).some((e) => e.includes('cross-staff')));
 });
+
+test('writeTextMap: same text as writeText, with the places of events, marks, tuplets and measures', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { writeTextMap } = await import('../src/textformat.ts');
+  const { refKey } = await import('../src/editor/addr.ts');
+  const s = parseText(readFileSync(new URL('../examples/gewitter.txt', import.meta.url), 'utf8'));
+  const { text, ranges } = writeTextMap(s);
+  assert.equal(text, writeText(s));
+  const at = (key: string) => (ranges.get(key) ?? []).map(([a, b]) => text.slice(a, b));
+  // m33 lh.1: d2:4-^) r:16 \< eb2 d2 eb2
+  assert.deepEqual(at(refKey({ t: 'ev', mi: 32, staff: 'lh', voice: 1, idx: 0 })), ['d2:4-^_)']);
+  assert.deepEqual(at(refKey({ t: 'mark', mi: 32, staff: 'lh', voice: 1, idx: 2, k: 0 })), ['\\<']);
+  assert.deepEqual(at(refKey({ t: 'tuplet', mi: 32, staff: 'rh', voice: 1, idx: 0, depth: 0 })).map((x) => x.slice(0, 8)), ['12:4(nob']);
+  assert.match(at(refKey({ t: 'measure', mi: 32 }))[0], /^m33\n {2}rh\.1: .*\n {2}lh\.1: .*d2 eb2$/);
+});

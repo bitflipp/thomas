@@ -1,6 +1,6 @@
 // Application state: the score (immutable, with undo history), selection, tool settings, and what is derived from them.
 import { signal, computed, effect, batch } from '@preact/signals';
-import { parseText, writeText } from '../src/textformat.ts';
+import { parseText, writeText, writeTextMap } from '../src/textformat.ts';
 import { validate, type BaseDur, type Clef, type Score } from '../src/model.ts';
 import { engrave, type Engraved } from '../src/engrave/system.ts';
 import { buildHitIndex, type HitIndex } from '../src/editor/hit.ts';
@@ -159,5 +159,7 @@ effect(() => {
   saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, writeText(s)); } catch { /* storage may be unavailable */ } }, 800);
 });
 
-export const textOf = computed(() => writeText(score.value));
+/** The score as text, with the places of its parts (for showing the selection there). */
+export const textMap = computed(() => writeTextMap(score.value));
+export const textOf = computed(() => textMap.value.text);
 export { parseText, validate };

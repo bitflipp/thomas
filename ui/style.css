@@ -58,6 +58,8 @@ button.mini { padding: 0 6px; margin-left: 4px; }
 .textpane { width: 40%; min-width: 280px; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--panel); }
 .textpane .cm-host { flex: 1; min-height: 0; overflow: hidden; }
 .textpane .cm-editor { height: 100%; }
+.textpane .cm-ref-sel { background: rgba(47,111,237,.28); border-radius: 2px; }
+.textpane .cm-ref-dep { background: rgba(245,159,0,.32); border-radius: 2px; }
 .textpane .cm-scroller { font: 12.5px/1.45 ui-monospace, monospace; }
 .diag { padding: 6px 10px; border-top: 1px solid var(--line); color: var(--err); font: 12px ui-monospace, monospace; white-space: pre-wrap; max-height: 25%; overflow: auto; }
 
