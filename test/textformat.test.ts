@@ -62,7 +62,8 @@ test('simplifyBeams drops groups the automatic rules reproduce and keeps the oth
   simplifyBeams(v, 3360);
   assert.deepEqual(beamGroups(v, 3360).map((g) => g.length).sort(), [...before].sort());
   const rest = writeText(s).split('\n').find((l) => l.includes('rh.1'))!;
-  // [g a b c] spans two beats, which automatic beaming would split: it stays explicit
+  // [g a b c] spans two beats, which automatic beaming would split into two groups, so the
+  // explicit group must survive simplification; [c5:8 d5] (what the automatic rule gives) must not.
   assert.match(rest, /\[g5/);
   assert.ok(!/\[c5:8 d5\]/.test(rest));
 });
@@ -106,7 +107,8 @@ test('writeTextMap: same text as writeText, with the places of events, marks, tu
   const { text, ranges } = writeTextMap(s);
   assert.equal(text, writeText(s));
   const at = (key: string) => (ranges.get(key) ?? []).map(([a, b]) => text.slice(a, b));
-  // m33 lh.1: d2:4-^) r:16 \< eb2 d2 eb2
+  // The text being addressed is measure 33, lh voice 1: `d2:4-^_) r:16 \< eb2 d2 eb2`. Each ref
+  // below must map to exactly the characters of its object in that text.
   assert.deepEqual(at(refKey({ t: 'ev', mi: 32, staff: 'lh', voice: 1, idx: 0 })), ['d2:4-^_)']);
   assert.deepEqual(at(refKey({ t: 'mark', mi: 32, staff: 'lh', voice: 1, idx: 2, k: 0 })), ['\\<']);
   assert.deepEqual(at(refKey({ t: 'tuplet', mi: 32, staff: 'rh', voice: 1, idx: 0, depth: 0 })).map((x) => x.slice(0, 8)), ['12:4(nob']);

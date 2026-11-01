@@ -1,3 +1,5 @@
+// Entry point: load the music font, restore the last document (or the bundled example), mount the app.
+// The engraver needs the font before its first run, so nothing renders until `initFonts` resolves.
 import { render } from 'preact';
 import { initFonts } from './fonts.ts';
 import { loadText, restore, showText, ready, NEW_SCORE_TEXT } from './state.ts';

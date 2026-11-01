@@ -1,4 +1,8 @@
 // Application state: the score (immutable, with undo history), selection, tool settings, and what is derived from them.
+//
+// Everything is a preact signal. The score signal holds an immutable `Score`; an edit replaces it
+// (`commit`), so undo is just a stack of earlier values (structural sharing keeps that cheap). The
+// engraving, hit index and text are derived by effects from the score, so no component recomputes them.
 import { signal, computed, effect, batch } from '@preact/signals';
 import { parseText, writeText, writeTextMap } from '../src/textformat.ts';
 import { validate, type BaseDur, type Clef, type Score } from '../src/model.ts';

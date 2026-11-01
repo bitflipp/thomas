@@ -1,12 +1,17 @@
 // Edit commands: pure `Score -> Score` functions (Immer), each leaving every voice exactly as long as its measure.
 // Failures throw EditError with a message fit for the user; the score is then unchanged.
+//
+// Every command goes through `edit`, which runs it on an Immer draft and then `tidy`s the measures it
+// touched. Commands therefore only have to do the main change; consequences such as a slur that lost
+// its end note or a beam group that lost a note are cleaned up in one place. Events are addressed by
+// `EvAddr` (see addr.ts), never by object, because the draft replaces objects.
 import { produce, type Draft } from 'immer';
 import {
-  PPQ, baseTicks, collectMarks, flattenVoice, isBeam, isEvent, isTremolo, isTuplet, measureTicks, timeAt,
+  baseTicks, collectMarks, flattenVoice, isBeam, isEvent, isTremolo, measureTicks, timeAt,
   type Clef, type Dur, type Event, type Item, type MarkBody, type NoteEvent, type NotePitch, type Pitch, type Score, type StaffMeasure,
   type TimeSig, type TupletGroup, type Voice, type Articulation,
 } from '../model.ts';
-import { EditError, durOfTicks, eventAtTick, itemsTicks, itemTicks, putEvent, rest, restsFor, splitTicks } from './voice.ts';
+import { EditError, durOfTicks, eventAtTick, itemsTicks, putEvent, rest, restsFor, splitTicks } from './voice.ts';
 import { comparePitch, transposeSemis, transposeSteps } from './context.ts';
 import { voiceOf, type EvAddr, type MarkAddr } from './addr.ts';
 
@@ -16,10 +21,13 @@ export interface Loc { mi: number; staff: string; voice: number }
 
 // ------------------------------------------------------------------ plumbing
 
+/** Runs `fn` on a draft of the score and tidies what it touched (`tidy` re-establishes the invariants). Returns the same score if nothing changed. */
 function edit(score: Score, fn: (d: Draft<Score>) => void): Score {
   const next = produce(score, fn);
   if (next === score) return next;
-  // only what the edit touched needs tidying (a whole score is hundreds of measures)
+  // Only the measures the edit touched need tidying (a whole score is hundreds of measures); Immer
+  // keeps untouched measures identical by reference, so a reference comparison finds them. Adding or
+  // removing measures shifts everything, so that case tidies the whole score.
   const only = new Set<number>();
   const n = Math.max(next.measures.length, score.measures.length);
   for (let i = 0; i < n; i++) if (next.measures[i] !== score.measures[i]) only.add(i);
@@ -87,7 +95,8 @@ function tidy(d: Score, only?: Set<number>): void {
       if (n) v.items = n;
     }
   });
-  // slurs: per staff and voice, in time order
+  // Slurs, per staff and voice in time order: a stop with no open start, or a start never
+  // stopped, is dropped (a note it hung on may have been deleted or overwritten).
   for (const st of d.staves) {
     const voices = new Set<number>();
     for (const m of d.measures) for (const v of m.staves[st.id]?.voices ?? []) voices.add(v.id);
@@ -110,7 +119,8 @@ function tidy(d: Score, only?: Set<number>): void {
       }
     }
   }
-  // hairpins: a start without its stop (or the reverse) went away with the note that carried it
+  // Hairpins: a start without its stop (or the reverse) went away with the note that carried it, so
+  // the surviving half is removed too (matching is by id across measures).
   for (const sid of staffTouched) {
     const open = new Map<number, MarkAt>();
     const dead: MarkAt[] = [];
@@ -154,11 +164,13 @@ function dropMarks(d: Draft<Score>, addrs: MarkAddr[]): void {
 
 // ------------------------------------------------------------------ notes and rests
 
+/** Adds a pitch to a chord, keeping the pitches ordered low to high as the model requires. */
 function insertPitch(n: Draft<NoteEvent>, p: NotePitch): void {
   n.pitches.push(p);
   n.pitches.sort((a, b) => comparePitch(a.pitch, b.pitch));
 }
 
+/** The rest that replaces `e`: same duration, and its marks (dynamics etc.) stay in place. */
 function toRest(e: Draft<Event>): Event {
   return { kind: 'rest', style: 'normal', dur: { ...e.dur }, ...(e.marks ? { marks: JSON.parse(JSON.stringify(e.marks)) } : {}) };
 }
@@ -234,12 +246,14 @@ export function setDuration(score: Score, a: EvAddr, dur: Dur): Score {
     if (te.start + baseTicks(dur) > measureTicks(timeAt(d as Score, a.mi))) throw new EditError('The note does not fit into the measure');
     const copy = JSON.parse(JSON.stringify(te.ev)) as Event;
     copy.dur = { ...dur };
-    // a whole-measure rest given a shorter value is an ordinary rest (the rest of the bar fills up with more)
+    // A whole-measure rest given a shorter value becomes an ordinary rest; `putEvent` fills the rest of
+    // the bar with more rests.
     if (copy.kind === 'rest' && copy.style === 'measure' && baseTicks(dur) !== measureTicks(timeAt(d as Score, a.mi))) copy.style = 'normal';
     v.items = putEvent(v.items as Item[], te.start, copy) as Draft<Item>[];
   });
 }
 
+/** Applies `fn` to the events at `addrs`: the generic way to change a field on a selection. */
 export function updateEvents(score: Score, addrs: EvAddr[], fn: (e: Draft<Event>) => void): Score {
   return edit(score, (d) => { for (const a of addrs) fn(eventIn(d, a)); });
 }
@@ -307,7 +321,8 @@ function flattenEv(score: Score, a: EvAddr): Event | undefined {
 export function addSlur(score: Score, from: EvAddr, to: EvAddr, side?: 'above' | 'below'): Score {
   if (from.staff !== to.staff || from.voice !== to.voice) throw new EditError('A slur joins notes of one voice');
   return edit(score, (d) => {
-    // number: the lowest not used by a slur overlapping the new one in this voice
+    // The slur's id is the lowest number not used by a slur overlapping the new one in this voice,
+    // so crossing slurs stay distinguishable in the text format and the engraver.
     const evs: { e: Draft<Event>; k: number }[] = [];
     let k = 0, ka = -1, kb = -1;
     d.measures.forEach((m, mi) => {
@@ -430,14 +445,14 @@ export function addSpanOver(score: Score, kind: SpanKind, from: EvAddr, to: EvAd
     const [first, last] = key(from) <= key(to) ? [from, to] : [to, from];
     const { start, stop } = spanBodies(d, from.staff, kind, placement);
     (te(first).ev.marks ??= []).push(start as Draft<MarkBody>);
-    const v = voiceIn(d, last), flat = flattenVoice(v as Voice), t = flat[last.idx];
+    const v = voiceIn(d, last), flat = flattenVoice(v as Voice);
     const next = flat[last.idx + 1];
     if (!next) { (v.end ??= []).push(stop as Draft<MarkBody>); return; }
-    // a stop comes before the marks that start something at the same position (a pedal change releases, then presses)
+    // The stop goes before the marks that start something at the same position: a pedal change is a
+    // release followed by a press, in that order.
     const marks = (next.ev.marks ??= []) as Draft<MarkBody>[];
     const i = marks.findIndex((m) => m.type !== 'stop');
     marks.splice(i < 0 ? marks.length : i, 0, stop as Draft<MarkBody>);
-    void t;
   });
 }
 
@@ -450,7 +465,9 @@ export function makeTuplet(score: Score, a: EvAddr, actual: number, normal: numb
     const te = flattenVoice(v as Voice)[a.idx];
     if (!te) throw new EditError('No such note');
     if (te.tremolo) throw new EditError('Not inside a tremolo');
-    const span = baseTicks(te.ev.dur); // at its own level
+    // The span of the new tuplet is the event's duration at its own level, i.e. as written:
+    // inside another tuplet that is not the sounding length.
+    const span = baseTicks(te.ev.dur);
     const w = durOfTicks(span / normal);
     if (!w || !Number.isInteger(span / normal)) throw new EditError(`A ${actual}:${normal} tuplet does not fit this note value`);
     const first = JSON.parse(JSON.stringify(te.ev)) as Event;
@@ -478,7 +495,8 @@ export function removeTuplet(score: Score, a: EvAddr & { depth: number }): Score
     const g = te?.tuplets[a.depth] as Draft<TupletGroup> | undefined;
     if (!g) throw new EditError('No such tuplet');
     const span = (itemsTicks(g.items as Item[]) * g.normal) / g.actual;
-    // replace by the real span's worth of rests: simplest well-defined result
+    // Dissolving a tuplet: keep its events if they fit in the span unscaled (padding with rests),
+    // else replace it by the span's worth of rests, the simplest well-defined result.
     const repl = splitTicks(span, 0).length ? (restsFor(span, 0) as Item[]) : [];
     const kept = (g.items as Item[]).filter(isEvent);
     const fits = kept.reduce((s, e) => s + baseTicks(e.dur), 0);
@@ -513,7 +531,7 @@ function refit(d: Draft<Score>, mi: number, len: number): void {
     const only = (v.items as Item[]).length === 1 && isEvent((v.items as Item[])[0]) && ((v.items as Item[])[0] as Event).kind === 'rest' && ((v.items as Item[])[0] as { style: string }).style === 'measure';
     if (only) { v.items = measureRest(len) as Draft<Item>[]; continue; }
     if (total < len) { v.items = [...(v.items as Item[]), ...restsFor(len - total, total)] as Draft<Item>[]; continue; }
-    try { v.items = putEvent(v.items as Item[], len, rest({ base: 64, dots: 0 }), false).slice() as Draft<Item>[]; void 0; }
+    try { v.items = putEvent(v.items as Item[], len, rest({ base: 64, dots: 0 }), false).slice() as Draft<Item>[]; }
     catch { /* fall through to the blunt cut */ }
     if (itemsTicks(v.items as Item[]) !== len) v.items = measureRest(len) as Draft<Item>[];
   }
@@ -545,7 +563,8 @@ export function deleteMeasures(score: Score, from: number, to: number): Score {
       if (k !== undefined && next.key === undefined) next.key = k;
     }
     if (from === 0 && !d.measures[0].time) d.measures[0].time = gone[0].time ?? { beats: 4, beatType: 4 };
-    // a measure that lost its time change: lengths may differ now
+    // A measure that lost its time change now has the length of the previous time signature, so
+    // every measure is refitted.
     d.measures.forEach((_, mi) => refit(d, mi, measureTicks(timeAt(d as Score, mi))));
   });
 }
@@ -577,6 +596,7 @@ export function setStaffClef(score: Score, staff: string, clef: Clef): Score {
 export function setMeta(score: Score, patch: Partial<Score['meta']>): Score {
   return edit(score, (d) => { for (const [k, v] of Object.entries(patch)) { if (v) (d.meta as Record<string, string>)[k] = v; else delete (d.meta as Record<string, string>)[k]; } });
 }
+
 // ------------------------------------------------------------------ staves
 
 export type Connection = 'brace' | 'bracket' | undefined;
@@ -620,8 +640,9 @@ export function addStaff(score: Score, o: { clef: Clef; name?: string; at?: numb
     const at = Math.max(0, Math.min(o.at ?? d.staves.length, d.staves.length));
     const conn = connections(score);
     d.staves.splice(at, 0, { id, clef: { ...o.clef }, ...(o.name ? { name: o.name } : {}) });
-    // inserting between two joined staves splits the join
-    const nc = [...conn.slice(0, Math.max(0, at - 1)), ...(at > 0 && at < score.staves.length ? [undefined, undefined] : at > 0 ? [undefined] : [undefined]), ...conn.slice(at)];
+    // Inserting between two joined staves splits the join: both neighbouring connections become
+    // unconnected (`nc` lists the connection after each staff).
+    const nc = [...conn.slice(0, Math.max(0, at - 1)), ...(at > 0 && at < score.staves.length ? [undefined, undefined] : [undefined]), ...conn.slice(at)];
     d.groups = groupsFrom(d.staves.map((s) => s.id), nc.slice(0, d.staves.length - 1)) as Draft<Score['groups']>;
     d.measures.forEach((m, mi) => { m.staves[id] = { voices: [{ id: 1, items: measureRest(measureTicks(timeAt(d as Score, mi))) as Draft<Item>[] }] }; });
   });
@@ -676,8 +697,6 @@ export function removeVoice(score: Score, loc: Loc): Score {
   });
 }
 
-void PPQ; void isTuplet; void itemTicks;
-
 /** Paste events (as copied from a voice) one after another from `tick`; slur flags are not carried over. */
 export function pasteEvents(score: Score, loc: Loc, tick: number, evs: Event[]): Score {
   return edit(score, (d) => {
@@ -720,7 +739,8 @@ export function makeBeam(score: Score, loc: Loc, from: number, to: number): Scor
 export function makeTremolo(score: Score, loc: Loc, from: number, to: number, beams = 2): Score {
   if (to - from !== 1) throw new EditError('A tremolo joins exactly two notes');
   return edit(score, (d) => {
-    // already a tremolo over exactly these two notes: change its beams instead of nesting another
+    // Already a tremolo over exactly these two notes: change its number of beams instead of
+    // nesting another tremolo inside it (this is what the tremolo buttons do on a second press).
     const v = voiceIn(d, loc);
     const flat = flattenVoice(v as Voice);
     const ea = flat[from]?.ev, eb = flat[to]?.ev;
@@ -737,7 +757,8 @@ export function makeTremolo(score: Score, loc: Loc, from: number, to: number, be
       return false;
     };
     if (again(v.items as Draft<Item>[])) return;
-    // a tremolo does not go inside a beam group: it replaces a beam over exactly these two notes, otherwise refuse
+    // A tremolo does not go inside a beam group: it replaces a beam group over exactly these two
+    // notes, and anything longer is refused (the user must ungroup first).
     const inBeam = (items: Draft<Item>[]): boolean => {
       for (let i = 0; i < items.length; i++) {
         const it = items[i] as Item;

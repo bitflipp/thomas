@@ -1,4 +1,9 @@
 // Pointer interaction on the score: selection, note input, dragging, and the tools that create spanners and marks.
+//
+// A small state machine: `pointerdown` decides from the active tool and what is under the pointer
+// (via the hit index) which `Drag` begins; `pointermove` updates it and the ghost overlay; `pointerup`
+// turns it into a command from src/editor/commands.ts, committed as one undo step. Positions are
+// converted from client pixels to page staff spaces by `locate`.
 import { showHelp } from './Shortcuts.tsx';
 import { signal } from '@preact/signals';
 import { PPQ, baseTicks, flattenVoice, marksOf, measureTicks, timeAt, type Event, type MarkBody, type Score } from '../src/model.ts';
@@ -40,7 +45,8 @@ export function zoomBy(f: number, at?: { x: number; y: number }): void {
   const z0 = zoom.peek();
   fit.value = false;
   zoom.value = Math.max(0.2, Math.min(4, z0 * f));
-  // the pane keeps the point under the cursor in place once it has re-rendered at the new size
+  // The pane keeps the point under the cursor in place once it has re-rendered at the new size:
+  // `zoomAnchor` carries the cursor position and the zoom ratio to the pane (see `takeZoomAnchor`).
   zoomAnchor = at && zoom.peek() !== z0 ? { ...at, r: zoom.peek() / z0 } : null;
 }
 /** Set by `zoomBy`, consumed by the score pane after its next render. */
@@ -147,7 +153,9 @@ export function onPointerDown(e: PointerEvent): void {
     if (g) seek(measureTick(g.mi) + snapTick(g, lenOf(score.peek(), g.mi), w.x, PPQ / 4).tick);
     return;
   }
-  // select tool
+  // Select tool. Clicking a target selects it (shift/ctrl adds); pressing on a head or mark also
+  // starts a drag. Clicking empty space starts a marquee. A click on something that is already
+  // part of a multi-selection keeps that selection.
   const additive = e.shiftKey || e.ctrlKey || e.metaKey;
   if (target) {
     const r = target.ref;

@@ -1,8 +1,10 @@
+// Inspector: edits the properties of whatever is selected (event, mark, slur, tuplet, measure) or of
+// the score and its staves when nothing is. Every control calls a command from src/editor/commands.ts through `run`, so
+// each change is one undo step and refusals appear as toasts.
 import { useState } from 'preact/hooks';
-import { timeAt, keyAt, type Event, type MarkBody, type NoteEvent } from '../src/model.ts';
+import { timeAt, keyAt, flattenVoice, type Event, type MarkBody, type NoteEvent } from '../src/model.ts';
 import * as C from '../src/editor/commands.ts';
 import { eventOf, markOf, tupletOf, voiceOf, type Ref } from '../src/editor/addr.ts';
-import { flattenVoice } from '../src/model.ts';
 import { score, selection, run, space, dur, dots } from './state.ts';
 import { chooseDuration, chooseDots, nudge, flipStem, slurSelection, tieSelection } from './actions.ts';
 import { deleteSelection, evRefs } from './interact.ts';

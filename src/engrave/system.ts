@@ -1,7 +1,11 @@
-// Line breaking, system assembly, vertical layout and pagination.
+// Line breaking, system assembly, vertical layout and pagination: the top level of the engraver.
+//
+// `engrave` runs the whole pipeline: prepare the score, space every measure, choose the systems
+// (`planSystems`), justify and draw each system's notes, run the spanners over all systems, then
+// finalise (staff distances from the skylines, staff lines, clefs, barlines, brace) and paginate.
 import { keyAt, timeAt, type Score, type Clef } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
-import { prepare, posToY, keyAlter, type Prepared } from './prep.ts';
+import { prepare, posToY, type Prepared } from './prep.ts';
 import { spaceMeasure, placeMeasure, COMPRESS, type MeasureSpacing } from './spacing.ts';
 import { drawSystemNotes, xAtTick, D, CROSS_GAP0, type SysCtx } from './draw.ts';
 import { drawSpanners } from './spanners.ts';
@@ -10,13 +14,18 @@ import { Skyline, oid, tagFrom, type Page, type Prim } from './scene.ts';
 const sm = loadSmufl();
 
 export interface EngraveOptions {
-  respectBreaks?: boolean; // honour breakBefore flags from the score (default true)
+  /** Honour the score's `breakBefore` flags (default true). */
+  respectBreaks?: boolean;
+  /** Spread the systems of full pages over the page height (default true). */
   justifyVertical?: boolean;
-  fillLast?: boolean; // justify the last system however short it is (editors: room to click in)
-  measureNumbers?: 'system' | 'all' | 'none'; // default 'system': first measure of every system but the first
+  /** Justify the last system however short it is (editors want room to click in). */
+  fillLast?: boolean;
+  /** Default 'system': the first measure of every system but the first. */
+  measureNumbers?: 'system' | 'all' | 'none';
   warn?: (m: string) => void;
 }
 
+/** Staff positions (half spaces above the bottom line) of the sharps and flats of a key signature in the treble clef, in order of fifths; other clefs shift them by whole octaves. */
 const SHARP_POS_TREBLE = [8, 5, 9, 6, 3, 7, 4];
 const FLAT_POS_TREBLE = [4, 7, 3, 6, 2, 5, 1];
 
@@ -28,7 +37,8 @@ export function clefGlyph(c: Clef, change = false): { name: string; y: number } 
 }
 
 function keyPositions(fifths: number, clef: Clef): number[] {
-  // shift pattern from treble clef to the given clef
+  // `bottom` is the diatonic step number of the bottom line; the treble pattern moves by the difference
+  // modulo an octave (a seventh), so e.g. bass clef sharps sit a third lower.
   const bottom = (c: Clef) => {
     const sign = c.sign === 'G' ? 4 * 7 + 4 : c.sign === 'F' ? 3 * 7 + 3 : 4 * 7;
     return sign - 2 * (c.line - 1) + 7 * (c.octave ?? 0);
@@ -57,8 +67,17 @@ function prefixWidth(prep: Prepared, mi: number, first: boolean): number {
   return w;
 }
 
+/** The measures a..b (inclusive) that make up one system. */
 interface SysPlan { a: number; b: number; last: boolean }
 
+/**
+ * Chooses the line breaks by dynamic programming over the measures. A system a..b costs more the
+ * further its natural width is from the line width W: a quadratic penalty for slack, a larger one for
+ * having to squeeze (but still possible down to `COMPRESS`), a very large one for not fitting at all
+ * (only a single measure may do that), plus a constant per system so fewer lines are preferred. The
+ * last line of the piece is not stretched at all when it is under 55 % full, so it costs nothing then. Forced breaks split the piece
+ * into independent segments first. At most 14 measures are tried per line.
+ */
 function planSystems(prep: Prepared, spN: MeasureSpacing[], spF: MeasureSpacing[], W: number, forced: Set<number>): SysPlan[] {
   const n = spN.length;
   const natural = (a: number, b: number, comp = false) => {
@@ -104,12 +123,16 @@ function planSystems(prep: Prepared, spN: MeasureSpacing[], spF: MeasureSpacing[
   return plans;
 }
 
-/** Where a measure of a staff sits on its page (staff spaces); `cols` are the x positions of its rhythmic columns. */
+/** Where a measure of a staff sits on its page (staff spaces); `cols` are the x positions of its rhythmic columns, which the editor snaps to. */
 export interface MeasureGeom { page: number; sys: number; mi: number; staff: number; x0: number; x1: number; y: number; cols: { tick: number; x: number }[] }
+/** Where a system sits: its measure range, horizontal extent and the page y of each staff's top line. */
 export interface SystemGeom { page: number; sys: number; a: number; b: number; x0: number; x1: number; staffY: number[] }
+/** The page geometry of the whole piece, for the editor's hit testing (see src/editor/hit.ts). */
 export interface Layout { systems: SystemGeom[]; measures: MeasureGeom[] }
+/** The result of engraving: pages of primitives plus the layout geometry. */
 export interface Engraved { pages: Page[]; systems: number; staffSpace: number; layout: Layout }
 
+/** Engraves the whole score. Vertical sizes are only known after the spanners are placed, so the staff distances come last. */
 export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const warn = opts.warn ?? (() => {});
   const respect = opts.respectBreaks ?? true;
@@ -130,7 +153,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   if (respect) score.measures.forEach((m, mi) => { if (m.breakBefore) forced.add(mi); });
   const plans = planSystems(prep, spN, spF, W, forced);
 
-  // ---- build systems
+  // ---- Build systems. Each system is justified by solving for the stretch factor that makes
+  // its measures exactly fill the line (bisection), then its notes are drawn.
   const systems: SysCtx[] = [];
   for (const [index, plan] of plans.entries()) {
     const prefix = prefixWidth(prep, plan.a, plan.a === 0);
@@ -169,7 +193,9 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
 
   for (const ctx of systems) {
     drawSystemNotes(ctx);
-    // cross-staff beams are drawn for a given distance between the staves: settle on one that satisfies them and the skylines
+    // A cross-staff beam is drawn for a given distance between the staves, and the beam itself changes
+    // what room the gap needs: iterate a few times until the gap satisfies both, then pin it so later
+    // phases may widen but never shrink it.
     const crossing = ctx.gapNeed.some((g) => g > 0) || prep.allEvs.some((e) => e.mi >= ctx.a && e.mi <= ctx.b && e.staff !== e.home);
     if (!crossing) continue;
     for (let it = 0; it < 4; it++) {
@@ -185,7 +211,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     ctx.pinned = true;
   }
   drawSpanners(systems);
-  // slurs and marks may need more room between the staves of a system whose gap was fixed for its cross-staff beams: widen it and redraw
+  // Slurs and marks may need more room between the staves of a system whose gap was pinned for its
+  // cross-staff beams: widen it and redraw.
   for (let it = 0; it < 4; it++) {
     let changed = false;
     for (const ctx of systems) if (ctx.pinned) for (let s = 1; s < nS; s++) {
@@ -200,7 +227,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     drawSpanners(systems);
   }
 
-  // ---- finalize each system: staff positions, staff lines, clefs, barlines, brace
+  // ---- Finalize each system: staff positions from the skyline extents, then staff lines, clefs,
+  // key/time signatures, measure numbers, barlines and the brace, in system coordinates.
   const sysPrims: Prim[][] = [];
   const sysTop: number[] = [], sysBottom: number[] = [];
   for (const ctx of systems) {
@@ -213,12 +241,14 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     alignDynamics(ctx, nS);
     const P: Prim[] = [];
     const first = ctx.a === 0;
-    // staves
+    // Per staff: the five lines, the notes drawn earlier (shifted down to this staff's y), then
+    // the clef, key and time signature at the left.
     for (let s = 0; s < nS; s++) {
       const y0 = ctx.staffY[s];
       for (let l = 0; l < 5; l++) P.push({ t: 'line', x1: 0, x2: ctx.width, y1: y0 + l, y2: y0 + l, w: D.staffLineThickness as number, k: 'staff' });
       for (const p of ctx.prims[s]) P.push(shift(p, 0, y0));
-      // clef + key + time
+      // Initial clef, then key signature, then the time signature, left to right. The time
+      // signature is shown at the start of the piece only; later ones are drawn mid-system.
       const clef = prep.clefAt(s, ctx.a, 0);
       const cg = clefGlyph(clef);
       P.push({ t: 'glyph', name: cg.name, x: 0.9, y: y0 + cg.y, k: 'clef', o: oid({}) });
@@ -231,7 +261,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
         kx += 0.9;
       }
       if (first) timeSig(P, kx, y0, timeAt(score, ctx.a));
-      // mid-system key/time changes and clef changes
+      // Changes inside the system: a time signature at the start of its measure and clef changes
+      // at their column, placed left of the notes of that column (`L` is the column's left extent).
       for (let mi = ctx.a; mi <= ctx.b; mi++) {
         if (mi > ctx.a && score.measures[mi].time) timeSig(P, ctx.mx[mi] + 0.6, y0, timeAt(score, mi));
         for (const mk of prep.measures[mi][s].marks) {
@@ -245,7 +276,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
         }
       }
     }
-    // measure numbers (above the first staff; left-aligned at the system start, or at each barline in 'all' mode)
+    // Measure numbers sit above the first staff: at the system start, or at every barline in 'all'
+    // mode. They avoid whatever the skyline holds there (so are placed after the spanners).
     const mode = opts.measureNumbers ?? 'system';
     if (mode !== 'none') {
       const size = 1.8;
@@ -256,7 +288,9 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
         const x = mi === ctx.a ? 0.2 : ctx.mx[mi] + 0.3;
         const w = label.length * size * 0.5 + 0.4;
         let y = Math.min(-0.8, ctx.sky[0].top(x, x + w, 0) - 0.5);
-        if (mi === ctx.a) { // the clef at the start of the system may reach above the staff
+        if (mi === ctx.a) {
+          // The clef at the start of the system may reach above the staff and it is not in the
+          // skyline, so a measure number there is lifted above it explicitly.
           const cb = sm.bbox(clefGlyph(prep.clefAt(0, ctx.a, 0)).name), cy = clefGlyph(prep.clefAt(0, ctx.a, 0)).y;
           if (x + w > 0.9) y = Math.min(y, cy - cb.y1 - 0.5);
         }
@@ -265,7 +299,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       }
       ext[0] = ctx.sky[0].extent();
     }
-    // barlines
+    // Barlines: one line per group of joined staves (a braced pair shares one). The measure's
+    // `barline` asks for a double bar or, at the end of the piece, a thin-thick final bar.
     const bottom = ctx.staffY[nS - 1] + 4;
     const groupsOf: [number, number][] = [];
     const used = new Set<number>();
@@ -274,7 +309,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       if (idx.length) { groupsOf.push([idx[0], idx[idx.length - 1]]); idx.forEach((i) => used.add(i)); }
     }
     for (let s = 0; s < nS; s++) if (!used.has(s)) groupsOf.push([s, s]);
-    const thin = D.thinBarlineThickness as number, thick = D.thickBarlineThickness as number, sep = D.thinThickBarlineSeparation as number ?? 0.4;
+    const thin = D.thinBarlineThickness as number, thick = D.thickBarlineThickness as number;
     P.push({ t: 'line', x1: 0, x2: 0, y1: 0, y2: bottom, w: thin, k: 'barline', o: oid({}) });
     for (let mi = ctx.a; mi <= ctx.b; mi++) {
       const bx = ctx.mx[mi] + ctx.placed[mi].endX;
@@ -295,8 +330,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
         tagFrom(P, nBar, 'barline', oid({}));
       }
     }
-    void sep;
-    // brace / bracket
+    // Brace or bracket for each staff group. A brace glyph is scaled to the height of its staves,
+    // with its width following in proportion up to a maximum; a bracket is a plain thick line.
     for (const g of score.groups) {
       const idx = g.staves.map((id) => score.staves.findIndex((s) => s.id === id)).filter((i) => i >= 0).sort((x, y) => x - y);
       if (!idx.length) continue;
@@ -306,7 +341,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
         const bh = b.y1 - b.y0;
         const sy = (y1 - y0) / bh;
         const sx = Math.min(3.2, 0.75 * sy);
-        // glyph origin is at the bottom of the brace in SMuFL; place so its top edge matches the staff top
+        // The glyph origin is at the bottom of the brace in SMuFL, with the outline extending upwards:
+        // place it so that its top edge matches the top of the first staff.
         P.push({ t: 'glyph', name: 'brace', x: -0.35 - b.x1 * sx, y: y1 + b.y0 * sy, sx, sy, k: 'brace', o: oid({}) });
       } else {
         P.push({ t: 'line', x1: -0.8, x2: -0.8, y1: y0 - 0.2, y2: y1 + 0.2, w: D.bracketThickness as number, k: 'brace', o: oid({}) });
@@ -317,7 +353,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     sysBottom.push(Math.max(bottom, ...ext.map((e, s) => ctx.staffY[s] + e.bottom)));
   }
 
-  // ---- pages
+  // ---- Pages. Systems are placed top to bottom below the header (page 1) or the margin; a system
+  // that does not fit in the remaining height, or that follows a forced page break, starts a new page.
   const pt = 0.3528 / S; // 1pt in staff spaces
   const pages: Page[] = [];
   const footerH = 3.5;
@@ -325,7 +362,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const newPage = (): Page => { const p: Page = { width: pageW, height: pageH, prims: [] }; pages.push(p); return p; };
   const meta = score.meta;
   let page = newPage();
-  // header on first page
+  // Header on the first page: title, subtitle, composer. The rights line and the page numbers
+  // are added after the systems are placed.
   let top1 = margin + 1.5;
   const tsz = 22 * pt, ssz = 14 * pt, csz = 11 * pt;
   if (meta.title) { top1 += tsz * 0.9; page.prims.push({ t: 'text', x: pageW / 2, y: top1, s: meta.title, size: tsz, anchor: 'middle' }); }
@@ -353,7 +391,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     pageSystems[pageIdx].push(i);
     cursor = y + sysBottom[i];
   });
-  // vertical justification of full pages
+  // Vertical justification: on every page but the last, spread the leftover height evenly
+  // between the systems, so that full pages end at the bottom margin.
   if (opts.justifyVertical ?? true) {
     pageSystems.forEach((list, pi) => {
       if (pi === pageSystems.length - 1 || list.length < 2) return;
@@ -385,13 +424,15 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
 
 /** Distance between the bottom line of staff s-1 and the top line of staff s that the content of both requires. */
 function staffGap(ctx: SysCtx, s: number): number {
-  // minimum gap from pairwise overlap in x (a tall slur in one staff only matters where the other staff has content)
+  // First the gap that the pairwise overlap in x requires: a tall slur in one staff only matters
+  // where the other staff has content below it.
   let need = 0;
   for (const a of ctx.sky[s - 1].boxes) for (const b of ctx.sky[s].boxes) {
     if (a.spanner && b.spanner) continue;
     if (a.x1 > b.x0 && a.x0 < b.x1) need = Math.max(need, a.y1 - 4 - b.y0 + 1.0);
   }
-  // ... and clear of both staves' lines: content hanging below the upper staff, or above the lower one
+  // Then clear of both staves' lines, whether or not anything overlaps in x: content hanging
+  // below the upper staff or above the lower one needs room of its own, and 3.7 is the minimum.
   for (const a of ctx.sky[s - 1].boxes) if (!a.spanner) need = Math.max(need, a.y1 - 4 + 0.7);
   for (const b of ctx.sky[s].boxes) if (!b.spanner) need = Math.max(need, -b.y0 + 0.7);
   return Math.max(3.7, need);
@@ -411,8 +452,11 @@ function alignDynamics(ctx: SysCtx, nS: number): void {
     if (!below.length || !above.length) continue;
     const target = ctx.staffY[s] + below[0].a!;
     const dy = target - (ctx.staffY[s + 1] + above[0].a!);
-    if (dy >= 0) continue; // only ever move up, away from the lower staff
-    // ... but never into the upper staff's own content (notes standing below it, ledger lines, ...)
+    // Only ever move up, away from the lower staff: dy < 0 means the lower staff's row sits below
+    // the upper staff's row and has to rise to its baseline...
+    if (dy >= 0) continue;
+    // ... but never into the upper staff's own content (notes standing below it, ledger lines, ...):
+    // `dyMin` is the lowest it may go, from the upper staff's skyline.
     let dyMin = -Infinity;
     for (const p of above) {
       const [x0, x1] = span(p);
@@ -440,15 +484,8 @@ function alignDynamics(ctx: SysCtx, nS: number): void {
   }
 }
 
+/** Draws a time signature as stacked digits, each row centred on the wider one. */
 function timeSig(P: Prim[], x: number, y0: number, ts: { beats: number; beatType: number }): void {
-  const draw = (n: number, y: number) => {
-    const s = String(n);
-    const w = sm.adv('timeSig2');
-    const total = s.length * w;
-    let px = x;
-    void total;
-    for (const ch of s) { P.push({ t: 'glyph', name: `timeSig${ch}`, x: px, y }); px += w; }
-  };
   const wn = String(ts.beats).length, wd = String(ts.beatType).length;
   const w = sm.adv('timeSig2');
   const maxw = Math.max(wn, wd) * w;
@@ -457,7 +494,6 @@ function timeSig(P: Prim[], x: number, y0: number, ts: { beats: number; beatType
     let px = x + off;
     for (const ch of String(n)) { P.push({ t: 'glyph', name: `timeSig${ch}`, x: px, y }); px += w; }
   };
-  void draw;
   const n0 = P.length;
   drawC(ts.beats, y0 + 1, wn);
   drawC(ts.beatType, y0 + 3, wd);
@@ -472,4 +508,3 @@ function shift(p: Prim, dx: number, dy: number): Prim {
     case 'path': return { ...p, d: p.d.replace(/(-?\d*\.?\d+(?:e-?\d+)?)[ ,](-?\d*\.?\d+(?:e-?\d+)?)/gi, (_m, a: string, b: string) => `${(parseFloat(a) + dx).toFixed(3)} ${(parseFloat(b) + dy).toFixed(3)}`) };
   }
 }
-void keyAlter;

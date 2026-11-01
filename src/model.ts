@@ -1,7 +1,13 @@
-// Core score model. The model (JSON-serialisable) is the source of truth;
-// the text format (textformat.ts) and MusicXML import produce/consume it.
+// Core score model. The model (plain JSON-serialisable data) is the source of truth; the text format
+// (textformat.ts) and the MusicXML importer produce and consume it, the engraver and playback read it,
+// and the editor changes it only through pure functions (src/editor/commands.ts).
+//
+// Time is measured in integer ticks so that no rounding ever happens in rhythm arithmetic. Structure:
+// Score > Measure > StaffMeasure (per staff id) > Voice > Item tree. Marks (dynamics, hairpins, pedal,
+// ...) are not stored with ticks but hang on the events they start at; see `marksOf`.
 
-export const PPQ = 3360; // ticks per quarter note (divisible by 2^5, 3, 5, 7)
+/** Ticks per quarter note: divisible by 2^5, 3, 5 and 7, so 64th notes and tuplets up to septuplets are exact integers. */
+export const PPQ = 3360;
 
 export type Step = 'c' | 'd' | 'e' | 'f' | 'g' | 'a' | 'b';
 export const STEPS: Step[] = ['c', 'd', 'e', 'f', 'g', 'a', 'b'];
@@ -61,31 +67,39 @@ export interface TupletGroup {
   kind: 'tuplet';
   actual: number;
   normal: number;
-  bracket?: boolean; // undefined = automatic
+  /** Draw a bracket? Undefined: automatic (a bracket unless the whole tuplet is under one beam). */
+  bracket?: boolean;
   number?: 'actual' | 'none';
-  label?: number; // displayed number if different from `actual`
+  /** The displayed number, if it differs from `actual`. */
+  label?: number;
   placement?: 'above' | 'below';
   items: Item[];
 }
-// Explicit beam group (events must be consecutive in the voice, possibly inside tuplets) with at least two notes.
-// Events outside explicit groups are beamed automatically (see beams.ts); `noBeam` opts a note out.
+/**
+ * Explicit beam group: at least two notes, consecutive in the voice (possibly inside tuplets).
+ * Events outside explicit groups are beamed automatically (see beams.ts); `noBeam` opts a note out.
+ * A group exists only where the automatic choice would be different.
+ */
 export interface BeamGroup { kind: 'beam'; items: Item[] }
-// Two-note (fingered) tremolo: exactly two notes, drawn as `beams` beams between them.
+/** Two-note (fingered) tremolo: exactly two notes, drawn with `beams` beams between them. */
 export interface TremoloGroup { kind: 'tremolo'; beams: number; items: Item[] }
 export type Item = Event | TupletGroup | BeamGroup | TremoloGroup;
 
 export interface Voice {
   id: number;
   items: Item[];
-  end?: MarkBody[]; // marks at the end of the measure (the stops of spans that run up to the barline)
+  /** Marks at the end of the measure: the stops of spans (hairpin, pedal, ottava) that run up to the barline. */
+  end?: MarkBody[];
 }
 
 export type Placement = 'above' | 'below';
 export type MarkBody =
   | { type: 'dynamic'; text: string; placement?: Placement }
   | { type: 'hairpin'; kind: 'cresc' | 'dim'; id: number; placement?: Placement }
-  | { type: 'pedal' } // press; a press while the pedal is down is a change
-  | { type: 'ottava'; dir: 'up' | 'down' } // up = 8va (written lower than sounding, line above the staff)
+  /** Pedal press; a press while the pedal is down is a change (release and press again). */
+  | { type: 'pedal' }
+  /** `up` = 8va: written an octave lower than it sounds, line above the staff. */
+  | { type: 'ottava'; dir: 'up' | 'down' }
   | { type: 'stop'; of: 'pedal' | 'ottava' }
   | { type: 'stop'; of: 'hairpin'; id: number }
   | { type: 'clef'; clef: Clef }
@@ -105,8 +119,10 @@ export interface TimeSig { beats: number; beatType: number }
 export interface Clef { sign: 'G' | 'F' | 'C'; line: number; octave?: number }
 
 export interface Measure {
-  time?: TimeSig; // set when changed (always set on first measure)
-  key?: number; // fifths; set when changed
+  /** Set where the time signature changes (always on the first measure). */
+  time?: TimeSig;
+  /** Key signature in fifths (negative: flats); set where it changes. */
+  key?: number;
   breakBefore?: 'system' | 'page';
   barline?: 'single' | 'final' | 'double';
   staves: Record<string, StaffMeasure>;
@@ -117,10 +133,13 @@ export interface StaffGroup { kind: 'brace' | 'bracket'; staves: string[] }
 
 export interface Meta { title?: string; subtitle?: string; composer?: string; rights?: string }
 export interface PageSetup {
-  width: number; height: number; // mm
-  margin: number; // mm
-  staffSpace: number; // mm per staff space
-  measureNumbers?: 'all' | 'none'; // default (undefined): the first measure of every system but the first
+  /** Page size and margin in millimetres. */
+  width: number; height: number;
+  margin: number;
+  /** Millimetres per staff space: the global engraving scale. */
+  staffSpace: number;
+  /** Undefined: number the first measure of every system but the first. */
+  measureNumbers?: 'all' | 'none';
 }
 
 export interface Score {
@@ -131,7 +150,7 @@ export interface Score {
   measures: Measure[];
 }
 
-// ---------------------------------------------------------------- helpers
+// ---------------------------------------------------------------- helpers: durations, flattening, marks
 
 export function gcd(a: number, b: number): number { return b ? gcd(b, a % b) : Math.abs(a); }
 

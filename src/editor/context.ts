@@ -1,7 +1,11 @@
-// Musical context at a position: clef, octave shift, key and the accidentals already in force; and pitch <-> staff position.
+// Musical context at a position: clef, octave shift, key and the accidentals already in force; and
+// pitch <-> staff position. Editing needs this to turn a click on a staff line into a pitch the way
+// a reader would (a sharp earlier in the bar still applies) and to keep pitches sounding right under
+// 8va lines and clef changes. All of it is recomputed from the score on demand: nothing is cached.
 import { STEPS, flattenVoice, marksOf, keyAt, pitchStep, type Clef, type Pitch, type Score, type Step } from '../model.ts';
 import { clefBottomStep, keyAlter } from '../engrave/prep.ts';
 
+/** The clef in force at `tick` of measure `mi`: the staff's initial clef, then every clef change before that point. */
 export function clefAt(score: Score, staff: string, mi: number, tick: number): Clef {
   let c = score.staves.find((s) => s.id === staff)!.clef;
   for (let m = 0; m <= mi; m++) for (const mk of marksOf(score.measures[m].staves[staff])) if (mk.type === 'clef' && (m < mi || mk.tick <= tick)) c = mk.clef;
@@ -21,6 +25,7 @@ export function ottavaAt(score: Score, staff: string, mi: number, tick: number):
 
 /** Written staff position (half spaces above the bottom line) -> diatonic step number (c0 = 0). */
 export function stepAtPos(pos: number, clef: Clef): number { return clefBottomStep(clef) + pos; }
+/** Inverse of `stepAtPos` for a sounding pitch; `shift` is the `ottavaAt` shift of its position. */
 export function posOf(p: Pitch, clef: Clef, shift = 0): number { return pitchStep({ ...p, octave: p.octave + shift }) - clefBottomStep(clef); }
 
 /** The alteration a plain (unmarked) note on this step has here: the key signature, then accidentals earlier in the measure. */
@@ -47,6 +52,7 @@ export function pitchAtPos(score: Score, staff: string, mi: number, tick: number
   return { step, octave: octave - shift, alter: acc ?? alterIn(score, staff, mi, tick, step, octave) };
 }
 
+/** Spelling of each pitch class (0 = c) when transposing up: sharps, or flats when going down. */
 const SHARPS: [Step, number][] = [['c', 0], ['c', 1], ['d', 0], ['d', 1], ['e', 0], ['f', 0], ['f', 1], ['g', 0], ['g', 1], ['a', 0], ['a', 1], ['b', 0]];
 const FLATS: [Step, number][] = [['c', 0], ['d', -1], ['d', 0], ['e', -1], ['e', 0], ['f', 0], ['g', -1], ['g', 0], ['a', -1], ['a', 0], ['b', -1], ['b', 0]];
 /** Chromatic transposition by semitones: sharps going up, flats going down. */

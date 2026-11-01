@@ -1,4 +1,6 @@
-// Command line: thomas <command> ...
+// Command line: `thomas <import|render|check> ...` (see USAGE below). A thin wrapper: parsing, engraving
+// and drawing all live in the modules imported here; this file only reads and writes files and
+// shells out to rsvg-convert for PDF output.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, basename } from 'node:path';
@@ -30,7 +32,9 @@ const USAGE = `usage:
   --space <mm> (render, check) overrides the staff space, the global engraving scale (default: the file's page line)`;
 
 const [cmd, ...rawArgs] = process.argv.slice(2);
-// --space <mm> / --space=<mm>: override the staff space (the global engraving scale) of the score's page setup
+// `--space <mm>` / `--space=<mm>` overrides the staff space, the global engraving scale of the score's
+// page setup. It applies to every command that engraves, so it is pulled out before the commands
+// look at their positional arguments and flags.
 let spaceOverride: number | undefined;
 const args: string[] = [];
 for (let i = 0; i < rawArgs.length; i++) {

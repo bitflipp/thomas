@@ -15,40 +15,52 @@ export type Scope = 'own' | 'any';
 
 /** Pairs of element kinds that may overlap. `own`: only when both belong to the same object / group. */
 export const ALLOW: readonly [Kind, Kind, Scope][] = [
-  // parts of one note
+  // Parts of one note: heads, stems, dots, flags and beams are drawn to touch each other,
+  // so only collisions with *other* objects are meaningful. Scope `own` ensures that.
   ['head', 'stem', 'own'], ['head', 'dot', 'own'], ['head', 'head', 'own'],
   ['stem', 'beam', 'own'], ['stem', 'flag', 'own'],
-  ['stem', 'tuplet', 'own'], // bracket hooks touch the stems of their group
-  // ledger lines run through the heads and stems they serve
+  // The hooks of a tuplet bracket end on the stems of its group (scope `own`: a bracket touching
+  // the stem of some other voice is still reported).
+  ['stem', 'tuplet', 'own'],
+  // Ledger lines run through the heads (and across stems) they serve. Scope `any` because a
+  // ledger line also serves the heads of other voices at that position.
   ['ledger', 'head', 'any'], ['ledger', 'stem', 'any'],
-  // staff furniture
+  // Staff furniture: the barline at the start of a system meets the brace; neither belongs
+  // to any note, so there is no owner to scope it by.
   ['barline', 'brace', 'any'],
-  // spanners run across barlines
+  // Slurs, ties, hairpins, pedal and ottava lines legitimately run across barlines; no other
+  // kind may touch one.
   ['barline', 'slur', 'any'], ['barline', 'tie', 'any'], ['barline', 'hairpin', 'any'], ['barline', 'pedal', 'any'], ['barline', 'ottava', 'any'],
 ];
 
 const allowed = new Map<string, Scope>();
 for (const [a, b, s] of ALLOW) { allowed.set(`${a}|${b}`, s); allowed.set(`${b}|${a}`, s); }
 
-const EPS = 0.03; // overlaps thinner than this (staff spaces) count as touching
+/** Overlaps thinner than this (staff spaces) count as touching: engraving routinely butts shapes together exactly. */
+const EPS = 0.03;
 
 interface Shape {
   p: Prim;
   x0: number; y0: number; x1: number; y1: number;
-  rings: number[][]; // flat [x, y, x, y, ...], closed implicitly
+  /** Outline polygons, each a flat [x, y, x, y, ...] list that is closed implicitly (glyphs have several rings, e.g. a notehead's hole). */
+  rings: number[][];
+  /** The shape fills its bounding box exactly, so a box test is already exact. */
   boxy: boolean;
 }
 
 export interface Collision {
   page: number;
   a: Prim; b: Prim;
-  x: number; y: number; w: number; h: number; // overlap box, page staff spaces
+  /** The overlapping region (of the two bounding boxes), in page staff spaces. */
+  x: number; y: number; w: number; h: number;
   mode: 'box' | 'outline';
 }
 
 const sm = loadSmufl();
 
 // ---- path flattening
+// Glyph and curve outlines come as SVG path data; to intersect them they are approximated by polygons
+// (Béziers sampled at 6-8 points, which is plenty at the 0.03 tolerance). Rings of a glyph are cached by name.
 const glyphRings = new Map<string, number[][]>();
 function flattenPath(d: string): number[][] {
   const tok = d.match(/[MLHVCQZmlhvcqz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
@@ -141,6 +153,8 @@ function shapeOf(p: Prim): Shape | null {
 }
 
 // ---- outline intersection
+// Two polygon sets overlap if any pair of edges crosses, or if one lies entirely inside the other (no edge
+// crossing then). Edges outside the bounding-box overlap of the two shapes are skipped quickly.
 function segCross(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): boolean {
   const d1 = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
   const d2 = (bx - ax) * (dy - ay) - (by - ay) * (dx - ax);
@@ -176,11 +190,13 @@ function outlinesIntersect(a: Shape, b: Shape): boolean {
       }
     }
   }
-  // no crossing edges: one outline may lie completely inside the other
+  // No crossing edges. The outlines may still overlap if one lies completely inside the other, which
+  // one vertex of each tested against the other's rings (even-odd rule) detects.
   return inside(b.rings, a.rings[0][0], a.rings[0][1]) || inside(a.rings, b.rings[0][0], b.rings[0][1]);
 }
 
 // ---- pair policy
+// Whether two primitives are *meant* to touch: parts of one note, members of one beam or tuplet group, ...
 function related(a: Prim, b: Prim): boolean {
   if (a.o !== undefined && a.o === b.o) return true;
   if (a.o !== undefined && b.g?.includes(a.o)) return true;

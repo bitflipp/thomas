@@ -1,5 +1,9 @@
 // Analysis pass: turns the Score into per-event layout records (written pitch positions,
 // accidentals, stem directions, beam groups ...) before any horizontal/vertical layout.
+//
+// The `EvL` records made here are shared by every later phase; spacing and drawing write their
+// results back onto the same objects (x, head offsets, stem tips). `prepare` works one measure at a
+// time but carries state across measures where notation does (clefs, ottava, ties into the next measure).
 import {
   marksOf, STEPS, flattenVoice, measureTicks, pitchStep, timeAt, keyAt,
   type Score, type Grace, type Clef, type TimedEvent, type NoteEvent, type Event, type TupletGroup, type TremoloGroup, type Pitch, type Mark, type Voice,
@@ -59,13 +63,18 @@ export interface EvL {
   tremIsFirst?: boolean;
   tremBeams?: number;
   tupletKeys: TupletGroup[];
-  // layout results
-  x: number; // absolute x within system of normal notehead left edge
+  // Everything below is filled in by spacing and drawing, not by `prepare`. (This is why
+  // `spaceMeasure` must reset what it writes before it writes: it runs more than once.)
+  /** Absolute x within the system of the normal notehead's left edge. */
+  x: number;
   stemX?: number;
-  stemTip?: number; // y
-  stemBase?: number; // y
-  ottavaShift: number; // -1 = 8va (written lower), +1 = 8vb
-  shiftDx: number; // sideways shift of the whole event to avoid clashing with another voice's heads
+  /** Stem end farthest from the heads, and the end at the heads (staff-local y). */
+  stemTip?: number;
+  stemBase?: number;
+  /** -1 = under an 8va (written lower than sounding), +1 = under an 8vb. */
+  ottavaShift: number;
+  /** Sideways shift of the whole event to avoid clashing with another voice's heads. */
+  shiftDx: number;
 }
 
 export interface BeamL {
@@ -107,7 +116,8 @@ export function prepare(score: Score): Prepared {
   const staffIdx = new Map(score.staves.map((s, i) => [s.id, i]));
   const measureLen = score.measures.map((_, mi) => measureTicks(timeAt(score, mi)));
 
-  // clef timeline per staff: list of {mi,tick,clef}
+  // Clef timeline per staff: every clef change as {mi, tick, clef}, in score order. `clefAt`
+  // below starts from the staff's initial clef and applies the changes up to the position.
   const clefChanges: { mi: number; tick: number; clef: Clef }[][] = score.staves.map(() => []);
   score.measures.forEach((m, mi) => {
     for (const [sid, sm] of Object.entries(m.staves)) for (const mk of marksOf(sm)) if (mk.type === 'clef') clefChanges[staffIdx.get(sid)!].push({ mi, tick: mk.tick, clef: mk.clef });
@@ -118,8 +128,9 @@ export function prepare(score: Score): Prepared {
     return c;
   };
 
-  // ottava timeline per staff
-  type Ott = { mi: number; tick: number; shift: number }; // shift: -1 (8va), +1 (8vb), 0 stop
+  // Ottava timeline per staff, built like the clef timeline. `shift` is -1 for 8va (written an
+  // octave lower than it sounds), +1 for 8vb and 0 where the line stops.
+  type Ott = { mi: number; tick: number; shift: number };
   const ottChanges: Ott[][] = score.staves.map(() => []);
   score.measures.forEach((m, mi) => {
     for (const [sid, sm] of Object.entries(m.staves)) for (const mk of marksOf(sm)) {
@@ -146,7 +157,8 @@ export function prepare(score: Score): Prepared {
     const bt = beatTicks(timeAt(score, mi));
     const row: StaffMeasureL[] = [];
     const smOf = (si: number) => m.staves[score.staves[si].id] ?? { voices: [] };
-    // ----- pass 1: events of every voice (a cross-staff event takes clef, octave shift and accidentals of its display staff)
+    // ----- Pass 1: the events of every voice. A cross-staff event takes the clef, octave shift and
+    // accidentals of the staff it is displayed on, not of its voice's staff.
     const voicesOf: { id: number; evs: EvL[] }[][] = [];
     for (let si = 0; si < nS; si++) {
       const sm = smOf(si);
@@ -178,9 +190,11 @@ export function prepare(score: Score): Prepared {
       voicesOf.push(voices);
     }
 
-    // ----- pass 2: accidentals per display staff (state per staff in the measure, processed in time order)
+    // ----- Pass 2: accidentals per display staff. The state is per staff for the whole measure, all voices
+    // together in time order (an accidental in one voice still applies to the same pitch in another).
     for (let si = 0; si < nS; si++) {
-      const state = new Map<string, number>(); // "step+oct" -> alter
+      /** Alteration in force per "step+octave" so far in this measure. */
+      const state = new Map<string, number>();
       const all = voicesOf.flatMap((vs) => vs.flatMap((v) => v.evs)).filter((e) => e.staff === si).sort((a, b) => a.start - b.start || a.voice - b.voice);
       for (const e of all) {
         if (e.ev.kind !== 'note') continue;
@@ -200,7 +214,8 @@ export function prepare(score: Score): Prepared {
         ne.pitches.forEach((np, i) => accOf(np, e.heads[i], tiedFromPrev[si].get(`${e.voice}|${pitchStep(np.pitch)}|${np.pitch.alter}`)));
       }
     }
-    // tie carry to next measure (keyed by the staff the tied note is drawn on)
+    // Ties carry into the next measure: a tied note's pitch is not given an accidental again there.
+    // Keyed by the staff the tied note is drawn on.
     for (const t of tiedFromPrev) t.clear();
     for (const voices of voicesOf) for (const v of voices) {
       const last = v.evs[v.evs.length - 1];
@@ -211,17 +226,21 @@ export function prepare(score: Score): Prepared {
       const sm = smOf(si);
       const voices = voicesOf[si];
 
-      // ----- beams
+      // ----- Beams. Explicit groups plus the automatic grouping of src/beams.ts become `BeamL`s
+      // attached to their member events; direction and cross-staff handling come in the later steps.
       for (const v of voices) assignBeams(v, sm.voices.find((x) => x.id === v.id)!, bt);
 
-      // ----- two-note tremolos
+      // ----- Two-note tremolos. Link the two notes of a group to each other, so the stem direction
+      // and drawing can treat them as a pair (the first is flagged `tremIsFirst`).
       for (const v of voices) {
         const pairs = new Map<TremoloGroup, EvL[]>();
         for (const e of v.evs) if (e.te.tremolo && e.ev.kind === 'note') (pairs.get(e.te.tremolo) ?? pairs.set(e.te.tremolo, []).get(e.te.tremolo)!).push(e);
         for (const [g, [a, b]] of pairs) if (b) { a.tremPair = b; b.tremPair = a; a.tremIsFirst = true; a.tremBeams = b.tremBeams = g.beams; }
       }
 
-      // ----- stem directions
+      // ----- Stem directions (`decideDir`): a beam group or tremolo pair shares one direction; with several
+      // voices on a staff the first points up and the others down; a lone voice goes by which side of
+      // the middle line its heads are farther from. An explicit `stem` on the event overrides afterwards.
       for (const v of voices) {
         const done = new Set<BeamL>();
         for (const e of v.evs) {
@@ -247,7 +266,8 @@ export function prepare(score: Score): Prepared {
       }
       for (const v of voices) for (const e of v.evs) if (e.beam && e.beam.dir) e.stem = e.stem && e.ev.kind === 'note' ? e.beam.dir : e.stem;
 
-      // ----- cross-staff beams: the stems of the upper staff's notes point down, those of the lower staff's up
+      // ----- Cross-staff beams: the beam lies between the staves, so the stems of the upper staff's notes
+      // point down and those of the lower staff's up.
       for (const v of voices) {
         const seen = new Set<BeamL>();
         for (const e of v.evs) if (e.beam && !seen.has(e.beam)) {
@@ -260,7 +280,8 @@ export function prepare(score: Score): Prepared {
         }
       }
 
-      // ----- displaced heads in chords
+      // ----- Displaced heads in chords. A second (heads on adjacent positions) cannot sit on one
+      // side of the stem, so one of the two moves to the other side. Needs the stem direction.
       for (const v of voices) for (const e of v.evs) if (e.ev.kind === 'note') displaceHeads(e);
 
       voices.forEach((v) => v.evs.forEach((e) => allEvs.push(e)));

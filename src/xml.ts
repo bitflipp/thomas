@@ -1,4 +1,7 @@
-// Minimal XML parser (elements, attributes, text, entities). Enough for MusicXML.
+// Minimal XML parser (elements, attributes, text, entities), enough for MusicXML.
+//
+// Not a validating or namespace-aware parser: comments, processing instructions and the DOCTYPE are
+// skipped, CDATA is kept as text, and mixed content is concatenated into the element's `text`.
 export interface XNode {
   tag: string;
   attrs: Record<string, string>;
@@ -30,7 +33,9 @@ export function parseXml(src: string): XNode {
       if (stack.length) stack[stack.length - 1].text += src.slice(lt + 9, e);
       i = e + 3; continue;
     }
-    if (src.startsWith('<!', lt)) { // DOCTYPE (may contain [ ... ])
+    if (src.startsWith('<!', lt)) {
+      // DOCTYPE: may contain an internal subset in [ ... ] with its own `>`s, so track the bracket
+      // depth. MusicXML files carry a DOCTYPE with an external reference only, which we ignore.
       let depth = 0, j = lt;
       for (; j < n; j++) {
         if (src[j] === '[') depth++;
@@ -39,7 +44,8 @@ export function parseXml(src: string): XNode {
       }
       i = j + 1; continue;
     }
-    // find end of tag, respecting quotes
+    // Find the end of the tag. A `>` inside a quoted attribute value does not end it, so the
+    // scan remembers the quote character it is in (`q`).
     let j = lt + 1, q = '';
     for (; j < n; j++) {
       const c = src[j];

@@ -1,4 +1,9 @@
 // Ties, slurs and marks (dynamics, hairpins, pedal, octave shifts, tempo, text).
+//
+// Runs after every system's notes are drawn, because all of these can cross system breaks and need
+// to know what stands near them. Obstacles come from each staff's `Skyline` (boxes pushed by the note
+// drawing); placed spanners add their own boxes, so later ones route around earlier ones. Order matters:
+// ties first, then slurs between staves, then ordinary slurs, then marks.
 import { pitchStep, type Mark } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { posToY, type EvL } from './prep.ts';
@@ -15,9 +20,11 @@ function crescent(x0: number, y0: number, x1: number, y1: number, h: number, thi
   const k = h / 0.75;
   const k2 = Math.max(0, k - thick / 0.75);
   const c = (t: number, kk: number) => `${(x0 + L * t).toFixed(3)} ${(y0 + (y1 - y0) * t + s * kk).toFixed(3)}`;
-  // control points sit at fraction `a` of the span in x but follow the chord in y (`t` below), so a small `a` gives steep ends and a flat top
+  // The control points sit at fraction `a` of the span in x but follow the chord in y (the 0.3/0.7
+  // factors), so a small `a` gives steep ends and a flat top.
   const cx = (f: number, kk: number) => `${(x0 + L * f).toFixed(3)} ${(y0 + (y1 - y0) * (f < 0.5 ? 0.3 : 0.7) + s * kk).toFixed(3)}`;
-  // the inner edge ends slightly towards the chord so that the tips keep a visible thickness
+  // The inner edge ends slightly towards the chord (`tip`) so that the tips of the crescent
+  // keep a visible thickness instead of tapering to a hairline.
   const iy0 = y0 - s * tip, iy1 = y1 - s * tip;
   return `M${x0.toFixed(3)} ${y0.toFixed(3)}C${cx(a, k)} ${cx(1 - a, k)} ${x1.toFixed(3)} ${y1.toFixed(3)}L${x1.toFixed(3)} ${iy1.toFixed(3)}C${cx(1 - a, k2)} ${cx(a, k2)} ${x0.toFixed(3)} ${iy0.toFixed(3)}Z`;
 }
@@ -30,7 +37,8 @@ export function drawSpanners(systems: SysCtx[]): void {
   systems.forEach((s, i) => { for (let m = s.a; m <= s.b; m++) sysOf[m] = i; });
 
   const slurs: (() => void)[] = [], crossSlurs: (() => void)[] = [];
-  // ---- per staff, per voice event lists over the whole piece
+  // ---- Per staff: gather each voice's events over the whole piece (ties and slurs run across
+  // measures and systems), then draw this staff's ties and queue its slurs.
   for (let s = 0; s < nS; s++) {
     const voiceEvs = new Map<number, EvL[]>();
     const timeOrder: EvL[] = [];
@@ -39,14 +47,17 @@ export function drawSpanners(systems: SysCtx[]): void {
         if (!voiceEvs.has(v.id)) voiceEvs.set(v.id, []);
         voiceEvs.get(v.id)!.push(...v.evs);
       }
-      // slurs belong to the voice, wherever its (cross-staff) notes are drawn
+      // Slurs belong to the voice, wherever its (cross-staff) notes are drawn; `timeOrder` is the staff's
+      // events by time so that stops can be matched to starts.
       timeOrder.push(...prep.measures[mi][s].voices.flatMap((v) => v.evs).sort((p, q) => p.start - q.start || p.voice - q.voice));
     }
-    // ---- ties
+    // ---- Ties: each tied head connects to the same pitch in the next event of the voice. The
+    // tie of a note whose successor is in another system is drawn in two halves.
     for (const [, evs] of voiceEvs) {
       evs.forEach((e, i) => {
         if (e.ev.kind !== 'note') return;
-        // nested ties of a chord: the arc nearest the chord first, the outer ones around it
+        // Nested ties of a chord are drawn from the inside out: the arc nearest the chord first,
+        // the outer ones around it, so each can clear the previous one through the skyline.
         const order = e.heads.map((_, hi) => hi).sort((p, q) => {
           const pa = tieAbove(e, p), qa = tieAbove(e, q);
           if (pa !== qa) return pa ? -1 : 1;
@@ -66,7 +77,8 @@ export function drawSpanners(systems: SysCtx[]): void {
         });
       });
     }
-    // ---- slurs (collected; those between staves are drawn first so that the others nest around them)
+    // ---- Slurs, matched start to stop by voice and id. They are collected rather than drawn at once:
+    // those between staves go first so that the others nest around them.
     const open = new Map<string, { ev: EvL; side?: 'above' | 'below'; id: number }>();
     for (const e of timeOrder) {
       for (const id of e.ev.slurStop ?? []) {
@@ -78,15 +90,18 @@ export function drawSpanners(systems: SysCtx[]): void {
     }
   }
   for (const f of [...crossSlurs, ...slurs]) f();
-  // ---- marks
+  // ---- Marks: dynamics, hairpins, pedal, ottava, tempo and text. They come last so that they
+  // see the skylines of the slurs and ties and are stacked outside them.
   for (let s = 0; s < nS; s++) drawMarks(systems, sysOf, s);
 }
 
+/** The point where a slur on `side` attaches to `e`: at the stem tip when the stem is on that side, else beyond the outermost head; beyond any articulations on that side. */
 function headPoint(e: EvL, side: 'above' | 'below', margin: number): { x: number; y: number; stemSide: boolean; homed: boolean } {
   const g = geomOf.get(e)!;
   const above = side === 'above';
   const stemSide = e.stem === (above ? 'up' : 'down');
-  // articulations on the same side as the slur: start just beyond them
+  // Articulations on the same side as the slur: start just beyond them, since a slur that
+  // began at the head would run through the articulation.
   const ax = articExtent.get(e);
   const artEdge = ax && ax.above === above ? ax.edge + (above ? -0.5 : 0.5) : undefined;
   if (stemSide) return { x: g.stemX, y: artEdge ?? (above ? g.stemTip - margin * 0.8 : g.stemTip + margin * 0.8), stemSide, homed: !!g.homed };
@@ -94,19 +109,20 @@ function headPoint(e: EvL, side: 'above' | 'below', margin: number): { x: number
   return { x: e.x + ref.dx + g.hw / 2, y: artEdge ?? posToY(ref.pos) + (above ? -margin : margin), stemSide, homed: false };
 }
 
+/** Does the tie of head `hi` arch above it? By voice with several voices, by position within a chord, else opposite to the stem. */
 function tieAbove(e: EvL, hi: number): boolean {
   const h = e.heads[hi];
-  let above: boolean;
-  if (e.nVoices > 1) above = e.voiceRank === 0;
-  else if (e.heads.length > 1) above = hi >= e.heads.length / 2;
-  else above = e.stem === 'down';
-  if (e.heads.length > 1 && e.nVoices === 1) {
+  if (e.nVoices > 1) return e.voiceRank === 0;
+  if (e.heads.length > 1) {
+    // The upper half of a chord ties upwards, the lower half downwards, so that the ties fan
+    // out from the middle of the chord and never cross.
     const sorted = [...e.heads].sort((a, b) => a.pos - b.pos);
-    above = sorted.indexOf(h) >= sorted.length / 2;
+    return sorted.indexOf(h) >= sorted.length / 2;
   }
-  return above;
+  return e.stem === 'down';
 }
 
+/** Draws the tie from head `hi` of `e` to head `nh` of `next`, in two halves if it crosses a system break. */
 function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: EvL | undefined, nh: number): void {
   const h = e.heads[hi];
   const g = geomOf.get(e)!;
@@ -114,14 +130,16 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
   const dots = e.te.ev.dur.dots;
   const y = posToY(h.pos) + (above ? -0.38 : 0.38);
   const ledgerExt = D.legerLineExtension as number;
-  // the tie runs in the space next to a ledger line (the first one past the head, whether the head sits on a line
-  // or in a space): start/stop beyond that line's extension, so that the arc between the ends can bulge freely
+  // A tie runs in the space next to a ledger line (the first one past the head, whether the head sits
+  // on a line or in a space). When there is one, start and stop the tie beyond that line's extension,
+  // so that the arc between the ends can bulge freely.
   const ledgerNear = (ev: EvL, hh: { pos: number }, ab = above): boolean => {
     const q = ab ? (hh.pos % 2 === 0 ? hh.pos + 2 : hh.pos + 1) : (hh.pos % 2 === 0 ? hh.pos - 2 : hh.pos - 1);
     const own = ev.heads.filter((x) => !x.shared);
     return (q <= -2 && own.some((x) => x.pos <= q)) || (q >= 10 && own.some((x) => x.pos >= q));
   };
-  // the tied heads of a chord share their reach and arch height, so that the upper and lower ties are mirror images
+  // The tied heads of a chord share their reach and arch height, so that the upper and lower
+  // ties are mirror images of each other (`sibs` are all tied heads of this event).
   const sibs = e.heads.map((x, i) => i).filter((i) => e.heads[i].tie);
   const nextOf = (i: number): number => (next ? next.heads.findIndex((x) => pitchStep(x.pitch) === pitchStep(e.heads[i].pitch) && x.pitch.alter === e.heads[i].pitch.alter) : -1);
   const flagged = e.stem === (above ? 'up' : 'down') && e.te.ev.dur.base >= 8 && !e.beam && !e.tremPair;
@@ -134,7 +152,8 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
     const len = xb - xa;
     if (len < 0.4) return undefined;
     let hgt = Math.min(1.1, 0.4 + len * 0.045);
-    // bulge further if something (accidentals of other voices ...) stands in the way
+    // Bulge further if something (accidentals of other voices ...) stands in the way: probe the arc
+    // (a parabola, factor f) at points along it against the skyline.
     const sk = ctx.sky[e.staff];
     for (let t = 0.1; t <= 0.9001; t += 0.05) {
       const x = xa + len * t, f = 4 * t * (1 - t);
@@ -160,7 +179,8 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
   const yN = posToY(next.heads[nh].pos) + (above ? -0.38 : 0.38);
   if (sj === si) solo(place(si, x0, x1, y));
   else {
-    // halves of a tie broken across systems
+    // A tie broken across systems: the outgoing half runs to the end of the line, the incoming half
+    // starts after the next system's prefix (clef, key, time signature).
     const outgoing = place(si, x0, si.width - 0.2, y), incoming = place(sj, Math.max(0.4, Math.min(Math.max(sj.prefix - 0.6, 0.5), x1 - 2.4)), x1, yN); // a continuation is never a stub
     // the halves of a broken tie match in height, except that an obstacle-driven outgoing half does not turn the
     // incoming half into a bowl: that one only follows part of the way
@@ -170,14 +190,21 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
   }
 }
 
+/** Index of the system containing measure `mi`. */
 function sysOfIndex(systems: SysCtx[], mi: number): number {
   for (let i = 0; i < systems.length; i++) if (mi >= systems[i].a && mi <= systems[i].b) return i;
   return 0;
 }
 
+/**
+ * Draws the slur from note `a` to note `b` (in the same voice, `voice` being all its events). The side comes
+ * from `explicit`, else the voice, else the stems of the notes spanned. Each end attaches to its note; the arc
+ * is raised to clear the skyline underneath, with the ends allowed to move off the notes when that flattens it.
+ */
 function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 'above' | 'below' | undefined, voice: EvL[], id: number): void {
   if (a.ev.kind !== 'note' || b.ev.kind !== 'note') return;
-  // side
+  // Side: an explicit side wins; otherwise by voice when there are several (the first above,
+  // the others below); otherwise by the stems of the notes under the slur (see below).
   let side: 'above' | 'below';
   if (explicit) side = explicit;
   else if (a.nVoices > 1) side = a.voiceRank === 0 ? 'above' : 'below';
@@ -189,19 +216,22 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
   }
   const above = side === 'above';
   const pa = headPoint(a, side, 0.65), pb = headPoint(b, side, 0.65);
-  // a tie starting on the same side as the slur: start the slur above the tie
+  // A tie starting on the same side as the slur: start the slur beyond the tie, so the slur
+  // does not begin inside the tie's arc.
   const tieSide = (e: EvL): 'above' | 'below' | null => (e.heads.some((h) => h.tie) ? (e.nVoices > 1 ? (e.voiceRank === 0 ? 'above' : 'below') : e.stem === 'down' ? 'above' : 'below') : null);
   if (tieSide(a) === side && !pa.stemSide) pa.y += above ? -0.7 : 0.7;
   const slurId = oid({});
   const sa = systems[sysOf[a.mi]], sb = systems[sysOf[b.mi]];
-  // a slur belongs to the voice's staff; an end on another staff is converted to that staff's coordinates
+  // A slur belongs to the voice's staff; an end on another staff is converted to the voice's coordinates
+  // (a stem end that is already in those coordinates is not).
   if (a.staff !== a.home && !(pa.stemSide && pa.homed)) pa.y += staffOffset(sa, a.home, a.staff);
   if (b.staff !== a.home && !(pb.stemSide && pb.homed)) pb.y += staffOffset(sb, a.home, b.staff);
   const thick = (D.slurMidpointThickness as number);
   const piece = (ctx: SysCtx, x0: number, y0: number, x1: number, y1: number, staff: number, openL = false, openR = false): { h: number; L: number; draw: (h: number) => void } | undefined => {
     const L = x1 - x0;
     if (L < 0.5) return undefined;
-    // a slur between staves must clear the content of both: their skylines, in the voice's coordinates
+    // A slur between staves must clear the content of both. Merge their skylines into one, with
+    // the other staff's boxes shifted into the voice's coordinates.
     const others = [...new Set([a.staff, b.staff])].filter((q) => q !== staff);
     let sky = ctx.sky[staff];
     if (others.length) {
@@ -212,13 +242,14 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
     const dir = above ? -1 : 1; // direction away from the notes
     const win = 0.7;
     const reach = (a: number, b: number) => (above ? sky.top(a, b, 99) : sky.bottom(a, b, -99));
-    // an open (system-break) end has no note to attach to: start it clear of whatever stands near the system edge
+    // An open (system-break) end has no note to attach to: start it clear of whatever stands within
+    // `edge` spaces of the system edge, but at most 3 spaces off the original y.
     const edge = 7;
     const openY = (y: number, o: number): number => (above ? Math.max(y - 3, Math.min(y, o - 0.9)) : Math.min(y + 3, Math.max(y, o + 0.9)));
     if (openL) { const o = reach(x0, x0 + edge); if (Math.abs(o) < 90) y0 = openY(y0, o); }
     if (openR) { const o = reach(x1 - edge, x1); if (Math.abs(o) < 90) y1 = openY(y1, o); }
-    // an attached end sits just beyond whatever stands next to its note (neighbouring notes, beams, dots,
-    // articulations - not other slurs), never more than a couple of spaces off the note itself
+    // An attached end sits just beyond whatever stands next to its note (neighbouring notes, beams,
+    // dots, articulations - not other slurs), never more than a couple of spaces off the note itself.
     const near = 3.5, maxUp = 2.0;
     const attach = (y: number, xa: number, xb: number): number => {
       const o = above ? sky.top(xa, xb, 99, true) : sky.bottom(xa, xb, -99, true);
@@ -227,7 +258,8 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
     };
     if (!openL) y0 = attach(y0, x0 - 0.3, x0 + near);
     if (!openR) y1 = attach(y1, x1 - near, x1 + 0.3);
-    // obstacle profile under the arc, sampled once
+    // Obstacle profile under the arc, sampled once: `o` is the skyline edge at each sampled
+    // `t` (0..1 along the span). Sampling once keeps the search for the end points below cheap.
     const samples: { t: number; o: number }[] = [];
     for (let x = x0 + 0.3; x <= x1 - 0.3; x += 0.25) {
       if ((!openL && x < x0 + 0.45) || (!openR && x > x1 - 0.45)) continue; // attached ends: the note itself is there
@@ -235,7 +267,8 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
       if (Math.abs(o) < 90) samples.push({ t: (x - x0) / L, o });
     }
     const hPref = Math.max(0.7, Math.min(3.0, 0.09 * L + 0.6));
-    // height needed for the arc, with end points at y0/y1, to clear everything underneath
+    // Height needed for the arc, with end points at y0/y1, to clear everything underneath. The arc is
+    // modelled as a parabola 4t(1-t) of its height over the chord, slightly flattened (0.95).
     const need = (ya: number, yb: number): number => {
       let h = hPref;
       for (const { t, o } of samples) {
@@ -245,8 +278,8 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
       }
       return h;
     };
-    // the end points may move away from their notes (each on its own, so the slope can change) when that makes a
-    // flatter arc possible; moving costs, and so does a tall arc
+    // The end points may move away from their notes (each on its own, so the slope can change) when
+    // that makes a flatter arc possible; moving costs, and so does a tall arc, so the cheapest wins.
     const hLimit = Math.max(3.5, 0.07 * L); // long slurs may arch higher before the end points are lifted instead
     let best = { cost: Infinity, d0: 0, d1: 0, h: hPref };
     for (let d0 = 0; d0 <= 8; d0 += 0.5) {
@@ -264,35 +297,43 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
       draw: (hh: number) => {
         ctx.prims[staff].push({ t: 'path', d: crescent(x0, y0, x1, y1, hh, thick, above, 0.1, 0.2), k: 'slur', o: slurId, r: a.ev, n: id });
         const ym = Math.min(y0, y1), yM = Math.max(y0, y1);
-        // (a slur between staves reaches into the other staff: it is not recorded, or it would push the staves apart for good)
+        // A slur between staves reaches into the other staff: it is not recorded there, or it would
+        // push the staves apart for good.
         sky.add(x0, x1, above ? ym - hh : ym, above ? yM : yM + hh, true);
       },
     };
   };
   if (sa === sb) { const p = piece(sa, pa.x, pa.y, pb.x, pb.y, a.home); p?.draw(p.h); }
   else {
-    // the two halves of a slur broken across systems get the same arch height so that they read as one slur
+    // The two halves of a slur broken across systems get the same arch height so that they
+    // read as one slur: the higher of the two is used for both...
     const p1 = piece(sa, pa.x, pa.y, sa.width - 0.2, pa.y, a.home, false, true);
     const p2 = piece(sb, Math.max(sb.prefix - 0.3, 0.5), pb.y, pb.x, pb.y, a.home, true, false);
     const hh = Math.max(p1?.h ?? 0, p2?.h ?? 0);
-    // ... but a short half must not become a bowl just because the other one is long
+    // ... but a short half must not become a bowl just because the other one is long. `cap`
+    // limits a half's height to a multiple of its own length (or its own natural height).
     const cap = (p: typeof p1) => (p ? Math.min(hh, Math.max(0.12 * p.L + 0.35, Math.min(p.h, 0.7))) : hh);
     p1?.draw(cap(p1)); p2?.draw(cap(p2));
   }
 }
 
 // ------------------------------------------------------------------ marks
+/** One mark as laid out on a system: extent for stacking and a drawing function taking its reference y. */
 interface Item {
   kind: 'dyn' | 'hair' | 'pedal' | 'ott' | 'tempo' | 'text';
   x0: number; x1: number;
   side: 'above' | 'below';
-  up: number; down: number; // extent above / below the reference line
+  /** Extent above / below the reference line. */
+  up: number; down: number;
   draw: (ref: number) => Prim[];
-  src?: Mark; // the model mark (start mark of a span)
+  /** The model mark (the start mark of a span). */
+  src?: Mark;
+  /** Row and order within the stack on one side: lower rows are nearer the staff. */
   row: number;
   order: number;
 }
 
+/** Glyphs of a dynamic like `mf`, its advance width, its extent above and below the baseline, and where its ink starts and ends (for centring on the notehead). */
 function dynRun(text: string): { names: string[]; w: number; up: number; down: number; ink0: number; ink1: number } {
   const map: Record<string, string> = { p: 'dynamicPiano', m: 'dynamicMezzo', f: 'dynamicForte', r: 'dynamicRinforzando', s: 'dynamicSforzando', z: 'dynamicZ', n: 'dynamicNiente' };
   const names = text.split('').map((c) => map[c]).filter(Boolean);
@@ -313,14 +354,22 @@ function xHeadCentre(evs: EvL[], tick: number, x: number): number {
   return g ? (g.headL + g.headR) / 2 : x + 0.6;
 }
 
+/** A span mark (hairpin, pedal, ottava) from its start mark to the matching stop, which may be in a later measure or system. */
 interface Span { mark: Mark & { type: string }; mi: number; end?: { mark: Mark; mi: number } }
 
+/**
+ * Places all marks of staff `s` over the whole piece: collects them, splits spans into per-system pieces,
+ * then stacks them in rows above/below the staff. Dynamics and hairpins of one side share a baseline over
+ * the system; pedal and ottava lines get their own rows; each row clears the skyline and the rows nearer the staff.
+ */
 function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
   const prep = systems[0].prep;
   const staffId = prep.score.staves[s].id;
   void staffId;
   const items: Item[][] = systems.map(() => []);
-  // collect spans
+  // Collect spans: walk the marks in time order and pair every start with its stop. Hairpins
+  // match by id, pedal and ottava by being the next stop of their kind; a span without a stop
+  // runs to the end of the piece.
   const hairs: Span[] = [], pedals: Span[] = [], otts: Span[] = [];
   const openHair = new Map<number, Span>();
   let openPedal: Span | null = null, openOtt: Span | null = null;
@@ -336,7 +385,8 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
           const cx = xHeadCentre(prep.measures[mi][s].evs, m.tick, x);
           const side = m.placement ?? 'below';
           let left = cx - (r.ink0 + r.ink1) / 2; // origin so that the visible ink is centred on the notehead
-          // never straddle a barline: slide the run to the left of it
+          // Never straddle a barline: slide the run beside it, to the left, except for a dynamic at the
+          // start of a measure, which stays in that measure.
           for (let k = sys.a; k <= sys.b; k++) {
             const bx = sys.mx[k] + sys.placed[k].endX;
             if (bx > left + r.ink0 - 0.2 && bx < left + r.ink1 + 0.2) left = m.tick === 0 && k === mi - 1 ? bx + 0.35 - r.ink0 : bx - 0.35 - r.ink1; // a dynamic at a measure's start stays in that measure
@@ -397,7 +447,8 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
     return e!.stem ? g.stemX : (g.headL + g.headR) / 2;
   };
   const endOfPiece = { mi: lastMi, tick: prep.measureLen[lastMi] };
-  // spans -> per-system pieces
+  // Spans -> per-system pieces: a span crossing a system break becomes one piece per system, with
+  // `first`/`last` telling which ends are real (the others are open at the break).
   const pieces = (sp: Span, startOff: number, endOff: number, snap: boolean | { start: 'stem' | 'headL'; end: 'stem' | 'headR' } = false): { si: number; x0: number; x1: number; first: boolean; last: boolean }[] => {
     const m0 = sp.mi, t0 = (sp.mark as Mark).tick;
     const m1 = sp.end ? sp.end.mi : endOfPiece.mi, t1 = sp.end ? (sp.end.mark as Mark).tick : endOfPiece.tick;
@@ -414,22 +465,18 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
     }
     return out;
   };
-  // hairpins
+  // Hairpins: two lines opening (cresc) or closing (dim) over the length. A piece that ends at a
+  // system break stays half open there, so that the next piece continues at the same width.
   const W = 1.15;
   for (const sp of hairs) {
     const m = sp.mark as Mark & { type: 'hairpin' };
-    // every hairpin starts at the notehead and ends at the stem
+    // Every hairpin starts at the notehead and ends at the stem (the `snap` option of `pieces`),
+    // not at the plain x of the first and last note.
     const ps = pieces(sp, 0, -0.5, { start: 'headL', end: 'stem' });
-    const total = ps.reduce((a, p) => a + (p.x1 - p.x0), 0);
-    let acc = 0;
     for (const p of ps) {
-      const len = p.x1 - p.x0;
-      const f0 = acc / total, f1 = (acc + len) / total;
-      acc += len;
       const wide = W, mid = W * 0.55;
       const o0 = m.kind === 'cresc' ? (p.first ? 0 : mid) : (p.first ? wide : mid);
       const o1 = m.kind === 'cresc' ? (p.last ? wide : mid) : (p.last ? 0 : mid);
-      void f0; void f1;
       const th = D.hairpinThickness as number;
       const item: Item = {
         src: sp.mark as Mark, kind: 'hair', x0: p.x0, x1: p.x1, side: m.placement ?? 'below', up: Math.max(o0, o1) / 2 + th, down: Math.max(o0, o1) / 2 + th, row: 0, order: 0,
@@ -441,7 +488,8 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
       items[p.si].push(item);
     }
   }
-  // pedal
+  // Pedal: `Ped.` at the press and a line to the release (a hook up at a real end). A continuation
+  // on a later system starts with `(Ped.)`.
   for (const sp of pedals) {
     const ps = pieces(sp, -0.2, -0.5);
     const pedB = sm.bbox('keyboardPedalPed');
@@ -470,7 +518,8 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
       });
     }
   }
-  // octave shifts
+  // Octave shifts: the `8va`/`8vb` label at the start, a dashed line, and at a real end a hook
+  // pointing towards the staff. A continuation on a later system has the line only.
   for (const sp of otts) {
     const m = sp.mark as Mark & { type: 'ottava' };
     const above = m.dir === 'up';
@@ -484,11 +533,9 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
         src: m, kind: 'ott', x0: p.x0, x1: p.x1, side: above ? 'above' : 'below', up, down, row: 0, order: -1,
         draw: (ref) => {
           const out: Prim[] = [];
-          const ly = ref - (gb.y1 + gb.y0) / 2 + (above ? 0 : 0);
           let lx = p.x0;
           if (p.first) { out.push({ t: 'glyph', name: gname, x: p.x0, y: ref }); lx = p.x0 + gw + 0.3; }
           const th = D.octaveLineThickness as number;
-          void ly;
           const lineY = ref - (gb.y1 + gb.y0) / 2;
           out.push({ t: 'line', x1: lx, y1: lineY, x2: p.x1, y2: lineY, w: th, dash: [0.5, 0.35] });
           if (p.last && sp.end) out.push({ t: 'line', x1: p.x1, y1: lineY, x2: p.x1, y2: lineY + (above ? 0.9 : -0.9), w: th });
@@ -497,11 +544,13 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
       });
     }
   }
-  // ---- place per system
+  // ---- Place per system. The items collected above are laid out one system at a time: first
+  // dynamics and hairpins are made not to touch, then the rows are stacked on each side.
   systems.forEach((ctx, si) => {
     const sky = ctx.sky[s];
     const its = items[si];
-    // a hairpin stops short of a dynamic that follows it and starts after one that precedes it
+    // A hairpin stops short of a dynamic that follows it and starts after one that precedes it,
+    // leaving 0.3 spaces; the dynamic itself never moves.
     for (const hp of its.filter((i) => i.kind === 'hair')) {
       for (const d of its.filter((i) => i.kind === 'dyn' && i.side === hp.side)) {
         if (d.x0 < hp.x1 + 0.3 && d.x1 > hp.x1 - 1.0 && d.x0 > hp.x0) hp.x1 = Math.min(hp.x1, d.x0 - 0.3);
@@ -510,7 +559,8 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
     }
     const place = (side: 'above' | 'below') => {
       const list = its.filter((i) => i.side === side).sort((a, b) => a.row - b.row || a.order - b.order || a.x0 - b.x0);
-      // all dynamics & hairpins of this side share one baseline over the whole system
+      // All dynamics and hairpins of this side share one baseline over the whole system, so that a
+      // row of them reads as a line; pedal and ottava rows go outside it.
       const groups: Item[][] = [];
       let dynGroup: Item[] | null = null;
       let pedGroup: Item[] | null = null;

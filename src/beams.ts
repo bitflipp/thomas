@@ -6,11 +6,13 @@ import {
   type Event, type Item, type TimeSig, type TupletGroup, type Voice,
 } from './model.ts';
 
+/** Length of one beaming unit: the beat, except that compound meters (6/8, 9/8, ...) beam in dotted quarters. */
 export function beatTicks(ts: TimeSig): number {
   if (ts.beatType === 8 && ts.beats % 3 === 0 && ts.beats > 3) return (PPQ * 3) / 2;
   return (PPQ * 4) / ts.beatType;
 }
 
+/** All events below `items`, descending into tuplets and beam groups. */
 const members = (items: Item[]): Event[] => items.flatMap((i) => (isEvent(i) ? [i] : members(i.items)));
 
 /** Beam groups of a voice (events incl. the rests inside, in order); only groups with at least two notes. */
@@ -30,7 +32,10 @@ export function beamGroups(v: Voice, beatLen: number): Event[][] {
     }
   };
   walk(v.items);
-  // automatic grouping of the rest: eighths and shorter, per beat, not across tuplet boundaries or rests
+  // Automatic grouping of everything not in an explicit group. A run is a sequence of consecutive
+  // notes of eighth length or shorter; it is cut (flush) at a rest or non-beamable event, at a beat
+  // boundary, and where the tuplet nesting changes without one note sequence containing the other
+  // (so a tuplet never shares a beam with the notes next to it). Runs of one note are not groups.
   let run: Event[] = [];
   const flush = () => { if (run.length >= 2) out.push(run); run = []; };
   let prev: (typeof flat)[number] | undefined;
@@ -40,6 +45,8 @@ export function beamGroups(v: Voice, beatLen: number): Event[][] {
     if (prev) {
       const sameTuplets = prev.tuplets.length === te.tuplets.length && prev.tuplets.every((t, i) => t === te.tuplets[i]);
       const beatCross = Math.floor(prev.start / beatLen) !== Math.floor(te.start / beatLen);
+      // `sameTuplets` is the cheap case. Otherwise the run is cut unless the two notes share some
+      // tuplet (one side nested inside the other), so a tuplet's beam never extends to a neighbour.
       if (beatCross || (!sameTuplets && prev.tuplets.length + te.tuplets.length > 0 && !prev.tuplets.some((t) => te.tuplets.includes(t)))) flush();
     }
     run.push(e);
@@ -49,6 +56,7 @@ export function beamGroups(v: Voice, beatLen: number): Event[][] {
   return out;
 }
 
+/** A canonical string for "which events are beamed together" (flat event indices), to compare two beamings. */
 function partitionKey(v: Voice, beatLen: number): string {
   const idx = new Map(flattenVoice(v).map((t) => [t.ev, t.index]));
   return beamGroups(v, beatLen).map((g) => g.map((e) => idx.get(e)).join(',')).sort().join('|');
@@ -78,7 +86,11 @@ export function simplifyBeams(v: Voice, beatLen: number): void {
       if (isEvent(it)) continue;
       if (isBeam(it)) {
         items.splice(i, 1, ...it.items);
-        if (partitionKey(v, beatLen) === target) { i--; continue; } // re-examine what moved into slot i
+        // The group's members now sit in slots i.. instead of it: if the beaming is unchanged the
+        // group was redundant, so re-examine slot i (it holds a member now, possibly a nested group).
+        if (partitionKey(v, beatLen) === target) { i--; continue; }
+        // The group mattered (removing it changed the beaming): put it back, in the same place,
+        // and carry on with its members, which may contain more groups to examine.
         items.splice(i, it.items.length, it);
       }
       dropGroups(it.items);

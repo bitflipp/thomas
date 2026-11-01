@@ -1,12 +1,21 @@
 // Score -> timed MIDI messages. Headless: no browser APIs, so it can be tested with node --test.
+//
+// Three passes: a tempo map turns score ticks into seconds; each staff's notes are collected as
+// sounding intervals (ties merged, ornaments such as graces, tremolo and arpeggio expanded, dynamics
+// turned into velocity); finally the intervals become note-on/off messages, plus CC64 for the pedal,
+// sorted by time. Every staff gets its own MIDI channel (`channelOf`), so a synth can give the staves
+// different instruments.
 import { PPQ, baseTicks, flattenVoice, marksOf, measureTicks, pitchMidi, timeAt, type Score } from '../model.ts';
 
 export interface Msg { sec: number; bytes: number[] }
 export interface Sequence {
-  msgs: Msg[]; // sorted by time; note-offs and pedal-ups before note-ons at the same instant
-  channels: number[]; // channels in use
+  /** Sorted by time; at one instant, note-offs and pedal-ups come before note-ons (a repeated note must re-articulate). */
+  msgs: Msg[];
+  /** MIDI channels in use, for silencing them on stop. */
+  channels: number[];
   totalTicks: number;
-  measureStart: number[]; // absolute tick of each measure
+  /** Absolute tick of each measure start. */
+  measureStart: number[];
   tickToSec(tick: number): number;
   secToTick(sec: number): number;
 }
@@ -25,7 +34,8 @@ export function buildSequence(score: Score): Sequence {
   let total = 0;
   score.measures.forEach((_, mi) => { measureStart.push(total); total += measureTicks(timeAt(score, mi)); });
 
-  // tempo map: segments of constant seconds-per-tick
+  // Tempo map: a list of segments of constant seconds-per-tick, starting at 120 bpm (quarter) until the
+  // first tempo mark. A mark at the same tick as the previous one replaces it (see `segs` below).
   const tempi: { tick: number; spt: number }[] = [{ tick: 0, spt: 60 / 120 / PPQ }];
   score.measures.forEach((m, mi) => {
     for (const st of Object.values(m.staves)) for (const mk of marksOf(st)) {
@@ -56,7 +66,8 @@ export function buildSequence(score: Score): Sequence {
   const pedal: { tick: number; ch: number; down: boolean }[] = [];
   score.staves.forEach((sd, si) => {
     const ch = channelOf(si);
-    // dynamics apply to the whole staff, in time order
+    // Dynamics apply to the whole staff (all its voices), from their position until the next one.
+    // A dynamic is looked up by `velAt` when a note starts; hairpins are not interpolated yet.
     const dyn: { tick: number; vel: number }[] = [];
     const velAt = (tick: number) => { let v = DEFAULT_VEL; for (const d of dyn) if (d.tick <= tick) v = d.vel; return v; };
     let down = false;
@@ -71,13 +82,16 @@ export function buildSequence(score: Score): Sequence {
     if (down) pedal.push({ tick: total, ch, down: false });
     dyn.sort((a, b) => a.tick - b.tick);
 
-    // a tie continues the open note of the same pitch in the same voice
+    // `open` remembers, per voice, the sounding note of each pitch that a tie may continue into
+    // the next event, so tied notes become one long MIDI note instead of two.
     const open = new Map<number, Map<number, Note>>();
     score.measures.forEach((m, mi) => {
       for (const v of m.staves[sd.id]?.voices ?? []) {
         const ties = open.get(v.id) ?? open.set(v.id, new Map()).get(v.id)!;
         const flat = flattenVoice(v);
-        // add one sounding note; a tie continues the open note of the same pitch
+        // Adds one sounding note. With `join` set, a note whose `nominal` start equals the end of the open
+        // note of the same pitch extends that note instead (a tie); `shortened` (staccato) notes are
+        // never tied into, since their end no longer meets the next start.
         const add = (start: number, end: number, midi: number, vel: number, tie: boolean, join: boolean, shortened: boolean, nominal = start) => {
           const cont = join ? ties.get(midi) : undefined;
           if (cont && cont.end === nominal) cont.end = end;
@@ -97,7 +111,8 @@ export function buildSequence(score: Score): Sequence {
           const start0 = measureStart[mi] + te.start;
           const trem = te.tremolo;
           if (trem) {
-            // two-note tremolo: the notes alternate over the whole span, in strokes of the beam value (1 beam = eighths)
+            // Two-note tremolo: the two notes alternate over the whole span of both, in strokes of the
+            // beam value (one beam = eighths, two = sixteenths, ...).
             const pair = flat.filter((x) => x.tremolo === trem && x.ev.kind === 'note');
             if (pair.length === 2) {
               const [p0, p1] = pair;
@@ -119,7 +134,9 @@ export function buildSequence(score: Score): Sequence {
           const start = start0, end = start + te.ticks;
           const stac = te.ev.art?.includes('staccato');
           const vel = velAt(start) + accent(te);
-          // grace notes: slashed ones are quick and end on the beat; the others (or any near the very start of the piece) take their time from the note
+          // Grace notes: slashed ones (acciaccature) are quick and end exactly on the beat. The others
+          // (and any at the very start of the piece, where there is no earlier time to borrow) take
+          // their time from the main note, which then starts later.
           let mainOn = start;
           const graces = te.ev.graces ?? [];
           if (graces.length) {
@@ -139,7 +156,8 @@ export function buildSequence(score: Score): Sequence {
               t += lens[gi];
             });
           }
-          // a rolled chord: the notes enter one after the other from the bottom, all ending together
+          // A rolled chord: the notes enter one after the other from the bottom, all ending together.
+          // The delay between notes is at most a 32nd and shrinks for short chords.
           const n = te.ev.pitches.length;
           const step = te.ev.arpeggio && n > 1 ? Math.min(PPQ / 8, (end - mainOn) / (3 * (n - 1))) : 0;
           te.ev.pitches.forEach((np, k) => {
@@ -151,7 +169,8 @@ export function buildSequence(score: Score): Sequence {
     });
   });
 
-  // order: at one instant, releases come first
+  // Order: at one instant releases come first (`order` 0 before 1), so a repeated pitch is
+  // re-struck instead of being cut off by its own note-off arriving after the new note-on.
   const evs: { sec: number; order: number; bytes: number[] }[] = [];
   const used = new Set<number>();
   for (const n of notes) {

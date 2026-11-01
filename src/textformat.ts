@@ -1,4 +1,10 @@
-// Human-readable text format <-> Score.   See FORMAT.md for the grammar.
+// Human-readable text format <-> Score. See FORMAT.md for the grammar.
+//
+// Writer and parser are exact inverses: write(parse(text)) == text for text the writer produced, and
+// parse(write(score)) deep-equals the score (test/roundtrip.test.ts). Any new model field therefore
+// needs a writer branch, a parser branch and an importer change together. The writer can additionally
+// record where each event, mark, tuplet and measure landed in the output (`writeTextMap`), which the
+// editor's text pane uses to show the score selection in the text.
 import { refKey } from './editor/addr.ts';
 import {
   PPQ, gcd, anchorMarks, isBeam, isTuplet, isTremolo,
@@ -11,6 +17,7 @@ const DYNAMICS = new Set(['pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff'
 
 // ------------------------------------------------------------------ writing
 
+/** Parses a position in quarter notes, an integer or a fraction like `3/2`; it must land on a whole tick. */
 function fracParse(s: string): number {
   const [n, d] = s.split('/');
   const t = (Number(n) * PPQ) / Number(d ?? 1);
@@ -29,9 +36,13 @@ function durStr(d: Dur): string { return `${d.base}${'.'.repeat(d.dots)}`; }
 function quote(s: string): string { return JSON.stringify(s); }
 
 const sideStr = (p?: Placement) => (p === 'above' ? '^' : p === 'below' ? '_' : '');
-const idStr = (n: number | undefined) => (n && n !== 1 ? String(n) : ''); // overlap numbers: 1 is implicit
+/** Slur and hairpin ids are written only when they are not 1: the common case of one span at a time needs no number. */
+const idStr = (n: number | undefined) => (n && n !== 1 ? String(n) : '');
 
-// Marks without arguments; the writer looks them up by value, the parser by name.
+/**
+ * Marks that take no arguments, by their command name (`\ped`, `\8va`, ...). The parser looks a name
+ * up here; the writer goes the other way through `SIMPLE_NAME`, matching on the mark's type, `of` and `dir`.
+ */
 const SIMPLE: Record<string, MarkBody> = {
   ped: { type: 'pedal' }, unped: { type: 'stop', of: 'pedal' },
   '8va': { type: 'ottava', dir: 'up' }, '8vb': { type: 'ottava', dir: 'down' }, '8off': { type: 'stop', of: 'ottava' },
@@ -66,13 +77,17 @@ const tagged = (t: Tags | undefined, key: string, s: string): string => (t ? t.t
 class VoiceWriter {
   out: string[] = [];
   lastBase: BaseDur | 0 = 0;
-  glue = false; // the next token continues the previous one (inside the delimiters of a group)
+  /** The next token continues the previous one without a space (just inside the delimiters of a group). */
+  glue = false;
   home: string;
-  curStaff: string; // staff the following events are drawn on (see \staff)
+  /** Staff the following events are drawn on; changes are written as `\staff <id>` (cross-staff notes). */
+  curStaff: string;
   tags?: Tags;
   at: { mi: number; staff: string; voice: number };
-  evIdx = 0; // index of the next event in the voice (as in `flattenVoice`)
-  depth = 0; // tuplet nesting
+  /** Index of the next event in the voice, counted as `flattenVoice` does (the address used by refs). */
+  evIdx = 0;
+  /** Current tuplet nesting depth. */
+  depth = 0;
   constructor(home: string, at: { mi: number; staff: string; voice: number }, tags?: Tags) { this.home = this.curStaff = home; this.at = at; this.tags = tags; }
 
   eventStr(e: Event): string {
@@ -90,16 +105,21 @@ class VoiceWriter {
       if (e.arpeggio) pre.push('\\arp');
       if (e.noBeam) pre.push('\\nobeam');
       const ps = e.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : ''));
-      if (e.pitches.length === 1) { core = ps[0]; if (e.pitches[0].tie) tie = '~'; } // a chord ties per pitch, inside <>
+      // A single note's tie goes after the duration (`c4:8~`); in a chord every pitch is tied on
+      // its own, inside the <> (`<c4~ e4>`), because tied and untied pitches can be mixed.
+      if (e.pitches.length === 1) { core = ps[0]; if (e.pitches[0].tie) tie = '~'; }
       else core = `<${ps.map((x, i) => x + (e.pitches[i].tie ? '~' : '')).join(' ')}>`;
       for (const a of e.art ?? []) arts += a === 'accent' ? '->' : a === 'marcato' ? '-^' : '-.';
       if (e.art?.length && e.artSide) arts += sideStr(e.artSide);
     } else core = e.style === 'hidden' ? 's' : e.style === 'measure' ? 'R' : e.display ? `r@${pitchStr(e.display)}` : 'r';
-    // duration (sticky, base only; dots always written)
+    // Durations are sticky: the base value is written only when it differs from the previous event's.
+    // Dots are never sticky (a dotted note would otherwise make everything after it dotted), so they
+    // are always written, which also forces the base to be written.
     const d = e.dur.base !== this.lastBase || e.dur.dots ? ':' + durStr(e.dur) : '';
     this.lastBase = e.dur.base;
     const slurEnd = (e.slurStop ?? []).map((i) => ')' + idStr(i)).join('');
-    // a slur start sticks to what follows it (what follows never starts with a digit, so `(2` stays unambiguous): `(f#2:16 ... d#2)`
+    // A slur start is glued to the token after it: `(f#2:16 ... d#2)`. Nothing that follows starts with
+    // a digit, so an id like in `(2` cannot be mistaken for part of the next token.
     const toks = [...pre, tagged(this.tags, refKey({ t: 'ev', ...loc }), core + d + tie + arts + slurEnd)];
     return toks.reduce((acc, t, i) => (i > 0 && /^\(\d*[\^_]?$/.test(toks[i - 1]) ? acc + t : acc ? acc + ' ' + t : t), '');
   }
@@ -211,6 +231,7 @@ export function writeTextMap(score: Score): { text: string; ranges: Map<string, 
 }
 
 // ------------------------------------------------------------------ parsing
+// A hand-written scanner over the text, one voice line at a time; errors carry the line (`where`).
 
 class Scanner {
   i = 0;
@@ -384,7 +405,8 @@ function parseVoiceLine(line: string, where: string, home: string, markLine = fa
       continue;
     }
 
-    // ---- event
+    // ---- event. Whatever is left is a note, chord or rest; the prefixes handled above were
+    // commands and brackets, which only set up state (`pendingEv`, `pendingSlurs`) for the event.
     if (markLine) sc.fail('events not allowed in mark lines');
     let ev: Event;
     const readDur = (): Dur => {

@@ -1,3 +1,5 @@
+// The keyboard shortcut dialog (opened with ?). Its table is documentation only: the real bindings
+// are in keys.ts.
 import { signal } from '@preact/signals';
 
 export const showHelp = signal(false);

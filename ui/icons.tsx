@@ -1,3 +1,5 @@
+// Icons for the palette: SMuFL glyphs from the same font as the score, centred on their ink and
+// scaled to fit, plus text labels. Glyph outlines come from the engraver's font access (smufl.ts).
 import { loadSmufl } from '../src/smufl.ts';
 
 const bboxCache = new Map<number, { d: string; x0: number; y0: number; x1: number; y1: number }>();

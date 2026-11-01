@@ -1,3 +1,6 @@
+// The application shell: toolbar (file, view, playback), the palette, score pane, inspector and the
+// optional text pane. It owns file handling (open/save text, MusicXML import, SVG export, printing to PDF) and
+// otherwise only wires the panes to the signals in state.ts.
 import { lazy, Suspense } from 'preact/compat';
 import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';

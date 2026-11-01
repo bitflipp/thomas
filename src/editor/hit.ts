@@ -1,4 +1,10 @@
-// Hit testing on an engraved score: which model object is under a point, which rhythmic slot and staff position a point means.
+// Hit testing on an engraved score: which model object is under a point, and which rhythmic slot and
+// staff position a point means (for note input).
+//
+// `buildHitIndex` runs once per engraving. It reads the tags the engraver put on every primitive
+// (`Prim.r`, `.n`, `.k`; see scene.ts), groups the primitives of one object into a `Target` with a few
+// boxes (or sampled points for curves) and addresses it with a `Ref`. Queries are then plain geometry
+// on those targets and never need the primitives again.
 import type { Engraved, Layout, MeasureGeom } from '../engrave/system.ts';
 import type { Kind, Prim } from '../engrave/scene.ts';
 import { loadSmufl } from '../smufl.ts';
@@ -10,10 +16,13 @@ export interface Target {
   page: number;
   ref: Ref;
   k: Kind;
-  boxes: Box[]; // the parts that count as "on" the object
-  pts?: { x: number; y: number }[]; // curves (slurs, ties): sampled points instead of boxes
+  /** The parts that count as "on" the object. */
+  boxes: Box[];
+  /** Curves (slurs, ties): sampled points along the curve instead of boxes, so the empty inside of a slur is not a hit. */
+  pts?: { x: number; y: number }[];
   bbox: Box;
-  prio: number; // lower wins when several are under the pointer
+  /** Lower wins when several targets are under the pointer: a head beats the stem and a slur over it. */
+  prio: number;
 }
 export interface HitIndex { targets: Target[]; byPage: Target[][]; layout: Layout; index: ScoreIndex }
 
@@ -107,7 +116,8 @@ function distBox(b: Box, x: number, y: number): number {
 }
 function distTarget(t: Target, x: number, y: number): number {
   if (t.pts) {
-    // distance to the polyline (the samples of a long slur are far apart)
+    // Distance to the polyline through the samples, not to the samples themselves: those are far
+    // apart on a long slur and a point between two of them would otherwise miss.
     let m = Infinity;
     for (let i = 0; i < t.pts.length; i++) {
       const a = t.pts[i], b = t.pts[i + 1] ?? a, dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
@@ -140,7 +150,6 @@ export function marquee(h: HitIndex, page: number, r: Box): Ref[] {
     if (t.ref.t !== 'ev' || (t.k !== 'head' && t.k !== 'rest')) continue;
     if (t.bbox.x1 < r.x0 || t.bbox.x0 > r.x1 || t.bbox.y1 < r.y0 || t.bbox.y0 > r.y1) continue;
     const { pi: _pi, ...rest } = t.ref;
-    void _pi;
     const ref: Ref = { ...rest } as Ref;
     out.set(refKey(ref), ref);
   }
@@ -148,6 +157,7 @@ export function marquee(h: HitIndex, page: number, r: Box): Ref[] {
 }
 
 // ---------------------------------------------------------------- slots
+// Mapping a point to where a note would go: staff-measure, rhythmic position (snapped to columns) and pitch row.
 
 /** The staff-measure under a point: the nearest staff (vertically) of the system there, then the measure by x. */
 export function measureAt(layout: Layout, page: number, x: number, y: number): MeasureGeom | undefined {
@@ -204,6 +214,7 @@ export function measureAtStaff(layout: Layout, page: number, x: number, y: numbe
 }
 
 // ---------------------------------------------------------------- dependents
+// Selecting a slur, tie, tuplet or mark highlights the notes it depends on; this finds them.
 
 /** The notes a selected slur, tie or tuplet belongs to (its start and end notes; all notes of a tuplet). */
 export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
@@ -215,7 +226,8 @@ export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
     if (v && g) for (const te of flattenVoice(v)) if (te.tuplets[ref.depth] === g) out.push({ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: te.index });
     return out;
   }
-  // walk forward through the voice (across measures) to the note that ends the slur / receives the tie
+  // Walk forward through the voice, across measures, to the note that ends the slur (the one carrying
+  // its stop) or receives the tie (the next note: a tie that is not followed by a note has no end).
   const start = eventOf(score, ref);
   for (let mi = ref.mi; mi < score.measures.length; mi++) {
     const v = voiceOf(score, { mi, staff: ref.staff, voice: ref.voice });

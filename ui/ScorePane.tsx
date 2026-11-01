@@ -1,3 +1,9 @@
+// The score view: the engraved pages as SVG, with overlays for ghosts (note input preview, marquee,
+// drag feedback), the playhead, hover and selection highlights.
+//
+// Re-engraving happens in state.ts; this pane only draws its result. To stay fast on a big piece, SVG is
+// generated only for pages near the viewport, and again only when the page's own part of the selection
+// changed; hover and selection recolour primitives in place instead of regenerating the SVG.
 import { effect } from '@preact/signals';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { pageToSvg } from '../src/render.ts';
@@ -86,7 +92,8 @@ function PageView({ i, res, h, sig, keys, cssW, cursor }: { i: number; res: Engr
     };
     return pageToSvg(p, res.staffSpace, { color: colorFor, index: true }).replace(/^<\?xml[^>]*>\s*/, '');
   }, [res, h, sig, near, voiceColors.value]);
-  // the hovered element is recoloured in place, like a selected one but lighter (no new SVG per pointer move)
+  // The hovered element is recoloured in place, like a selected one but lighter. Generating
+  // new SVG on every pointer move would be far too slow, so only the matching primitives change.
   const wrap = useRef<HTMLDivElement | null>(null);
   const hov = hover.value;
   const hovered = useMemo(() => {
@@ -96,7 +103,8 @@ function PageView({ i, res, h, sig, keys, cssW, cursor }: { i: number; res: Engr
     p.prims.forEach((q, n) => {
       if (!q.k || q.k === 'beam' || !q.r || (curve && q.k !== hov.k)) return;
       const r = primRef(h.index, q);
-      // like a selection: an event without a head index covers all its heads too
+      // Like a selection: an event without a head index covers all its heads too, since
+      // the whole note is what a click on it would select.
       if (r && (refKey(r) === key || (hov.ref.t === 'ev' && hov.ref.pi === undefined && r.t === 'ev' && refKey({ ...r, pi: undefined } as Ref) === key))) out.push(n);
     });
     return out;
@@ -175,7 +183,8 @@ export function ScorePane() {
   useLayoutEffect(() => {
     const a = takeZoomAnchor(), el = box.current, pg = pageEls[0];
     if (!a || !el || !pg) return;
-    // content coordinate under the cursor scales about the pages' origin (the pane's padding stays fixed)
+    // The content coordinate under the cursor scales about the pages' origin, while the pane's
+    // padding stays fixed; solve for the scroll offset that keeps that coordinate under the cursor.
     const b = el.getBoundingClientRect(), p = pg.getBoundingClientRect();
     const cx = a.x - b.left, cy = a.y - b.top;
     const padX = p.left - b.left + el.scrollLeft, padY = p.top - b.top + el.scrollTop;
@@ -195,7 +204,8 @@ export function ScorePane() {
     return () => el.removeEventListener('wheel', w);
   }, []);
 
-  // while playing, keep the system under the playhead in view
+  // While playing, keep the system under the playhead in view: scroll only when it leaves the
+  // visible area, so that the page does not jump on every frame.
   useEffect(() => effect(() => {
     const p = playhead.value, r = engraved.peek(), el = box.current;
     if (!p || !r || !el || !playing.value) return;
@@ -207,7 +217,8 @@ export function ScorePane() {
   }), []);
 
   const keys = useMemo(() => new Set(sel.map(refKey)), [sel]);
-  // which selected objects are drawn on which page: a page is redrawn only when its own part of the selection changes
+  // Which selected objects are drawn on which page. Each page gets a signature of its own part
+  // of the selection, so a page is regenerated only when that signature changes.
   const sigs = useMemo(() => {
     const out: string[] = [];
     if (!h) return out;

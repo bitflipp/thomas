@@ -1,4 +1,9 @@
 // Playback: Web MIDI output, a look-ahead scheduler, and the playhead position (absolute ticks, kept across stops).
+//
+// The score is turned into a timed message list once (src/playback/sequence.ts). A timer then
+// sends every message due within the next LOOKAHEAD seconds with an exact `timestamp`, so that
+// timing comes from the MIDI stack rather than from setInterval jitter. There is no built-in synth:
+// sound comes from whichever Web MIDI output the user picked.
 import { signal, effect } from '@preact/signals';
 import { buildSequence, type Sequence } from '../src/playback/sequence.ts';
 import { xOfTick } from '../src/editor/hit.ts';
@@ -15,7 +20,8 @@ const LOOKAHEAD = 0.12, LEAD_IN = 0.06, POLL_MS = 25;
 let access: MIDIAccess | null = null;
 let seq = buildSequence(score.peek());
 let timer: ReturnType<typeof setInterval> | undefined, raf = 0;
-let wall0 = 0, sec0 = 0, next = 0; // wall clock (ms) at which `sec0` is heard; index of the next message to send
+/** Wall clock (ms) at which score time `sec0` (seconds) is heard; `next` is the index of the next message to send. */
+let wall0 = 0, sec0 = 0, next = 0;
 let sounding = false;
 
 try { midiOut.value = localStorage.getItem('thomas.midiOut'); } catch { /* storage unavailable */ }
@@ -30,6 +36,7 @@ function refreshPorts(): void {
   }
 }
 
+/** Asks for MIDI access on first use (the browser prompts), and returns the chosen output or explains in the status line why there is none. */
 async function connect(): Promise<MIDIOutput | null> {
   if (!access) {
     if (!navigator.requestMIDIAccess) { say('This browser has no Web MIDI support', true); return null; }
@@ -46,6 +53,7 @@ async function connect(): Promise<MIDIOutput | null> {
 const outPort = (): MIDIOutput | undefined => (access && midiOut.peek() ? access.outputs.get(midiOut.peek()!) : undefined);
 const nowSec = (): number => sec0 + (performance.now() - wall0) / 1000;
 
+/** Releases the sustain pedal (CC64) and stops all notes (CC123) on every channel, so a stop never leaves hanging notes. */
 function silence(): void {
   const out = outPort();
   if (!out || !sounding) return;
@@ -53,6 +61,7 @@ function silence(): void {
   sounding = false;
 }
 
+/** Sends every message due within the look-ahead window, each stamped with the wall-clock time at which it should sound. */
 function pump(): void {
   const out = outPort();
   if (!out) { stop(); return; }
@@ -64,17 +73,25 @@ function pump(): void {
   }
 }
 
+/** Index of the first message at or after `sec` (binary search; the messages are sorted by time). */
 function firstMsgAt(sec: number): number {
   let lo = 0, hi = seq.msgs.length;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (seq.msgs[mid].sec < sec) lo = mid + 1; else hi = mid; }
   return lo;
 }
 
+/** Animation loop: moves the playhead along with the sound, and ends playback shortly after the last message. */
 function frame(): void {
   if (!playing.peek()) return;
   const sec = nowSec();
   const last = seq.msgs.length ? seq.msgs[seq.msgs.length - 1].sec : 0;
-  if (sec > last + 0.25) { stop(); playTick.value = 0; return; } // played to the end: the next start is from the top
+  if (sec > last + 0.25) {
+    // Played to the end: the next start is from the top (`stop` would otherwise keep the position
+    // at the last note and playing would end immediately again).
+    stop();
+    playTick.value = 0;
+    return;
+  }
   playTick.value = Math.min(seq.totalTicks, Math.max(0, seq.secToTick(sec)));
   raf = requestAnimationFrame(frame);
 }

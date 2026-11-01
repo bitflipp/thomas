@@ -1,5 +1,11 @@
-// Horizontal spacing: per measure, derive columns (distinct onset times), their natural
-// widths and minimum distances. A system is justified by scaling the "ideal" part.
+// Horizontal spacing: per measure, derive columns (distinct onset times), their natural widths and
+// minimum distances. A system is justified by scaling the "ideal" part.
+//
+// Model: column j sits at x_j = max(x_{j-1} + f * ideal_j, collision constraints), where the ideal
+// distance grows with the time since the previous column (`idealSpace`, a power law so that long notes
+// get more but not proportionally more room), and the constraints keep the left extent of a column
+// clear of the right extent of the previous one on every staff. The stretch factor `f` is solved for a
+// whole system in system.ts; `COMPRESS` bounds how far a measure may be squeezed below its ideal.
 import { PPQ, timeAt, type Score } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import type { Prepared, EvL, HeadL } from './prep.ts';
@@ -7,19 +13,26 @@ import type { Prepared, EvL, HeadL } from './prep.ts';
 const sm = loadSmufl();
 
 export function headGlyph(base: number): string { return base === 1 ? 'noteheadWhole' : base === 2 ? 'noteheadHalf' : 'noteheadBlack'; }
-/** MuseScore's noteheads are a little fuller than Bravura's at the same staff size */
+/** MuseScore's noteheads are a little fuller than Bravura's at the same staff size; the reference piece was set with those. */
 export const HEAD_SCALE = 1.1;
 export function headWidth(base: number): number { return sm.adv(headGlyph(base)) * HEAD_SCALE; }
+/** Stem thickness. */
 export const STEM_T = 0.12;
-export const GRACE_SCALE = 0.7; // grace notes are drawn at this fraction of the normal size
+/** Grace notes are drawn at this fraction of the normal size. */
+export const GRACE_SCALE = 0.7;
+/** Distance between successive augmentation dots of a multiply dotted note (the first dot sits 0.4 right of the head). */
 export const DOT_STEP = 0.55;
-export const CROSS_STEM_SEP = 2.0; // least distance between an up-stem and the following down-stem of a cross-staff beam
-export const COMPRESS = 0.7; // minimum stretch factor allowed when fitting measures on a line
+/** Least distance between an up-stem and the following down-stem of a cross-staff beam. */
+export const CROSS_STEM_SEP = 2.0;
+/** Minimum stretch factor allowed when fitting measures on a line (0.7: at most 30 % tighter than ideal). */
+export const COMPRESS = 0.7;
 
+/** Ideal distance (staff spaces) between two columns `dt` ticks apart: a fixed part plus a power law (a quarter apart: 3.0). */
 export function idealSpace(dt: number): number {
   return 1.1 + 1.9 * Math.pow(dt / PPQ, 0.6);
 }
 
+/** All events starting at one tick of a measure, across staves. Columns of one tick are aligned vertically. */
 export interface Column {
   tick: number;
   evs: EvL[]; // events starting here (all staves)
@@ -32,6 +45,7 @@ export interface Column {
   minFrom: { j: number; d: number }[]; // at least d to the right of column j (stems of a cross-staff beam)
 }
 
+/** What system layout needs to know about one measure: its columns and how narrow or wide it can get. */
 export interface MeasureSpacing {
   mi: number;
   cols: Column[];
@@ -46,6 +60,11 @@ export interface MeasureSpacing {
   restOnly: boolean;
 }
 
+/**
+ * Builds the columns of measure `mi` and measures it at minimum and compressed width. `skipClef0` is the
+ * "first in system" variant, where a clef change at tick 0 is not drawn because the system's own clef
+ * already shows it. Runs twice per measure, so everything it writes onto the `EvL`s must be idempotent.
+ */
 export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): MeasureSpacing {
   const nS = prep.score.staves.length;
   const len = prep.measureLen[mi];
@@ -71,7 +90,8 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
   const cols = [...colMap.values()].sort((a, b) => a.tick - b.tick);
   const restOnly = !anyVisible;
 
-  // extents
+  // Extents: how far each column reaches left and right of its x on each staff (heads, accidentals,
+  // dots, graces, a clef change), which decides the minimum distance to its neighbours.
   for (let s = 0; s < nS; s++) {
     for (const c of cols) {
       const evs = c.evs.filter((e) => e.staff === s);
@@ -80,7 +100,8 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
       c.L[s] += c.clefW[s];
     }
   }
-  // a cross-staff beam has up-stems on the right of their heads followed by down-stems on the left of theirs: keep those stems apart
+  // A cross-staff beam has up-stems on the right of their heads followed by down-stems on the left of
+  // theirs; the columns involved are pushed apart (`minFrom`) so the two stems do not merge.
   {
     const colAt = new Map(cols.map((c, j) => [c.tick, j]));
     const seen = new Set<object>();
@@ -96,7 +117,8 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
       }
     }
   }
-  // ideal distances
+  // Ideal distances: from each column to the previous one by elapsed time. `endIdeal` is the
+  // distance from the last column to the barline, by the time left in the measure.
   let prevTick = 0;
   cols.forEach((c, i) => { c.ideal = i === 0 ? 0 : idealSpace(c.tick - prevTick); prevTick = c.tick; });
   const lastTick = cols.length ? cols[cols.length - 1].tick : 0;
@@ -116,12 +138,16 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
 
 function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
   let L = 0, R = 0;
-  // spaceMeasure runs more than once per measure: start from a clean state each time
+  // spaceMeasure runs more than once per measure and writes onto shared EvL/HeadL objects, so start
+  // from a clean state each time; everything below must be a pure function of the model.
   for (const e of evs) {
     e.shiftDx = 0;
     for (const h of e.heads) { h.dx = 0; h.shared = false; h.skipDots = false; h.accX = undefined; h.sharers = undefined; }
   }
-  // --- voice collisions: identical primes share one head, other clashes shift the lower voice right
+  // --- Voice collisions. A head of a later voice that sits on the same position as one of the first
+  // voice (a unison) shares it when the two are indistinguishable or have opposite stems and the same
+  // head shape; other clashes (heads a step or less apart, or a head on the other voice's stem) shift
+  // the later voice to the right.
   const notesEvs = evs.filter((e) => e.ev.kind === 'note');
   if (notesEvs.length > 1) {
     const first = notesEvs.filter((e) => e.voiceRank === 0);
@@ -131,14 +157,16 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
         for (const f of first) {
           const fd = f.te.ev.dur;
           const sameDur = fd.base === d.base && fd.dots === d.dots;
-          // distinguishable by opposite stems and the same head shape: one head serves both voices
+          // Distinguishable by opposite stems and the same head shape: one head serves both voices
+          // (the two stems attach to it), which is how unisons between voices are usually written.
           const distinct = !!f.stem && !!e.stem && f.stem !== e.stem && headGlyph(fd.base) === headGlyph(d.base);
           const host = (sameDur || distinct) ? f.heads.find((g) => g.pos === h.pos && g.pitch.alter === h.pitch.alter && !g.shared) : undefined;
           if (host) { h.shared = true; h.skipDots = fd.dots >= d.dots; (host.sharers ??= []).push(e); }
         }
       let clash = false;
       for (const h of e.heads) if (!h.shared) for (const f of first) for (const g of f.heads) if (Math.abs(h.pos - g.pos) <= 1) clash = true;
-      // a head standing on the stem of the other voice (or the other way round): move this voice aside
+      // A head standing on the stem of the other voice (or the other way round): move this voice
+      // aside. `stemSpan` is the staff-position range a voice's heads and stem cover.
       const stemSpan = (x: EvL): [number, number] => {
         const ps = x.heads.map((q) => q.pos), lo = Math.min(...ps), hi = Math.max(...ps);
         return x.stem === 'up' ? [lo, hi + 7] : x.stem === 'down' ? [lo - 7, hi] : [lo, hi];
@@ -172,7 +200,9 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
       R = Math.max(R, e.ev.style === 'measure' ? 0 : sm.adv(g) + (e.te.ev.dur.dots ? 0.4 + DOT_STEP * e.te.ev.dur.dots : 0));
     }
   }
-  // --- accidental stacking (all heads of this staff column together)
+  // --- Accidental stacking: all heads of this staff column together. Accidentals are placed in columns
+  // to the left of the heads, the highest first, each in the first column where it does not overlap one
+  // already there (the usual zig-zag).
   const accHeads = heads.filter((x) => x.h.acc).sort((a, b) => b.h.pos - a.h.pos);
   if (accHeads.length) {
     const leftEdge = Math.min(...heads.map((x) => x.h.dx));
@@ -195,7 +225,9 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
     });
     const colW = stacks.map((st) => Math.max(...st.map((q) => q.w)));
     const colRight: number[] = [];
-    // an accidental level with a ledger line must clear the line's extension as well
+    // An accidental level with a ledger line must clear the line's extension as well: the ledger
+    // line sticks out to the left of the head by `legerLineExtension`, and the accidental would
+    // otherwise sit on it.
     const own = heads.filter((x) => !x.h.shared);
     const pMin = Math.min(...own.map((x) => x.h.pos)), pMax = Math.max(...own.map((x) => x.h.pos));
     const ledgerHit = info.some((it) => {
@@ -212,9 +244,11 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
     });
     L = Math.max(L, -(edge + 0.12));
   }
-  // --- arpeggio sits left of everything
+  // --- The arpeggio wiggle sits left of everything, including accidentals, and takes a fixed
+  // width (wiggle plus the space between it and the accidentals).
   if (evs.some((e) => e.ev.kind === 'note' && e.ev.arpeggio)) L += 0.5 + 0.9;
-  // --- grace notes stand to the left of the notes (and their accidentals) they belong to
+  // --- Grace notes stand to the left of the note (and its accidentals) they belong to. This
+  // reserves their width in the column's left extent; `drawGraces` draws them at that place.
   const L0 = L;
   for (const e of evs) {
     if (e.ev.kind !== 'note' || !e.graces?.length) continue;

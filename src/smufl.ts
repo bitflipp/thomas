@@ -1,6 +1,12 @@
 // SMuFL font access (Bravura): glyph outlines as SVG path data, metrics in staff spaces.
+//
+// The engraver refers to glyphs by SMuFL name (`noteheadBlack`); `CP` is the only place that knows
+// their codepoints, so adding a glyph means adding it there (and running `checkCodepoints`).
+// Outlines and metrics come from the font file and its metadata.json, loaded lazily on first use
+// (see `loadSmufl`) so that importing the engraver never touches the file system by itself.
 import opentype from 'opentype.js';
 
+/** SMuFL glyph name -> codepoint, for exactly the glyphs the engraver uses. */
 export const CP: Record<string, number> = {
   brace: 0xE000,
   noteheadWhole: 0xE0A2, noteheadHalf: 0xE0A3, noteheadBlack: 0xE0A4,
@@ -27,15 +33,19 @@ export const CP: Record<string, number> = {
   metNoteHalfUp: 0xE1D3, metNoteQuarterUp: 0xE1D5, metAugmentationDot: 0xE1FC,
 };
 
-export interface BBox { x0: number; y0: number; x1: number; y1: number } // y up, staff spaces
+/** A glyph's bounding box in staff spaces relative to its origin; y points up here (font convention), unlike the scene. */
+export interface BBox { x0: number; y0: number; x1: number; y1: number }
 
 export interface Smufl {
   has(name: string): boolean;
-  pathCp(cp: number): string; // path data of any codepoint (UI icons)
-  path(name: string): string; // path data in staff spaces, origin at glyph origin, y down
+  /** Path data of any codepoint of the font, not only those in `CP` (used for UI icons). */
+  pathCp(cp: number): string;
+  /** Path data of a named glyph in staff spaces, origin at the glyph origin, y down. */
+  path(name: string): string;
   bbox(name: string): BBox;
   adv(name: string): number;
-  anchor(name: string, key: string): [number, number] | undefined; // y up
+  /** A named SMuFL anchor point (`stemUpSE`, `cutOutNE`, ...) in staff spaces, y up. */
+  anchor(name: string, key: string): [number, number] | undefined;
   def: Record<string, number>;
 }
 
@@ -102,7 +112,7 @@ function real(): Smufl {
   return sm;
 }
 
-/** debugging helper: check my codepoint table against the font's metadata advances */
+/** Debugging helper: checks the `CP` table against the advance widths in the font's metadata (a wrong codepoint shows as a mismatch). */
 export function checkCodepoints(): string[] {
   const { buf, meta } = (source ??= nodeSource());
   const font = opentype.parse(buf);

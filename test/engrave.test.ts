@@ -42,7 +42,8 @@ m1 time=4/4 key=2
 `);
   const p = prepare(s);
   const heads = p.measures[0][0].evs.map((e) => e.heads[0].acc?.glyph);
-  // key of D major: f# is in the key signature; f natural needs a natural sign; repeat needs none
+  // Key of D major: f# is in the key signature and needs no accidental; an f natural needs a
+  // natural sign; and a repeated f natural in the same measure needs none again.
   assert.deepEqual(heads, [undefined, 'accidentalNatural', undefined, 'accidentalSharp']);
 });
 
@@ -111,7 +112,8 @@ m1 time=2/4
   rh.2: c5:4 c5:4
   lh.1: R:2
 `);
-  // c5 shared, d5, second c5 -> 3 heads, not 4
+  // Two voices play c5 together: the unison shares one head, so with d5 and the second c5
+  // there are 3 heads, not 4.
   assert.equal(ps.filter((p) => p.t === 'glyph' && p.name === 'noteheadBlack').length, 3);
 });
 
@@ -153,7 +155,8 @@ m1 time=2/4
   rh.2: c5:16 e4 e4:8 r:4
   lh.1: R:2
 `);
-  // dotted quarter c5 (stem up) and 16th c5 (stem down): one head; plus two e4 heads
+  // A dotted quarter c5 (stem up) and a 16th c5 (stem down) share a head, with two e4 heads
+  // that makes 3 heads, and only one dot: the shared head is not given a second, lesser dot.
   assert.equal(ps.filter((p) => p.t === 'glyph' && p.name === 'noteheadBlack').length, 3);
   assert.equal(ps.filter((p) => p.t === 'glyph' && p.name === 'augmentationDot').length, 1);
 });
@@ -179,7 +182,9 @@ m1 time=2/4
   assert.equal(heads.length, 2);
   const vlines = ps.filter((p) => p.t === 'line' && p.x1 === p.x2 && p.w === 0.12) as { x1: number }[];
   assert.equal(vlines.length, 2);
-  // g (voice 2, stem down) is shifted right by one head width; both stems end up on (almost) the same x
+  // The g of voice 2 (stem down) is a step above the f of voice 1 (stem up), so their heads clash
+  // and voice 2 is shifted right by one head width. The up-stem of the f runs on the right of its
+  // head, so after the shift both stems stand at (almost) the same x.
   assert.ok(Math.abs(vlines[0].x1 - vlines[1].x1) < 0.2, `stems at ${vlines.map((l) => l.x1)}`);
   const xs = heads.map((h) => h.x).sort((a, b) => a - b);
   assert.ok(Math.abs(xs[1] - xs[0] - 1.18 * HEAD_SCALE) < 0.01);
@@ -226,7 +231,8 @@ m1 time=2/4
   assert.ok(beams.length > 0);
   const stems = prims.filter((q) => q.k === 'stem') as { y1: number; y2: number; x1: number }[];
   assert.equal(stems.length, 6);
-  // all stems end on the same flat beam: the longest stem of a note below it and of a note above it meet at one y
+  // All stems end on the same flat beam (a cross-staff beam): the stems of the notes below it
+  // and of the notes above it meet it at one y, which the rounded tip positions show.
   const tips = new Set(stems.map((q) => Math.round(q.y2 * 100)));
   assert.ok(tips.size <= 2, `tips ${[...tips]}`);
   assert.deepEqual(findCollisions(engrave(s).pages).map(describe), []);

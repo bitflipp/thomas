@@ -1,3 +1,5 @@
+// Tool palette: note/rest input, durations, accidentals, voices and the tools that create spanners and
+// marks. It only sets tool state (state.ts); the pointer handling that uses it is in interact.ts.
 import type { BaseDur } from '../src/model.ts';
 import { Glyph, Label, CPS, Icon } from './icons.tsx';
 import { voiceColors, VOICE_COLORS, tool, dur, dots, acc, voice, dynText, clefArg, tupletArg, tempoArg, textArg, type Tool } from './state.ts';

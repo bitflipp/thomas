@@ -1,10 +1,16 @@
 // Editing the item tree of a voice: put an event at a tick (overwriting what is there), fill gaps with rests.
-// All functions work on plain objects or Immer drafts and return new item lists; they never leave a voice too short or long.
+//
+// Positions here are *written* ticks at the level of the list being edited: inside a tuplet they are
+// the ticks the contents would have without the tuplet's scaling, and `putEvent` converts when it
+// descends. All functions work on plain objects or Immer drafts and return new item lists; they
+// never leave a voice too short or too long, so callers can rely on the measure staying full.
 import { baseTicks, isEvent, isTuplet, isBeam, type Dur, type BaseDur, type Event, type Item, type RestEvent, type TupletGroup } from '../model.ts';
 
+/** A refusal with a message fit for the user; the UI shows it in the status line instead of changing anything. */
 export class EditError extends Error {}
 
 const BASES: BaseDur[] = [1, 2, 4, 8, 16, 32, 64];
+/** Every plain or single-dotted note value with its length, longest first (double dots are never produced). */
 const CANDS = BASES.flatMap((base) => [0, 1].map((dots) => ({ dur: { base, dots } as Dur, ticks: baseTicks({ base, dots }) }))).sort((a, b) => b.ticks - a.ticks);
 
 export function durOfTicks(t: number): Dur | undefined { return CANDS.find((c) => c.ticks === t)?.dur; }
@@ -15,7 +21,9 @@ export function splitTicks(ticks: number, start = 0): Dur[] {
   let pos = start, rem = ticks;
   while (rem > 0) {
     const u = (c: (typeof CANDS)[number]) => baseTicks({ base: c.dur.base, dots: 0 });
-    // a dotted value must start on a multiple of twice its undotted length (a dotted quarter on a beat pair, not off-beat)
+    // Pick the largest value that fits. A dotted value must start on a multiple of twice its undotted
+    // length (a dotted quarter on a beat pair, not off the beat); if no such value fits, fall back to
+    // the largest undotted one, which always aligns.
     const pick = CANDS.find((c) => c.ticks <= rem && pos % (c.dur.dots ? 2 * u(c) : u(c)) === 0) ?? CANDS.find((c) => c.ticks <= rem && !c.dur.dots);
     if (!pick) throw new EditError('That span cannot be written as note values');
     out.push({ ...pick.dur }); pos += pick.ticks; rem -= pick.ticks;
@@ -35,7 +43,7 @@ export function itemTicks(it: Item): number {
 export const itemsTicks = (items: Item[]): number => items.reduce((a, x) => a + itemTicks(x), 0);
 
 /** The pieces of event `e` (which spans [a, b)) that remain over [from, to): rests, except the head of a note which stays a (tied) note. */
-function pieces(e: Event, a: number, from: number, to: number, head: boolean): Event[] {
+function pieces(e: Event, from: number, to: number, head: boolean): Event[] {
   if (e.kind === 'rest' || !head) return restsFor(to - from, from);
   const durs = splitTicks(to - from, from);
   return durs.map((d, i) => {
@@ -43,7 +51,6 @@ function pieces(e: Event, a: number, from: number, to: number, head: boolean): E
     if (i > 0) { delete n.marks; delete n.slurStart; delete n.art; delete n.artSide; delete n.arpeggio; delete n.graces; delete n.stem; }
     if (i < durs.length - 1) delete n.slurStop;
     for (const p of n.pitches) if (p.tie === undefined) delete p.tie;
-    void a;
     return n;
   });
 }
@@ -52,7 +59,9 @@ function pieces(e: Event, a: number, from: number, to: number, head: boolean): E
 export function overwrite(items: Item[], t0: number, t1: number, insert: Item[]): Item[] {
   const flat: Item[] = [];
   let pos = 0;
-  for (const it of items) { // explicit beam groups touched by the edit dissolve (the automatic beaming applies)
+  // Explicit beam groups touched by the edit dissolve into their members (automatic beaming
+  // applies afterwards), because a group with a changed member is no longer what was written.
+  for (const it of items) {
     const len = itemTicks(it);
     if (isBeam(it) && pos < t1 && pos + len > t0) flat.push(...it.items); else flat.push(it);
     pos += len;
@@ -65,15 +74,18 @@ export function overwrite(items: Item[], t0: number, t1: number, insert: Item[])
     pos = b;
     if (b <= t0) { out.push(it); continue; }
     if (a >= t1) { if (!placed) { out.push(...insert); placed = true; } out.push(it); continue; }
-    // what hangs on the event that starts where the new one goes stays with the new one
+    // Marks (dynamics, hairpins, ...) hang on the event that starts where the new one goes; they are
+    // carried over to the new event unless it brings its own, so overwriting a note keeps its dynamic.
     if (isEvent(it) && a === t0 && it.marks?.length && isEvent(insert[0]) && !insert[0].marks) insert[0] = { ...insert[0], marks: it.marks.map((m) => JSON.parse(JSON.stringify(m))) };
     if (!isEvent(it)) {
-      if (a >= t0 && b <= t1) continue; // fully replaced
+      // A tuplet/tremolo wholly inside the range is simply replaced; one only partly inside would
+      // have to be cut in two, which has no valid notation, so refuse.
+      if (a >= t0 && b <= t1) continue;
       throw new EditError('That would cut through a tuplet or tremolo (hold Alt to replace it as a whole)');
     }
-    if (a < t0) out.push(...pieces(it, a, a, t0, true));
+    if (a < t0) out.push(...pieces(it, a, t0, true));
     if (!placed) { out.push(...insert); placed = true; }
-    if (b > t1) out.push(...pieces(it, a, t1, b, false));
+    if (b > t1) out.push(...pieces(it, t1, b, false));
   }
   if (!placed) out.push(...insert);
   return out;
@@ -105,9 +117,12 @@ export function putEvent(items: Item[], tick: number, ev: Event, descend = true)
   return overwrite(items, tick, tick + baseTicks(ev.dur), [ev]);
 }
 
-/** The deepest list of items in which an event starts at `tick`, with its index there: used to edit that event in place. */
+/**
+ * The event sounding at absolute `tick` (not only starting there), found by descending into tuplets and
+ * groups. Returns its absolute start and length, and whether it sits inside a tuplet (where its written
+ * duration differs from its sounding length). `k` below is the scale from written to sounding ticks.
+ */
 export function eventAtTick(items: Item[], tick: number): { ev: Event; start: number; ticks: number; inTuplet: boolean } | undefined {
-  let pos = 0;
   const walk = (list: Item[], base: number, k: number, inT: boolean): ReturnType<typeof eventAtTick> => {
     let p = 0;
     for (const it of list) {
@@ -129,6 +144,5 @@ export function eventAtTick(items: Item[], tick: number): { ev: Event; start: nu
     }
     return undefined;
   };
-  void pos;
   return walk(items, 0, 1, false);
 }

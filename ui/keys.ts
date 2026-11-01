@@ -1,7 +1,9 @@
-import { PPQ } from '../src/model.ts';
+// Keyboard shortcuts (the list shown to the user is in Shortcuts.tsx; keep the two in step).
+// `installKeys` adds one global listener that ignores keys while the user types in an input or in the
+// text pane's editor. The clipboard for copy/paste is kept here as plain events, not in the system clipboard.
+import { PPQ, flattenVoice, type Event } from '../src/model.ts';
 import * as C from '../src/editor/commands.ts';
 import { eventOf, voiceOf } from '../src/editor/addr.ts';
-import { flattenVoice, type Event } from '../src/model.ts';
 import { score, selection, tool, dur, dots, zoom, fit, showText, showInspector, undo, redo, run, say, voice, type Tool } from './state.ts';
 import { chooseDuration, chooseDots, nudge, flipStem, slurSelection, tieSelection, stepSelection } from './actions.ts';
 import { deleteSelection, evRefs, cancelDrag, menu, zoomBy } from './interact.ts';

@@ -1,4 +1,7 @@
-// Actions on the selection shared by palette, inspector and keyboard.
+// Actions on the selection, shared by the palette, the inspector and the keyboard shortcuts so that all
+// three behave the same. Each one runs a pure command from src/editor/commands.ts on every selected
+// event and commits the result as one undoable step; a refusal (`EditError`) is shown in the status
+// line instead of changing anything.
 import type { BaseDur, Dur } from '../src/model.ts';
 import * as C from '../src/editor/commands.ts';
 import { eventOf, type EvAddr } from '../src/editor/addr.ts';
