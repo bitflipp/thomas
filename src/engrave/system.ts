@@ -6,7 +6,7 @@
 import { keyAt, timeAt, type Score, type Clef } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { prepare, posToY, type Prepared } from './prep.ts';
-import { spaceMeasure, placeMeasure, COMPRESS, type MeasureSpacing } from './spacing.ts';
+import { spaceMeasure, placeMeasure, keyChange, COMPRESS, type MeasureSpacing } from './spacing.ts';
 import { drawSystemNotes, xAtTick, D, CROSS_GAP0, type SysCtx } from './draw.ts';
 import { drawSpanners } from './spanners.ts';
 import { Skyline, oid, tagFrom, type Page, type Prim } from './scene.ts';
@@ -44,8 +44,11 @@ function keyPositions(fifths: number, clef: Clef): number[] {
     return sign - 2 * (c.line - 1) + 7 * (c.octave ?? 0);
   };
   const shift = (((bottom({ sign: 'G', line: 2 }) - bottom(clef)) % 7) + 7) % 7;
+  // Use the signed offset (bass: two steps down, not five up) and wrap each kind into its window.
+  const d = shift > 3 ? shift - 7 : shift;
   const base = fifths > 0 ? SHARP_POS_TREBLE.slice(0, fifths) : FLAT_POS_TREBLE.slice(0, -fifths);
-  return base.map((p) => { let q = p + shift; while (q > 9) q -= 7; return q; });
+  // Flats keep the treble window [1, 7] moved by the offset (bass: -1..5, the last flat lowest).
+  return base.map((p) => { let q = p + d; if (fifths > 0) { while (q > 9) q -= 7; } else { while (q < 1 + d) q += 7; while (q > 7 + d) q -= 7; } return q; });
 }
 
 function keyWidth(fifths: number): number {
@@ -264,7 +267,19 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       // Changes inside the system: a time signature at the start of its measure and clef changes
       // at their column, placed left of the notes of that column (`L` is the column's left extent).
       for (let mi = ctx.a; mi <= ctx.b; mi++) {
-        if (mi > ctx.a && score.measures[mi].time) timeSig(P, ctx.mx[mi] + 0.6, y0, timeAt(score, mi));
+        if (mi > ctx.a) {
+          let tx = ctx.mx[mi] + 0.6;
+          const kc = keyChange(score, mi);
+          if (kc) {
+            const oid2 = oid({});
+            const put = (name: string, pos: number) => { P.push({ t: 'glyph', name, x: tx, y: y0 + posToY(pos), k: 'keysig', o: oid2 }); tx += sm.adv(name) + 0.12; };
+            const oldPos = keyPositions(kc.from, clef), newPos = keyPositions(kc.to, clef);
+            kc.nat.forEach((i) => put('accidentalNatural', oldPos[i]));
+            newPos.forEach((pos) => put(kc.to > 0 ? 'accidentalSharp' : 'accidentalFlat', pos));
+            tx += 0.6;
+          }
+          if (score.measures[mi].time) timeSig(P, tx, y0, timeAt(score, mi));
+        }
         for (const mk of prep.measures[mi][s].marks) {
           if (mk.type !== 'clef') continue;
           if (mk.tick === 0 && mi === ctx.a) continue;

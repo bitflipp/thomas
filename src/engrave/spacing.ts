@@ -6,7 +6,7 @@
 // get more but not proportionally more room), and the constraints keep the left extent of a column
 // clear of the right extent of the previous one on every staff. The stretch factor `f` is solved for a
 // whole system in system.ts; `COMPRESS` bounds how far a measure may be squeezed below its ideal.
-import { PPQ, timeAt, type Score } from '../model.ts';
+import { PPQ, timeAt, keyAt, type Score } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import type { Prepared, EvL, HeadL } from './prep.ts';
 
@@ -33,6 +33,25 @@ export function idealSpace(dt: number): number {
 }
 
 /** All events starting at one tick of a measure, across staves. Columns of one tick are aligned vertically. */
+/** Key change at the start of measure `mi` (not the first): the naturals cancelling the old key
+ *  (indices into the old key's accidental order) and the number of new accidentals. */
+export function keyChange(score: Score, mi: number): { from: number; to: number; nat: number[]; add: number } | undefined {
+  if (mi === 0 || score.measures[mi].key === undefined) return undefined;
+  const from = keyAt(score, mi - 1), to = keyAt(score, mi);
+  if (from === to) return undefined;
+  const keep = Math.sign(from) === Math.sign(to) ? Math.abs(to) : 0;
+  const nat: number[] = [];
+  for (let i = keep; i < Math.abs(from); i++) nat.push(i);
+  return { from, to, nat, add: Math.abs(to) };
+}
+export function keyChangeWidth(score: Score, mi: number): number {
+  const kc = keyChange(score, mi);
+  if (!kc) return 0;
+  const n = kc.nat.length + kc.add;
+  if (!n) return 0;
+  return n * (sm.adv(kc.add ? (kc.to > 0 ? 'accidentalSharp' : 'accidentalFlat') : 'accidentalNatural') + 0.12) + 0.6;
+}
+
 export interface Column {
   tick: number;
   evs: EvL[]; // events starting here (all staves)
@@ -126,7 +145,7 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
 
   const tsChanged = mi > 0 && prep.score.measures[mi].time;
   const timeSig = tsChanged ? timeAt(prep.score, mi) : undefined;
-  const prefix = timeSig ? Math.max(sm.adv('timeSig2') * String(timeSig.beats).length, sm.adv('timeSig2') * String(timeSig.beatType).length) + 1.2 : 0;
+  const prefix = keyChangeWidth(prep.score, mi) + (timeSig ? Math.max(sm.adv('timeSig2') * String(timeSig.beats).length, sm.adv('timeSig2') * String(timeSig.beatType).length) + 1.2 : 0);
   const lead = 0.9 + prefix + Math.max(0, ...cols.slice(0, 1).flatMap((c) => c.L));
   const endReq: number[] = Array(nS).fill(0);
   for (let s = 0; s < nS; s++) for (const c of cols) if (c.has[s]) endReq[s] = c.R[s];
