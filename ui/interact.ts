@@ -1,11 +1,12 @@
 // Pointer interaction on the score: selection, note input, dragging, and the tools that create spanners and marks.
+import { showHelp } from './Shortcuts.tsx';
 import { signal } from '@preact/signals';
 import { PPQ, baseTicks, flattenVoice, marksOf, measureTicks, timeAt, type Event, type MarkBody, type Score } from '../src/model.ts';
 import { eventAtTick } from '../src/editor/voice.ts';
 import { pitchAtPos } from '../src/editor/context.ts';
 import * as C from '../src/editor/commands.ts';
 import { eventOf, markOf, refKey, voiceOf, type EvAddr, type Ref } from '../src/editor/addr.ts';
-import { hitTest, marquee, measureAt, measureAtStaff, posAtY, snapTick, type Box, type Target } from '../src/editor/hit.ts';
+import { eventAtX, hitTest, marquee, measureAt, measureAtStaff, posAtY, snapTick, type Box, type Target } from '../src/editor/hit.ts';
 import type { MeasureGeom } from '../src/engrave/system.ts';
 import { seek, measureTick } from './player.ts';
 import {
@@ -166,6 +167,24 @@ export function onPointerDown(e: PointerEvent): void {
 }
 
 /** What a click on the target selects: a single note as a whole (stem and all), a chord tone on its own. Hover shows the same. */
+const MARK_TOOLS = new Set(['dynamic', 'text', 'tempo', 'clef']);
+const ZERO: Box = { x0: 0, y0: 0, x1: 0, y1: 0 };
+/** Hover on the event a mark would hang on at the pointer (on `staff` only when given, else on the staff under it). */
+function eventHover(w: Where, staff?: string, prefer = voice.value): Target | null {
+  const h = hit.peek();
+  if (!h) return null;
+  const sc = score.peek();
+  const g = staff === undefined ? measureAt(h.layout, w.page, w.x, w.y) : measureAtStaff(h.layout, w.page, w.x, w.y, sc.staves.findIndex((s) => s.id === staff));
+  if (!g) return null;
+  const at = eventAtX(sc, g, staffId(sc, g.staff), lenOf(sc, g.mi), w.x, prefer);
+  return at ? { page: g.page, ref: { t: 'ev', ...at }, k: 'head', boxes: [], bbox: ZERO, prio: 0 } : null;
+}
+function setHover(t: Target | null): void {
+  const cur = hover.peek();
+  if (t === cur || (t && cur && t.page === cur.page && t.k === cur.k && refKey(t.ref) === refKey(cur.ref))) return;
+  hover.value = t;
+}
+
 function asSelected(t: Target | undefined): Target | undefined {
   if (t && t.ref.t === 'ev' && t.ref.pi !== undefined && (eventOf(score.peek(), t.ref) as { pitches?: unknown[] } | undefined)?.pitches?.length === 1) {
     return { ...t, ref: { ...t.ref, pi: undefined } };
@@ -174,18 +193,16 @@ function asSelected(t: Target | undefined): Target | undefined {
 }
 
 export function onPointerMove(e: PointerEvent): void {
+  if (showHelp.peek()) { if (drag.k === 'none') { ghost.value = null; hover.value = null; } return; } // the shortcuts dialog covers the score
   const w = locate(e.clientX, e.clientY);
   const h = hit.peek();
   if (!w || !h) { if (drag.k === 'none') { ghost.value = null; hover.value = null; } return; }
   const t = tool.value;
-  const ht = drag.k === 'none' && t === 'select' ? asSelected(hitTest(h, w.page, w.x, w.y)) : undefined;
-  if (ht !== hover.peek() && (!ht || !hover.peek() || ht.page !== hover.peek()!.page || refKey(ht.ref) !== refKey(hover.peek()!.ref) || ht.k !== hover.peek()!.k)) hover.value = ht ?? null;
+  const ht = drag.k !== 'none' ? undefined : t === 'select' ? asSelected(hitTest(h, w.page, w.x, w.y)) : MARK_TOOLS.has(t) ? eventHover(w) ?? undefined : undefined;
+  if (drag.k !== 'mark') setHover(ht ?? null);
   if (drag.k === 'none') {
     if (t === 'note' || t === 'rest') ghost.value = ghostFor(w, e.altKey);
-    else if (t === 'dynamic' || t === 'text' || t === 'tempo' || t === 'clef') {
-      const g = measureAt(h.layout, w.page, w.x, w.y);
-      ghost.value = g ? { kind: 'bar', page: g.page, x: snapTick(g, lenOf(score.peek(), g.mi), w.x, PPQ / 4).x, top: g.y, bad: false } : null;
-    } else ghost.value = null;
+    else ghost.value = null;
     return;
   }
   const d = drag;
@@ -210,8 +227,7 @@ export function onPointerMove(e: PointerEvent): void {
   } else if (d.k === 'mark') {
     if (!d.moved && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 4) return;
     d.moved = true;
-    const g = measureAtStaff(h.layout, w.page, w.x, w.y, score.peek().staves.findIndex((s) => s.id === d.ref.staff));
-    if (g) ghost.value = { kind: 'bar', page: g.page, x: snapTick(g, lenOf(score.peek(), g.mi), w.x, PPQ / 4).x, top: g.y, bad: false };
+    setHover(eventHover(w, d.ref.staff, d.ref.voice));
   }
 }
 
@@ -222,6 +238,7 @@ export function onPointerUp(e: PointerEvent): void {
   const h = hit.peek();
   if (d.k === 'none' || !w || !h) return;
   ghost.value = null;
+  if (d.k === 'mark') hover.value = null;
   const sc = score.peek();
   if (d.k === 'marquee') {
     if (!d.moved || w.page !== d.start.page) return;
@@ -256,10 +273,10 @@ export function onPointerUp(e: PointerEvent): void {
     if (!d.moved) return;
     const g = measureAtStaff(h.layout, w.page, w.x, w.y, sc.staves.findIndex((s) => s.id === d.ref.staff));
     if (!g) return;
-    const sn = snapTick(g, lenOf(sc, g.mi), w.x, PPQ / 4);
-    if (g.mi === d.ref.mi && sn.tick === markOf(sc, d.ref)?.tick) return;
+    const at = eventAtX(sc, g, d.ref.staff, lenOf(sc, g.mi), w.x, d.ref.voice);
+    if (!at || (at.mi === d.ref.mi && at.voice === d.ref.voice && at.idx === d.ref.idx)) return;
     const ref = d.ref;
-    run((s) => C.moveMark(s, ref, g.mi, sn.tick));
+    run((s) => C.moveMark(s, ref, at));
     selection.value = [];
   }
 }
@@ -290,17 +307,18 @@ function addMarkAt(w: Where): void {
   const g = measureAt(h.layout, w.page, w.x, w.y);
   if (!g) return;
   const id = staffId(sc, g.staff);
-  const sn = snapTick(g, lenOf(sc, g.mi), w.x, PPQ / 4);
+  const at = eventAtX(sc, g, id, lenOf(sc, g.mi), w.x, voice.value);
+  if (!at) return;
   const above = w.y < g.y + 2;
   const placement = above ? ({ placement: 'above' as const }) : {};
   const t = tool.value;
   let ok = false;
-  if (t === 'dynamic') ok = run((s) => C.addMark(s, id, g.mi, sn.tick, { type: 'dynamic', text: dynText.value, ...placement }));
-  else if (t === 'text') ok = run((s) => C.addMark(s, id, g.mi, sn.tick, { type: 'text', text: textArg.value, ...placement }));
-  else if (t === 'tempo') ok = run((s) => C.addMark(s, id, g.mi, sn.tick, { type: 'tempo', unit: tempoArg.value.unit, dots: tempoArg.value.dots, bpm: tempoArg.value.bpm }));
-  else if (t === 'clef') ok = run((s) => C.addMark(s, id, g.mi, sn.tick, { type: 'clef', clef: { ...clefArg.value } }));
+  if (t === 'dynamic') ok = run((s) => C.addMark(s, at, { type: 'dynamic', text: dynText.value, ...placement }));
+  else if (t === 'text') ok = run((s) => C.addMark(s, at, { type: 'text', text: textArg.value, ...placement }));
+  else if (t === 'tempo') ok = run((s) => C.addMark(s, at, { type: 'tempo', unit: tempoArg.value.unit, dots: tempoArg.value.dots, bpm: tempoArg.value.bpm }));
+  else if (t === 'clef') ok = run((s) => C.addMark(s, at, { type: 'clef', clef: { ...clefArg.value } }));
   if (ok) {
-    const m = marksOf(score.peek().measures[g.mi].staves[id]).findLast((x) => x.tick === sn.tick && x.type === t);
+    const m = marksOf(score.peek().measures[g.mi].staves[id]).findLast((x) => x.voice === at.voice && x.idx === at.idx && x.type === t);
     if (m) selection.value = [{ t: 'mark', mi: g.mi, staff: id, voice: m.voice, idx: m.idx, k: m.k }];
   }
 }

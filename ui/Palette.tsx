@@ -55,10 +55,10 @@ export function Palette() {
       </div>
       <h4>Marks</h4>
       <div class="grid">
-        <ToolBtn t="dynamic" title="Dynamic: click a position"><Label italic>mf</Label></ToolBtn>
-        <ToolBtn t="text" title="Text: click a position"><Icon.text /></ToolBtn>
-        <ToolBtn t="tempo" title="Tempo: click a position"><Icon.tempo /></ToolBtn>
-        <ToolBtn t="clef" title="Clef change: click a position"><Glyph cp={CPS.gclef} max={28} cap={9} /></ToolBtn>
+        <ToolBtn t="dynamic" title="Dynamic: click a note or rest"><Label italic>mf</Label></ToolBtn>
+        <ToolBtn t="text" title="Text: click a note or rest"><Icon.text /></ToolBtn>
+        <ToolBtn t="tempo" title="Tempo: click a note or rest"><Icon.tempo /></ToolBtn>
+        <ToolBtn t="clef" title="Clef change: click a note or rest"><Glyph cp={CPS.gclef} max={28} cap={9} /></ToolBtn>
         <ToolBtn t="tuplet" title="Tuplet: click a note or rest"><Icon.tuplet /></ToolBtn>
       </div>
       <div class="args">
@@ -80,6 +80,6 @@ const HINTS: Record<Tool, string> = {
   slur: 'Drag from the first note to the last.',
   cresc: 'Drag from the first note to the last.', dim: 'Drag from the first note to the last.', pedal: 'Drag from the note where the pedal goes down to the last note under it.',
   '8va': 'Drag from the first note to the last to shift.', '8vb': 'Drag from the first note to the last to shift.',
-  dynamic: 'Click a position (above the staff centre puts it above).', text: 'Click a position.', tempo: 'Click a position.', clef: 'Click a position.',
+  dynamic: 'Click a note or rest: the mark hangs on it (above the staff centre puts it above).', text: 'Click a note or rest to hang the text on it.', tempo: 'Click a note or rest to hang the tempo on it.', clef: 'Click a note or rest: the clef changes from it.',
   tuplet: 'Click a note or rest: it becomes a tuplet of that length.',
 };

@@ -9,15 +9,17 @@ import { oid, Skyline, type Kind, type Prim } from './scene.ts';
 const sm = loadSmufl();
 
 /** Filled crescent from (x0,y0) to (x1,y1) bulging `h` away from the chord; `thick` at the middle, `tip` at the ends. */
-function crescent(x0: number, y0: number, x1: number, y1: number, h: number, thick: number, above: boolean, tip = 0.1): string {
+function crescent(x0: number, y0: number, x1: number, y1: number, h: number, thick: number, above: boolean, tip = 0.1, a = 0.3): string {
   const s = above ? -1 : 1;
   const L = x1 - x0;
   const k = h / 0.75;
   const k2 = Math.max(0, k - thick / 0.75);
   const c = (t: number, kk: number) => `${(x0 + L * t).toFixed(3)} ${(y0 + (y1 - y0) * t + s * kk).toFixed(3)}`;
+  // control points sit at fraction `a` of the span in x but follow the chord in y (`t` below), so a small `a` gives steep ends and a flat top
+  const cx = (f: number, kk: number) => `${(x0 + L * f).toFixed(3)} ${(y0 + (y1 - y0) * (f < 0.5 ? 0.3 : 0.7) + s * kk).toFixed(3)}`;
   // the inner edge ends slightly towards the chord so that the tips keep a visible thickness
   const iy0 = y0 - s * tip, iy1 = y1 - s * tip;
-  return `M${x0.toFixed(3)} ${y0.toFixed(3)}C${c(0.3, k)} ${c(0.7, k)} ${x1.toFixed(3)} ${y1.toFixed(3)}L${x1.toFixed(3)} ${iy1.toFixed(3)}C${c(0.7, k2 - s * tip * 0)} ${c(0.3, k2)} ${x0.toFixed(3)} ${iy0.toFixed(3)}Z`;
+  return `M${x0.toFixed(3)} ${y0.toFixed(3)}C${cx(a, k)} ${cx(1 - a, k)} ${x1.toFixed(3)} ${y1.toFixed(3)}L${x1.toFixed(3)} ${iy1.toFixed(3)}C${cx(1 - a, k2)} ${cx(a, k2)} ${x0.toFixed(3)} ${iy0.toFixed(3)}Z`;
 }
 
 export function drawSpanners(systems: SysCtx[]): void {
@@ -195,7 +197,7 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
   // a slur belongs to the voice's staff; an end on another staff is converted to that staff's coordinates
   if (a.staff !== a.home && !(pa.stemSide && pa.homed)) pa.y += staffOffset(sa, a.home, a.staff);
   if (b.staff !== a.home && !(pb.stemSide && pb.homed)) pb.y += staffOffset(sb, a.home, b.staff);
-  const thick = (D.slurMidpointThickness as number) * 1.3;
+  const thick = (D.slurMidpointThickness as number);
   const piece = (ctx: SysCtx, x0: number, y0: number, x1: number, y1: number, staff: number, openL = false, openR = false): { h: number; L: number; draw: (h: number) => void } | undefined => {
     const L = x1 - x0;
     if (L < 0.5) return undefined;
@@ -260,7 +262,7 @@ function drawSlur(systems: SysCtx[], sysOf: number[], a: EvL, b: EvL, explicit: 
     return {
       h, L,
       draw: (hh: number) => {
-        ctx.prims[staff].push({ t: 'path', d: crescent(x0, y0, x1, y1, hh, thick, above), k: 'slur', o: slurId, r: a.ev, n: id });
+        ctx.prims[staff].push({ t: 'path', d: crescent(x0, y0, x1, y1, hh, thick, above, 0.1, 0.2), k: 'slur', o: slurId, r: a.ev, n: id });
         const ym = Math.min(y0, y1), yM = Math.max(y0, y1);
         // (a slur between staves reaches into the other staff: it is not recorded, or it would push the staves apart for good)
         sky.add(x0, x1, above ? ym - hh : ym, above ? yM : yM + hh, true);

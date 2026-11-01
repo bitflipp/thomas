@@ -174,10 +174,11 @@ export function xOfTick(g: MeasureGeom, len: number, tick: number): number {
   return g.x1;
 }
 
-/** The rhythmic position nearest to x: an existing column or a multiple of `grid` ticks. */
-export function snapTick(g: MeasureGeom, len: number, x: number, grid: number): { tick: number; x: number; onColumn: boolean } {
+/** The rhythmic position nearest to x: an existing column or a multiple of `grid` ticks (`'events'`: columns only, where marks can hang). */
+export function snapTick(g: MeasureGeom, len: number, x: number, grid: number | 'events'): { tick: number; x: number; onColumn: boolean } {
   const cand = new Map<number, boolean>();
-  for (let t = 0; t < len; t += grid) cand.set(t, false);
+  if (grid !== 'events') for (let t = 0; t < len; t += grid) cand.set(t, false);
+  else if (!g.cols.some((c) => c.tick < len)) cand.set(0, false);
   for (const c of g.cols) if (c.tick < len) cand.set(c.tick, true);
   let best = { tick: 0, x: xOfTick(g, len, 0), onColumn: false }, bd = Infinity;
   for (const [t, col] of cand) {
@@ -278,4 +279,20 @@ export function noteBoxes(h: HitIndex, page: number, want: EvAddr[]): Box[] {
     for (const hd of heads) if (ends.some((e) => hd.bbox.x0 <= e.x1 && hd.bbox.x1 >= e.x0 && hd.bbox.y0 <= e.y1 && hd.bbox.y1 >= e.y0)) out.push(hd.bbox);
   }
   return out;
+}
+
+/**
+ * The event a position on a staff-measure stands for: the one at the nearest column (a mark hangs on it), in voice `prefer`
+ * if it has an event there, else in the first voice that does. Undefined when the staff-measure has no events.
+ */
+export function eventAtX(score: Score, g: MeasureGeom, staff: string, len: number, x: number, prefer: number): EvAddr | undefined {
+  const sn = snapTick(g, len, x, 'events');
+  const sm = score.measures[g.mi]?.staves[staff];
+  if (!sm) return undefined;
+  const voices = [...sm.voices].sort((a, b) => Number(b.id === prefer) - Number(a.id === prefer));
+  for (const v of voices) {
+    const te = flattenVoice(v).find((t) => t.start === sn.tick);
+    if (te) return { mi: g.mi, staff, voice: v.id, idx: te.index };
+  }
+  return undefined;
 }

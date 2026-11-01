@@ -2,8 +2,8 @@
 // Failures throw EditError with a message fit for the user; the score is then unchanged.
 import { produce, type Draft } from 'immer';
 import {
-  PPQ, anchorMarks, baseTicks, collectMarks, flattenVoice, isBeam, isEvent, isTremolo, isTuplet, measureTicks, timeAt,
-  type Clef, type Dur, type Event, type Item, type MarkBody, type TimedMark, type NoteEvent, type NotePitch, type Pitch, type Score, type StaffMeasure,
+  PPQ, baseTicks, collectMarks, flattenVoice, isBeam, isEvent, isTremolo, isTuplet, measureTicks, timeAt,
+  type Clef, type Dur, type Event, type Item, type MarkBody, type NoteEvent, type NotePitch, type Pitch, type Score, type StaffMeasure,
   type TimeSig, type TupletGroup, type Voice, type Articulation,
 } from '../model.ts';
 import { EditError, durOfTicks, eventAtTick, itemsTicks, itemTicks, putEvent, rest, restsFor, splitTicks } from './voice.ts';
@@ -234,6 +234,8 @@ export function setDuration(score: Score, a: EvAddr, dur: Dur): Score {
     if (te.start + baseTicks(dur) > measureTicks(timeAt(d as Score, a.mi))) throw new EditError('The note does not fit into the measure');
     const copy = JSON.parse(JSON.stringify(te.ev)) as Event;
     copy.dur = { ...dur };
+    // a whole-measure rest given a shorter value is an ordinary rest (the rest of the bar fills up with more)
+    if (copy.kind === 'rest' && copy.style === 'measure' && baseTicks(dur) !== measureTicks(timeAt(d as Score, a.mi))) copy.style = 'normal';
     v.items = putEvent(v.items as Item[], te.start, copy) as Draft<Item>[];
   });
 }
@@ -347,15 +349,28 @@ export function setSlurSide(score: Score, from: EvAddr, id: number, side: 'above
 
 // ------------------------------------------------------------------ marks
 
-export function addMark(score: Score, staff: string, mi: number, tick: number, body: MarkBody): Score {
+/** Hang a mark on the event `at` (the one under the cursor); a dynamic, tempo or clef replaces its kind already there. */
+export function addMark(score: Score, at: EvAddr, body: MarkBody): Score {
+  return edit(score, (d) => { hang(d, at, body); });
+}
+function hang(d: Draft<Score>, at: EvAddr, body: MarkBody): void {
+  const sm = staffMeasure(d, at.mi, at.staff);
+  const v = sm.voices.find((x) => x.id === at.voice);
+  const te = v && flattenVoice(v as Voice)[at.idx];
+  if (!v || !te) throw new EditError('Nothing to attach the mark to');
+  if (body.type === 'dynamic' || body.type === 'tempo' || body.type === 'clef') {
+    dropMarks(d, collectMarks(sm as StaffMeasure).filter((m) => m.type === body.type && m.tick === te.start).map((m) => ({ mi: at.mi, staff: at.staff, voice: m.voice, idx: m.idx, k: m.k })));
+  }
+  (te.ev.marks ??= []).push(body as Draft<MarkBody>);
+}
+/** Move a mark onto another event of its staff. */
+export function moveMark(score: Score, a: MarkAddr, at: EvAddr): Score {
   return edit(score, (d) => {
-    const sm = staffMeasure(d, mi, staff);
-    if (!sm.voices.some((v) => v.items.length)) throw new EditError('Nothing to attach the mark to');
-    // one dynamic, tempo or clef per position
-    if (body.type === 'dynamic' || body.type === 'tempo' || body.type === 'clef') {
-      dropMarks(d, collectMarks(sm as StaffMeasure).filter((m) => m.type === body.type && m.tick === tick).map((m) => ({ mi, staff, voice: m.voice, idx: m.idx, k: m.k })));
-    }
-    anchorMarks(sm as StaffMeasure, [{ ...body, tick } as TimedMark]);
+    const m = markList(d, a)?.[a.k];
+    if (!m) return;
+    const body = JSON.parse(JSON.stringify(m)) as MarkBody;
+    dropMarks(d, [a]);
+    hang(d, at, body);
   });
 }
 
@@ -389,17 +404,6 @@ export function removeMarks(score: Score, addrs: MarkAddr[]): Score {
   });
 }
 
-/** Move a mark to a position (it is hung on the event there). */
-export function moveMark(score: Score, a: MarkAddr, mi: number, tick: number): Score {
-  return edit(score, (d) => {
-    const m = markList(d, a)?.[a.k];
-    if (!m) return;
-    const body = JSON.parse(JSON.stringify(m)) as MarkBody;
-    dropMarks(d, [a]);
-    anchorMarks(staffMeasure(d, mi, a.staff) as StaffMeasure, [{ ...body, tick } as TimedMark]);
-  });
-}
-
 export type SpanKind = 'cresc' | 'dim' | 'pedal' | '8va' | '8vb';
 
 /** The start and stop marks of a line; a hairpin gets the lowest id not used on the staff. */
@@ -412,19 +416,6 @@ function spanBodies(d: Draft<Score>, staff: string, kind: SpanKind, placement?: 
   }
   if (kind === 'pedal') return { start: { type: 'pedal' }, stop: { type: 'stop', of: 'pedal' } };
   return { start: { type: 'ottava', dir: kind === '8va' ? 'up' : 'down' }, stop: { type: 'stop', of: 'ottava' } };
-}
-
-/** A hairpin, pedal line or octave shift between two positions of a staff. */
-export function addSpan(score: Score, staff: string, kind: SpanKind, a: { mi: number; tick: number }, b: { mi: number; tick: number }, placement?: 'above' | 'below'): Score {
-  if (b.mi < a.mi || (b.mi === a.mi && b.tick <= a.tick)) throw new EditError('The end must come after the start');
-  return edit(score, (d) => {
-    const { start, stop } = spanBodies(d, staff, kind, placement);
-    for (const [pt, body] of [[a, start], [b, stop]] as const) {
-      const sm = staffMeasure(d, pt.mi, staff);
-      if (!sm.voices.some((v) => v.items.length)) throw new EditError('Nothing to attach the mark to');
-      anchorMarks(sm as StaffMeasure, [{ ...body, tick: pt.tick } as TimedMark]);
-    }
-  });
 }
 
 /**

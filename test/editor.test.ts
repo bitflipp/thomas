@@ -63,19 +63,29 @@ test('slurs get free numbers and tidy removes dangling ones', () => {
 });
 test('marks and spans', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
-  s = ok(C.addMark(s, 'rh', 0, 0, { type: 'dynamic', text: 'mf' }));
-  s = ok(C.addSpan(s, 'rh', 'cresc', { mi: 0, tick: 0 }, { mi: 1, tick: 0 }));
+  s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'mf' }));
+  s = ok(C.addSpanOver(s, 'cresc', { ...loc, idx: 0 }, { ...loc, mi: 1, idx: 0 }));
   assert.equal(marksOf(s.measures[1].staves.rh)[0].type, 'stop');
   const idx = indexScore(s);
   const mk = marksOf(s.measures[0].staves.rh).find((m) => m.type === 'hairpin')!;
   s = ok(C.removeMark(s, idx.mark.get(mk)!));
   assert.equal(marksOf(s.measures[1].staves.rh).length, 0);
 });
+test('a mark is added to and moved between events', () => {
+  let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
+  s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4);
+  s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'mf' }));
+  s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'f' })); // replaces the one on that event
+  const dyn = () => marksOf(s.measures[0].staves.rh).filter((m) => m.type === 'dynamic').map((m) => `${(m as { text: string }).text}@${m.tick}`).join();
+  assert.equal(dyn(), 'f@0');
+  s = ok(C.moveMark(s, { ...loc, idx: 0, k: 0 }, { ...loc, idx: 1 }));
+  assert.equal(dyn(), 'f@' + PPQ4);
+});
 test('marks hang on events: they follow a changed note, and a hairpin goes when the note carrying one end is replaced', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4);
-  s = ok(C.addMark(s, 'rh', 0, 0, { type: 'dynamic', text: 'mf' }));
-  s = ok(C.addSpan(s, 'rh', 'cresc', { mi: 0, tick: 0 }, { mi: 0, tick: PPQ4 }));
+  s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'mf' }));
+  s = ok(C.addSpanOver(s, 'cresc', { ...loc, idx: 0 }, { ...loc, idx: 0 })); // ends where the second note starts
   const types = () => marksOf(s.measures[0].staves.rh).map((m) => `${m.type}@${m.tick}`).join();
   assert.equal(types(), 'dynamic@0,hairpin@0,stop@' + PPQ4);
   s = ok(C.enterNote(s, loc, 0, { base: 4, dots: 0 }, { step: 'd', alter: 0, octave: 4 })); // another note in place of the first
@@ -234,4 +244,10 @@ test('the end of a slur on a unison head shared with another voice is still foun
   const notes = dependentNotes(s, t.ref);
   assert.equal(notes.length, 2);
   assert.equal(noteBoxes(h, t.page, notes).length, 2);
+});
+
+test('halving the rest of an empty bar gives ordinary half rests, not a whole-bar rest', () => {
+  const s = ok(C.setDuration(load(base('  rh.1: R:1\n  lh.1: R:1').replace('time=2/4', 'time=4/4').replace(/\nm2\n.*\n.*\n$/, '\n')), { ...loc, idx: 0 }, { base: 2, dots: 0 }));
+  const rests = flattenVoice(s.measures[0].staves.rh.voices[0]).map((t) => t.ev as { kind: string; style: string; dur: { base: number } });
+  assert.deepEqual(rests.map((r) => [r.kind, r.style, r.dur.base]), [['rest', 'normal', 2], ['rest', 'normal', 2]]);
 });
