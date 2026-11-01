@@ -52,13 +52,14 @@ button.mini { padding: 0 6px; margin-left: 4px; }
 .tabs { display: flex; position: sticky; top: 0; z-index: 1; background: var(--panel); border-bottom: 1px solid var(--line); margin: 0 -12px; }
 .tabs button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 9px 4px; color: var(--muted); }
 .tabs button.on { color: var(--fg); font-weight: 600; border-bottom-color: var(--accent); }
-.insp-body { padding-top: 4px; }
-.inspector .big { font-size: 20px; font-weight: 600; margin: 12px 0 2px; }
-.inspector .crumb { color: var(--muted); font-size: 12px; }
-.inspector .crumb .chip { margin-left: 5px; color: var(--fg); }
-.sec { border-top: 1px solid var(--line); margin-top: 8px; padding: 2px 0 4px; }
-.sec:first-of-type { border-top: 0; }
-.sh { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.insp-body { padding-top: 0; }
+.inspector .ctx { color: var(--muted); font-size: 12px; }
+.inspector .ctx .chip { margin-left: 5px; color: var(--fg); }
+.sec { padding: 10px 0 8px; }
+.sec + .sec { border-top: 1px solid var(--line); }
+.sh { display: flex; justify-content: space-between; align-items: center; margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.sec .row:last-child, .sec .btns:last-child, .sec .g7:last-child, .sec .tg:last-child, .sec .tg3:last-child { margin-bottom: 0; }
+.sec .row:first-of-type { margin-top: 0; }
 .g7 { margin: 4px 0 6px; display: grid; grid-template-columns: repeat(7, 1fr); }
 .g7 button { border-radius: 0; margin-left: -1px; padding: 5px 0; text-align: center; font-size: 12px; }
 .g7 button:first-child { border-radius: 5px 0 0 5px; margin-left: 0; }
@@ -103,7 +104,6 @@ kbd { font: 12px ui-monospace, monospace; background: var(--bg); border: 1px sol
 .popover input[type=checkbox] { margin: 0 8px 0 0; }
 
 .staves { display: flex; flex-direction: column; gap: 6px; }
-.staves h3 { margin-bottom: 0; }
 .staffrow { display: flex; gap: 6px; align-items: center; margin: 0; }
 .staffrow input { flex: 1; min-width: 0; margin: 0; }
 .staffrow select { flex: none; max-width: 92px; margin: 0; }

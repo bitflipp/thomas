@@ -31,14 +31,18 @@ function ScoreSection() {
   const s = score.value;
   return (
     <section>
+      <Group title="Header">
       <Row label="Title"><Txt value={s.meta.title ?? ''} onChange={(v) => run((x) => C.setMeta(x, { title: v }))} /></Row>
       <Row label="Subtitle"><Txt value={s.meta.subtitle ?? ''} onChange={(v) => run((x) => C.setMeta(x, { subtitle: v }))} /></Row>
       <Row label="Composer"><Txt value={s.meta.composer ?? ''} onChange={(v) => run((x) => C.setMeta(x, { composer: v }))} /></Row>
       <Row label="Footer"><Txt value={s.meta.rights ?? ''} onChange={(v) => run((x) => C.setMeta(x, { rights: v }))} /></Row>
+      </Group>
+      <Group title="Page">
       <Row label="Staff space"><Num value={space.value ?? s.page.staffSpace} step={0.05} min={0.8} max={4} onChange={(n) => run((x) => C.setPage(x, { staffSpace: n }))} /> mm</Row>
       <Row label="Margin"><Num value={s.page.margin} step={1} min={0} max={40} onChange={(n) => run((x) => C.setPage(x, { margin: n }))} /> mm</Row>
       <Row label="Page"><Num value={s.page.width} min={50} max={600} w="4.5em" onChange={(n) => run((x) => C.setPage(x, { width: n }))} /> × <Num value={s.page.height} min={50} max={900} onChange={(n) => run((x) => C.setPage(x, { height: n }))} /> mm</Row>
       <Row label="Bar numbers"><Pick value={s.page.measureNumbers ?? 'system'} opts={[['system', 'per system'], ['all', 'all'], ['none', 'none']]} onChange={(v) => run((x) => C.setMeasureNumbers(x, v === 'system' ? undefined : (v as 'all' | 'none')))} /></Row>
+      </Group>
       <StavesSection />
     </section>
   );
@@ -72,8 +76,7 @@ function StavesSection() {
     ] };
   };
   return (
-    <section class="staves">
-      <h3>Staves</h3>
+    <Group title="Staves"><div class="staves">
       {s.staves.map((st, i) => (
         <>
           <div class={`staffrow${drag === st.id ? ' dragging' : ''}${over === i && drag && drag !== st.id ? ' dropto' : ''}`}
@@ -101,7 +104,7 @@ function StavesSection() {
         </select>
         <button onClick={() => run((x) => C.addInstrument(x, inst))}>Add</button>
       </div>
-    </section>
+    </div></Group>
   );
 }
 
@@ -111,11 +114,13 @@ function MeasureSection({ mi }: { mi: number }) {
   const ts = timeAt(s, mi);
   return (
     <section>
-      <Group title={`Measure ${mi + 1}`}>
+      <Group title="Signatures">
       <Row label="Time"><Num value={ts.beats} min={1} max={32} w="3.5em" onChange={(n) => run((x) => C.setTimeSig(x, mi, { ...ts, beats: n }))} /> / <select value={ts.beatType} onChange={(e) => run((x) => C.setTimeSig(x, mi, { ...ts, beatType: Number((e.target as HTMLSelectElement).value) }))}>{[1, 2, 4, 8, 16].map((b) => <option>{b}</option>)}</select>
         {mi > 0 && m.time && <button class="mini" title="Inherit from the previous measure" onClick={() => run((x) => C.setTimeSig(x, mi, undefined))}>×</button>}</Row>
       <Row label="Key"><select value={keyAt(s, mi)} onChange={(e) => run((x) => C.setKeySig(x, mi, Number((e.target as HTMLSelectElement).value)))}>{KEYS.map((k) => <option value={k}>{KEYNAME(k)}</option>)}</select>
         {mi > 0 && m.key !== undefined && <button class="mini" title="Inherit from the previous measure" onClick={() => run((x) => C.setKeySig(x, mi, undefined))}>×</button>}</Row>
+      </Group>
+      <Group title="Layout">
       <Row label="Barline"><Pick value={m.barline ?? 'single'} opts={[['single', '│'], ['double', '║'], ['final', '𝄂']]} onChange={(v) => run((x) => C.setBarline(x, mi, v))} /></Row>
       <Row label="Break before"><Pick value={m.breakBefore ?? 'none'} opts={[['none', 'auto'], ['system', 'system'], ['page', 'page']]} onChange={(v) => run((x) => C.setBreak(x, mi, v === 'none' ? undefined : (v as 'system' | 'page')))} /></Row>
       </Group>
@@ -165,10 +170,11 @@ function EventSection() {
   const flag = (k: 'arpeggio' | 'noBeam', all: boolean) => upd((n) => { if (all ? notes.every((q) => q[k]) : notes.some((q) => q[k])) delete n[k]; else n[k] = true; });
   return (
     <section>
-      <div class="big">{eventTitle(sc, refs)}</div>
-      <div class="crumb">m. {r0.mi + 1} · {staffName?.name || r0.staff} · voice {r0.voice}
+      <Group title="Info">
+      <div class="ctx">m. {r0.mi + 1} · {staffName?.name || r0.staff} · voice {r0.voice}
         {notes.length === 1 && notes[0].pitches.map((p) => <span class="chip">{p.pitch.step.toUpperCase()}{'#'.repeat(Math.max(0, p.pitch.alter))}{'b'.repeat(Math.max(0, -p.pitch.alter))}{p.pitch.octave}{p.tie ? '⁀' : ''}</span>)}
       </div>
+      </Group>
       <Group id="rhythm" title="Rhythm">
         <div class="g7">{([1, 2, 4, 8, 16, 32, 64] as const).map((b) => <button aria-pressed={same(evs.map((e) => e.dur.base)) === b} onClick={() => chooseDuration(b)}>{b === 1 ? '1' : `1/${b}`}</button>)}</div>
         <Row label="Dot"><Pick value={same(evs.map((e) => e.dur.dots))} opts={[[0, 'none'], [1, '·'], [2, '··']]} onChange={(n) => chooseDots(n)} /></Row>
@@ -196,17 +202,16 @@ function EventSection() {
             {notes.some((n) => n.art?.length) && <Row label="Articulation"><Pick value={same(notes.map((n) => n.artSide))} opts={[[undefined, 'auto'], ['above', '▲'], ['below', '▼']]} onChange={(v) => upd((n) => { if (v) n.artSide = v; else delete n.artSide; })} /></Row>}
         </Group>
       </>}
-      {(refs.length >= 2 || notes.length > 0) && (
-        <Group id="grouping" title="Grouping">
-          <div class="btns">
+      <Group title="Actions">
+        <div class="btns">
             {refs.length >= 2 && <button onClick={slurSelection}>Slur (S)</button>}
             {refs.length >= 2 && <button title="Beam the selected notes together" onClick={() => run((x) => C.makeBeam(x, sorted[0], sorted[0].idx, sorted[sorted.length - 1].idx))}>Beam</button>}
             {refs.length === 2 && [1, 2, 3].map((b) => <button title={`Two-note tremolo, ${b} beam${b > 1 ? 's' : ''}`} onClick={() => run((x) => C.makeTremolo(x, sorted[0], sorted[0].idx, sorted[1].idx, b))}>Trem {b}</button>)}
             <button title="Dissolve the beam group or tremolo" onClick={() => run((x) => refs.reduce((s2, r) => { try { return C.ungroup(s2, r); } catch { return s2; } }, x))}>Ungroup</button>
-          </div>
-        </Group>
-      )}
-      <Group title="Actions"><div class="btns"><button onClick={flipStem}>Flip stem (X)</button><button class="danger" onClick={() => deleteSelection()}>Delete</button></div></Group>
+          <button onClick={flipStem}>Flip stem (X)</button>
+          <button class="danger" onClick={() => deleteSelection()}>Delete</button>
+        </div>
+      </Group>
     </section>
   );
 }
@@ -223,6 +228,7 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
   const place = (m as { placement?: 'above' | 'below' }).placement;
   return (
     <section>
+      <Group title="Properties">
       {m.type === 'dynamic' && <Row label="Dynamic"><select value={m.text} onChange={(e) => upd({ text: (e.target as HTMLSelectElement).value } as never)}>{DYNAMICS.map((d) => <option>{d}</option>)}</select></Row>}
       {m.type === 'text' && <Row label="Text"><Txt value={m.text} onChange={(v) => upd({ text: v } as never)} /></Row>}
       {m.type === 'tempo' && <>
@@ -234,7 +240,8 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
       {(m.type === 'dynamic' || m.type === 'hairpin' || m.type === 'text') && <Row label="Placed"><Pick value={place} opts={[[undefined, 'auto'], ['above', 'above'], ['below', 'below']]} onChange={(p) => upd({ placement: p } as never)} /></Row>}
       {m.type === 'clef' && <Row label="Clef"><select value={`${m.clef.sign}${m.clef.line}`} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; upd({ clef: { sign: v[0] as 'G', line: Number(v[1]) } } as never); }}><option value="G2">Treble</option><option value="F4">Bass</option><option value="C3">Alto</option><option value="C4">Tenor</option></select></Row>}
       <Row label="Position">{`measure ${r.mi + 1}, ${(m.tick / 3360).toFixed(2).replace(/\.?0+$/, '')} quarters`}</Row>
-      <div class="btns"><button class="danger" onClick={() => deleteSelection()}>Delete</button></div>
+      </Group>
+      <Group title="Actions"><div class="btns"><button class="danger" onClick={() => deleteSelection()}>Delete</button></div></Group>
     </section>
   );
 }
@@ -244,8 +251,10 @@ function SlurSection({ r }: { r: Extract<Ref, { t: 'slur' }> }) {
   const sl = e?.slurStart?.find((s) => s.id === r.id);
   return (
     <section>
+      <Group title="Properties">
       <Row label="Side"><Pick value={sl?.side} opts={[[undefined, 'auto'], ['above', 'above'], ['below', 'below']]} onChange={(v) => run((x) => C.setSlurSide(x, r, r.id, v))} /></Row>
-      <div class="btns"><button class="danger" onClick={() => deleteSelection()}>Delete slur</button></div>
+      </Group>
+      <Group title="Actions"><div class="btns"><button class="danger" onClick={() => deleteSelection()}>Delete slur</button></div></Group>
     </section>
   );
 }
@@ -257,11 +266,13 @@ function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
   const upd = (p: Parameters<typeof C.updateTuplet>[2]) => run((x) => C.updateTuplet(x, r, p));
   return (
     <section>
+      <Group title="Properties">
       <Row label="Bracket"><Pick value={g.bracket} opts={[[undefined, 'auto'], [true, 'yes'], [false, 'no']]} onChange={(v) => upd({ bracket: v })} /></Row>
       <Row label="Number"><Pick value={g.number ?? 'actual'} opts={[['actual', 'shown'], ['none', 'hidden']]} onChange={(v) => upd({ number: v === 'actual' ? undefined : 'none' })} /></Row>
       <Row label="Label"><Num value={g.label ?? g.actual} min={1} max={99} onChange={(n) => { setLab(String(n)); upd({ label: n === g.actual ? undefined : n }); }} /></Row>
       <Row label="Placed"><Pick value={g.placement} opts={[[undefined, 'auto'], ['above', 'above'], ['below', 'below']]} onChange={(v) => upd({ placement: v })} /></Row>
-      <div class="btns"><button class="danger" onClick={() => deleteSelection()}>Remove tuplet</button></div>
+      </Group>
+      <Group title="Actions"><div class="btns"><button class="danger" onClick={() => deleteSelection()}>Remove tuplet</button></div></Group>
       <span hidden>{lab}</span>
     </section>
   );
@@ -305,7 +316,7 @@ export function Inspector() {
           {first?.t === 'mark' && <MarkSection r={first} />}
           {first?.t === 'slur' && <SlurSection r={first} />}
           {first?.t === 'tuplet' && <TupletSection r={first} />}
-          {first?.t === 'tie' && <section><div class="btns"><button class="danger" onClick={() => deleteSelection()}>Remove tie</button></div></section>}
+          {first?.t === 'tie' && <section><Group title="Actions"><div class="btns"><button class="danger" onClick={() => deleteSelection()}>Remove tie</button></div></Group></section>}
         </>}
         {active === 'measure' && mi !== undefined && <MeasureSection mi={mi} />}
         {active === 'score' && <ScoreSection />}
