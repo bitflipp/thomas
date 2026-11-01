@@ -12,7 +12,7 @@ title    "Gewitter"
 subtitle "임윤찬 gewidmet"
 composer "Philipp Naumann (2026)"
 rights   "© Philipp Naumann, licensed under CC BY-SA 4.0"
-page 210.1x296.9 margin=10 space=1.91         # mm: width x height, margin, staff space
+page 210.1x296.9 margin=10 space=1.91         # mm: width x height, margin, staff space (= the global scale)
 staff rh clef=F4 name="Piano"                 # clef: G2, F4, C3, G2_8 (8 below), G2^8 (8 above)
 staff lh clef=F4
 brace rh lh                                   # or: bracket a b c
@@ -24,6 +24,10 @@ m2
   rh.1: ...
 m5 break=system barline=final                 # break=system|page (before this measure)
 ```
+
+`space` is the global engraving scale (MuseScore calls it "page size"): everything is laid out in staff spaces, so changing it
+rescales the music and re-flows measures, systems and pages, while the page size, margins and the point sizes of title and footer
+stay fixed. `thomas render --space <mm>` overrides it without editing the file.
 
 Header attributes of a measure: `time=B/T`, `key=N`, `break=system|page`, `barline=single|double|final`.
 Lines indented by two spaces belong to the preceding measure: `<staff>.<voice>: <items>`.

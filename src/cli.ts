@@ -21,21 +21,34 @@ function loadScore(path: string, flags = new Set<string>()): Score {
 const USAGE = `usage:
   thomas import  <in.musicxml> <out.txt> [--keep-breaks] [--keep-stems]
                                                   convert MusicXML to the text format
-  thomas render  <in.txt|in.musicxml> <out-base> [--pdf] [--no-breaks] [--numbers|--no-numbers]
+  thomas render  <in.txt|in.musicxml> <out-base> [--pdf] [--no-breaks] [--numbers|--no-numbers] [--space <mm>]
                                                   write <out-base>-<page>.svg (and <out-base>.pdf)
   thomas check   <in.txt|in.musicxml> [--collisions [--mark <out-base>]]
                                                   validate; with --collisions also engrave and list overlapping
                                                   elements (see src/engrave/collide.ts); --mark writes <out-base>-<page>.svg
-                                                  with every collision boxed in red`;
+                                                  with every collision boxed in red
+  --space <mm> (render, check) overrides the staff space, the global engraving scale (default: the file's page line)`;
 
-const [cmd, ...args] = process.argv.slice(2);
+const [cmd, ...rawArgs] = process.argv.slice(2);
+// --space <mm> / --space=<mm>: override the staff space (the global engraving scale) of the score's page setup
+let spaceOverride: number | undefined;
+const args: string[] = [];
+for (let i = 0; i < rawArgs.length; i++) {
+  const a = rawArgs[i];
+  if (a === '--space' || a.startsWith('--space=')) {
+    const v = Number(a.includes('=') ? a.slice(8) : rawArgs[++i]);
+    if (!(v > 0.5 && v < 10)) { console.error('--space expects a staff space in mm, e.g. 1.75'); process.exit(1); }
+    spaceOverride = v;
+  } else args.push(a);
+}
+const withSpace = (s: Score): Score => { if (spaceOverride) s.page.staffSpace = spaceOverride; return s; };
 try {
   if (cmd === 'import') {
     const flags = new Set(args.filter((a) => a.startsWith('--')));
     const [inp, out] = args.filter((a) => !a.startsWith('--'));
     writeFileSync(out, writeText(loadScore(inp, flags)));
   } else if (cmd === 'check') {
-    const s = loadScore(args.find((a) => !a.startsWith('--'))!);
+    const s = withSpace(loadScore(args.find((a) => !a.startsWith('--'))!));
     console.log(`ok: ${s.measures.length} measures, ${s.staves.length} staves`);
     if (args.includes('--collisions')) {
       const res = engrave(s, { respectBreaks: true, measureNumbers: 'system' });
@@ -56,7 +69,7 @@ try {
   } else if (cmd === 'render') {
     const flags = new Set(args.filter((a) => a.startsWith('--')));
     const [inp, base] = args.filter((a) => !a.startsWith('--'));
-    const score = loadScore(inp, flags);
+    const score = withSpace(loadScore(inp, flags));
     const res = engrave(score, { respectBreaks: !flags.has('--no-breaks'), measureNumbers: flags.has('--no-numbers') ? 'none' : flags.has('--numbers') ? 'all' : 'system', warn: (m) => console.error('warn:', m) });
     mkdirSync(dirname(base) || '.', { recursive: true });
     const files = res.pages.map((p, i) => {
