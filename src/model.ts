@@ -25,6 +25,13 @@ export interface NotePitch {
 export type Articulation = 'accent' | 'marcato' | 'staccato';
 export interface SlurStart { id: number; side?: 'above' | 'below' }
 
+/** A grace note (or chord) played just before the note it is attached to; takes no time in the measure. */
+export interface Grace {
+  pitches: NotePitch[];
+  base: BaseDur; // written value: 8 = one flag, 16 = two ...
+  slash?: boolean; // acciaccatura (struck through) rather than appoggiatura
+}
+
 export interface EventBase {
   dur: Dur;
   stem?: 'up' | 'down';
@@ -38,6 +45,7 @@ export interface NoteEvent extends EventBase {
   art?: Articulation[];
   artSide?: 'above' | 'below'; // forced side of the articulations (default: by stem / voice)
   arpeggio?: boolean;
+  graces?: Grace[]; // grace notes in front of this note, in playing order
   noBeam?: boolean; // stays unbeamed although the automatic beaming would join it to its neighbours
 }
 export type RestStyle = 'normal' | 'hidden' | 'measure'; // hidden = spacer; measure = whole-measure rest (dur is informational)

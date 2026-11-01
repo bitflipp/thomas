@@ -33,6 +33,8 @@ export const NEW_SCORE_TEXT = EMPTY;
 export const score = signal<Score>(parseText(EMPTY));
 export const fileName = signal('score.txt');
 export const dirty = signal(false);
+/** Counts documents opened or created (not edits). */
+export const docId = signal(0);
 const past: Score[] = [], future: Score[] = [];
 export const histLen = signal({ undo: 0, redo: 0 });
 const syncHist = () => { histLen.value = { undo: past.length, redo: future.length }; };
@@ -80,7 +82,7 @@ export function redo(): void {
 /** Replace the whole document (open/new): history restarts. */
 export function load(s: Score, name?: string): void {
   past.length = 0; future.length = 0; syncHist();
-  batch(() => { score.value = s; selection.value = []; dirty.value = false; if (name) fileName.value = name; });
+  batch(() => { score.value = s; selection.value = []; dirty.value = false; docId.value++; if (name) fileName.value = name; });
 }
 export function loadText(t: string, name?: string): boolean {
   try {

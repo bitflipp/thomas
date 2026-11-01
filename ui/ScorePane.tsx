@@ -1,3 +1,4 @@
+import { effect } from '@preact/signals';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { pageToSvg } from '../src/render.ts';
 import { loadSmufl } from '../src/smufl.ts';
@@ -7,6 +8,7 @@ import type { Engraved } from '../src/engrave/system.ts';
 import type { Page, Prim } from '../src/engrave/scene.ts';
 import { findCollisions } from '../src/engrave/collide.ts';
 import { engraved, hit, selection, zoom, fit, tool, score, showCollisions, voiceColors, VOICE_COLORS } from './state.ts';
+import { playhead, playing } from './player.ts';
 import { ghost, pageEls, onPointerDown, onPointerMove, onPointerUp, onDoubleClick, onContextMenu, cancelDrag, type Ghost } from './interact.ts';
 
 const MM_PX = 96 / 25.4;
@@ -97,9 +99,16 @@ function PageView({ i, res, h, sig, keys, cssW, cursor }: { i: number; res: Engr
         })}
         {collisions.map((c) => <rect x={c.x} y={c.y} width={c.w} height={c.h} fill="none" stroke="#d33" stroke-width="0.12" />)}
         <GhostSvg g={ghost.value} page={i} />
+        <PlayheadSvg page={i} />
       </svg>
     </div>
   );
+}
+
+function PlayheadSvg({ page }: { page: number }) {
+  const p = playhead.value;
+  if (!p || p.page !== page) return null;
+  return <line class="playhead" x1={p.x} x2={p.x} y1={p.y0} y2={p.y1} stroke="#e8590c" stroke-width="0.22" stroke-linecap="round" />;
 }
 
 function findCollisionsOn(p: Page, i: number) {
@@ -130,6 +139,17 @@ export function ScorePane() {
     el.addEventListener('wheel', w, { passive: false });
     return () => el.removeEventListener('wheel', w);
   }, []);
+
+  // while playing, keep the system under the playhead in view
+  useEffect(() => effect(() => {
+    const p = playhead.value, r = engraved.peek(), el = box.current;
+    if (!p || !r || !el || !playing.value) return;
+    const pg = pageEls[p.page];
+    if (!pg) return;
+    const k = pg.clientWidth / r.pages[p.page].width;
+    const y0 = pg.offsetTop + p.y0 * k, y1 = pg.offsetTop + p.y1 * k;
+    if (y0 < el.scrollTop + 8 || y1 > el.scrollTop + el.clientHeight - 8) el.scrollTo({ top: Math.max(0, y0 - 40), behavior: 'smooth' });
+  }), []);
 
   const keys = useMemo(() => new Set(sel.map(refKey)), [sel]);
   // which selected objects are drawn on which page: a page is redrawn only when its own part of the selection changes

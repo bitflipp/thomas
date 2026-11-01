@@ -40,7 +40,7 @@ function pieces(e: Event, a: number, from: number, to: number, head: boolean): E
   const durs = splitTicks(to - from, from);
   return durs.map((d, i) => {
     const n = { ...e, dur: d, pitches: e.pitches.map((p) => ({ ...p, tie: i < durs.length - 1 ? true : undefined })) };
-    if (i > 0) { delete n.slurStart; delete n.art; delete n.artSide; delete n.arpeggio; delete n.stem; }
+    if (i > 0) { delete n.slurStart; delete n.art; delete n.artSide; delete n.arpeggio; delete n.graces; delete n.stem; }
     if (i < durs.length - 1) delete n.slurStop;
     for (const p of n.pitches) if (p.tie === undefined) delete p.tie;
     void a;

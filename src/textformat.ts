@@ -3,7 +3,7 @@ import {
   PPQ, gcd, flattenVoice, isBeam, isTuplet, isTremolo,
   type Score, type Item, type Event, type NoteEvent, type RestEvent, type Dur, type BaseDur, type Mark, type Clef,
   type Pitch, type NotePitch, type TupletGroup, type BeamGroup, type TremoloGroup, type Measure, type StaffMeasure,
-  type MarkBody, type Placement,
+  type MarkBody, type Placement, type Grace,
 } from './model.ts';
 
 const DYNAMICS = new Set(['pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'ffff', 'sf', 'sfz', 'sfp', 'sfpp', 'fp', 'fz', 'rf', 'rfz', 'pf', 'n', 'z']);
@@ -78,6 +78,7 @@ class VoiceWriter {
     let tie = '';
     let arts = '';
     if (e.kind === 'note') {
+      if (e.graces?.length) pre.push(...graceStrs(e.graces));
       if (e.arpeggio) pre.push('\\arp');
       if (e.noBeam) pre.push('\\nobeam');
       const ps = e.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : ''));
@@ -112,6 +113,23 @@ class VoiceWriter {
     this.items(items);
     this.out.push(close);
   }
+}
+
+/** Runs of grace notes with the same slash: `\\acc{ d5:8 e5:8 }` (struck through) or `\\grace{ ... }`. */
+function graceStrs(gs: Grace[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < gs.length;) {
+    const slash = !!gs[i].slash;
+    let j = i;
+    while (j < gs.length && !!gs[j].slash === slash) j++;
+    const body = gs.slice(i, j).map((g) => {
+      const ps = g.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : '') + (p.tie ? '~' : ''));
+      return (ps.length === 1 ? ps[0] : `<${ps.join(' ')}>`) + ':' + g.base;
+    });
+    out.push(`\\${slash ? 'acc' : 'grace'}{ ${body.join(' ')} }`);
+    i = j;
+  }
+  return out;
 }
 
 function writeStaffMeasure(sm: StaffMeasure, sid: string, lines: string[]): void {
@@ -210,7 +228,7 @@ function parseDur(sc: Scanner): Dur {
 }
 
 type Side = 'above' | 'below';
-interface PendingEv { stem?: 'up' | 'down'; arpeggio?: boolean; noBeam?: boolean }
+interface PendingEv { stem?: 'up' | 'down'; arpeggio?: boolean; noBeam?: boolean; graces?: Grace[] }
 
 /**
  * Parses the items of one voice line, or of a mark line (`markLine`: only marks, each placed by an `@position`).
@@ -232,6 +250,12 @@ function parseVoiceLine(line: string, where: string, home: string, markLine = fa
   const marks: Mark[] = [];
   const later: { body: MarkBody; ev: Event | null }[] = [];
 
+  const readNP = (): NotePitch => {
+    const np: NotePitch = { pitch: parsePitch(sc) };
+    if (sc.peek() === '!') { sc.i++; np.acc = 'force'; } else if (sc.peek() === '?') { sc.i++; np.acc = 'cautionary'; }
+    if (sc.peek() === '~') { sc.i++; np.tie = true; }
+    return np;
+  };
   const flush = (ev: Event | null) => { for (const body of pending) later.push({ body, ev }); pending = []; };
   const num = () => { const n = sc.take(/\d+/y); return n ? Number(n) : 1; };
   const placement = (): Side | undefined => {
@@ -308,6 +332,21 @@ function parseVoiceLine(line: string, where: string, home: string, markLine = fa
         if (sc.peek() === '"') tm.text = readString(sc);
         addMark(tm);
       } else if (name === 'text') { sc.ws(); addMark(withSide({ type: 'text', text: readString(sc) }, placement())); }
+      else if (name === 'grace' || name === 'acc') {
+        sc.ws();
+        if (sc.take(/\{/y) === null) sc.fail(`{ expected after \\${name}`);
+        for (;;) {
+          sc.ws();
+          if (sc.peek() === '}') { sc.i++; break; }
+          const pitches: NotePitch[] = [];
+          if (sc.peek() === '<') { sc.i++; for (;;) { sc.ws(); if (sc.peek() === '>') { sc.i++; break; } pitches.push(readNP()); } if (!pitches.length) sc.fail('empty chord'); }
+          else pitches.push(readNP());
+          if (sc.take(/:/y) === null) sc.fail('grace note duration expected, like d5:8');
+          const d = parseDur(sc);
+          if (d.dots) sc.fail('grace notes cannot be dotted');
+          (pendingEv.graces ??= []).push({ pitches, base: d.base, ...(name === 'acc' ? { slash: true } : {}) });
+        }
+      }
       else if (name === 'arp') pendingEv.arpeggio = true;
       else if (name === 'staff') { sc.ws(); curStaff = sc.take(/\w+/y) ?? sc.fail('staff id expected'); }
       else if (name === 'nobeam') pendingEv.noBeam = true;
@@ -328,16 +367,11 @@ function parseVoiceLine(line: string, where: string, home: string, markLine = fa
       sc.i++;
       const rest: RestEvent = { kind: 'rest', style: c === 's' ? 'hidden' : c === 'R' ? 'measure' : 'normal', dur: { base: 4, dots: 0 } };
       if (c === 'r' && sc.peek() === '@') { sc.i++; rest.display = parsePitch(sc); }
+      if (pendingEv.graces) sc.fail('grace notes belong in front of a note, not a rest');
       rest.dur = readDur();
       ev = rest;
     } else {
       const ne: NoteEvent = { kind: 'note', dur: { base: 4, dots: 0 }, pitches: [] };
-      const readNP = (): NotePitch => {
-        const np: NotePitch = { pitch: parsePitch(sc) };
-        if (sc.peek() === '!') { sc.i++; np.acc = 'force'; } else if (sc.peek() === '?') { sc.i++; np.acc = 'cautionary'; }
-        if (sc.peek() === '~') { sc.i++; np.tie = true; }
-        return np;
-      };
       if (c === '<') {
         sc.i++;
         for (;;) { sc.ws(); if (sc.peek() === '>') { sc.i++; break; } ne.pitches.push(readNP()); }
@@ -355,6 +389,7 @@ function parseVoiceLine(line: string, where: string, home: string, markLine = fa
         else break;
       }
       if (ne.art) { const side = placement(); if (side) ne.artSide = side; }
+      if (pendingEv.graces) ne.graces = pendingEv.graces;
       if (pendingEv.arpeggio) ne.arpeggio = true;
       if (pendingEv.noBeam) ne.noBeam = true;
       ev = ne;

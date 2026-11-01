@@ -1,0 +1,169 @@
+// Score -> timed MIDI messages. Headless: no browser APIs, so it can be tested with node --test.
+import { PPQ, baseTicks, flattenVoice, measureTicks, pitchMidi, timeAt, type Score } from '../model.ts';
+
+export interface Msg { sec: number; bytes: number[] }
+export interface Sequence {
+  msgs: Msg[]; // sorted by time; note-offs and pedal-ups before note-ons at the same instant
+  channels: number[]; // channels in use
+  totalTicks: number;
+  measureStart: number[]; // absolute tick of each measure
+  tickToSec(tick: number): number;
+  secToTick(sec: number): number;
+}
+
+const DYN: Record<string, number> = { ppp: 24, pp: 36, p: 50, mp: 62, mf: 76, f: 92, ff: 108, fff: 120, sf: 104, sfz: 104, fp: 92, rfz: 104 };
+const DEFAULT_VEL = 76;
+const STACCATO = 0.5;
+
+/** MIDI channel of the n-th staff: 0..15 without the percussion channel 9. */
+export const channelOf = (staffIndex: number): number => { const c = staffIndex % 15; return c >= 9 ? c + 1 : c; };
+
+interface Note { start: number; end: number; midi: number; vel: number; ch: number }
+
+export function buildSequence(score: Score): Sequence {
+  const measureStart: number[] = [];
+  let total = 0;
+  score.measures.forEach((_, mi) => { measureStart.push(total); total += measureTicks(timeAt(score, mi)); });
+
+  // tempo map: segments of constant seconds-per-tick
+  const tempi: { tick: number; spt: number }[] = [{ tick: 0, spt: 60 / 120 / PPQ }];
+  score.measures.forEach((m, mi) => {
+    for (const st of Object.values(m.staves)) for (const mk of st.marks) {
+      if (mk.type !== 'tempo') continue;
+      const beatTicks = baseTicks({ base: mk.unit, dots: mk.dots });
+      tempi.push({ tick: measureStart[mi] + mk.tick, spt: 60 / (mk.bpm * (beatTicks / PPQ)) / PPQ });
+    }
+  });
+  tempi.sort((a, b) => a.tick - b.tick);
+  const segs: { tick: number; sec: number; spt: number }[] = [];
+  for (const t of tempi) {
+    const last = segs[segs.length - 1];
+    if (last && last.tick === t.tick) { last.spt = t.spt; continue; }
+    segs.push({ tick: t.tick, sec: last ? last.sec + (t.tick - last.tick) * last.spt : 0, spt: t.spt });
+  }
+  const tickToSec = (tick: number): number => {
+    let i = segs.length - 1;
+    while (i > 0 && segs[i].tick > tick) i--;
+    return segs[i].sec + (tick - segs[i].tick) * segs[i].spt;
+  };
+  const secToTick = (sec: number): number => {
+    let i = segs.length - 1;
+    while (i > 0 && segs[i].sec > sec) i--;
+    return segs[i].tick + (sec - segs[i].sec) / segs[i].spt;
+  };
+
+  const notes: Note[] = [];
+  const pedal: { tick: number; ch: number; down: boolean }[] = [];
+  score.staves.forEach((sd, si) => {
+    const ch = channelOf(si);
+    // dynamics apply to the whole staff, in time order
+    const dyn: { tick: number; vel: number }[] = [];
+    const velAt = (tick: number) => { let v = DEFAULT_VEL; for (const d of dyn) if (d.tick <= tick) v = d.vel; return v; };
+    let down = false;
+    score.measures.forEach((m, mi) => {
+      for (const mk of m.staves[sd.id]?.marks ?? []) {
+        const t = measureStart[mi] + mk.tick;
+        if (mk.type === 'dynamic') { const v = DYN[mk.text]; if (v !== undefined) dyn.push({ tick: t, vel: v }); }
+        else if (mk.type === 'pedal') { if (down) pedal.push({ tick: t, ch, down: false }); pedal.push({ tick: t, ch, down: true }); down = true; }
+        else if (mk.type === 'stop' && mk.of === 'pedal' && down) { pedal.push({ tick: t, ch, down: false }); down = false; }
+      }
+    });
+    if (down) pedal.push({ tick: total, ch, down: false });
+    dyn.sort((a, b) => a.tick - b.tick);
+
+    // a tie continues the open note of the same pitch in the same voice
+    const open = new Map<number, Map<number, Note>>();
+    score.measures.forEach((m, mi) => {
+      for (const v of m.staves[sd.id]?.voices ?? []) {
+        const ties = open.get(v.id) ?? open.set(v.id, new Map()).get(v.id)!;
+        const flat = flattenVoice(v);
+        // add one sounding note; a tie continues the open note of the same pitch
+        const add = (start: number, end: number, midi: number, vel: number, tie: boolean, join: boolean, shortened: boolean, nominal = start) => {
+          const cont = join ? ties.get(midi) : undefined;
+          if (cont && cont.end === nominal) cont.end = end;
+          else {
+            const n: Note = { start, end, midi, vel: Math.min(127, vel), ch };
+            notes.push(n);
+            if (tie && !shortened) ties.set(midi, n);
+            else ties.delete(midi);
+            return;
+          }
+          if (!tie) ties.delete(midi);
+        };
+        const accent = (te: (typeof flat)[number]) => (te.ev.kind === 'note' && (te.ev.art?.includes('accent') || te.ev.art?.includes('marcato')) ? 14 : 0);
+        const done = new Set<unknown>();
+        for (const te of flat) {
+          if (te.ev.kind !== 'note' || done.has(te.ev)) continue;
+          const start0 = measureStart[mi] + te.start;
+          const trem = te.tremolo;
+          if (trem) {
+            // two-note tremolo: the notes alternate over the whole span, in strokes of the beam value (1 beam = eighths)
+            const pair = flat.filter((x) => x.tremolo === trem && x.ev.kind === 'note');
+            if (pair.length === 2) {
+              const [p0, p1] = pair;
+              done.add(p0.ev); done.add(p1.ev);
+              const from = measureStart[mi] + p0.start, to = measureStart[mi] + p1.start + p1.ticks;
+              const stroke = (PPQ * 4) / 2 ** (trem.beams + 2);
+              const count = Math.max(2, Math.round((to - from) / stroke));
+              const len = (to - from) / count;
+              const vel = velAt(from) + accent(p0);
+              for (let k = 0; k < count; k++) {
+                const who = (k % 2 ? p1 : p0).ev;
+                if (who.kind !== 'note') continue;
+                const lastOfWho = k >= count - 2, firstOfWho = k < 2;
+                for (const np of who.pitches) add(from + k * len, from + (k + 1) * len, pitchMidi(np.pitch), vel, !!np.tie && lastOfWho, firstOfWho, !lastOfWho);
+              }
+              continue;
+            }
+          }
+          const start = start0, end = start + te.ticks;
+          const stac = te.ev.art?.includes('staccato');
+          const vel = velAt(start) + accent(te);
+          // grace notes: slashed ones are quick and end on the beat; the others (or any near the very start of the piece) take their time from the note
+          let mainOn = start;
+          const graces = te.ev.graces ?? [];
+          if (graces.length) {
+            let lens = graces.map((g) => baseTicks({ base: g.base, dots: 0 }));
+            const quick = graces.every((g) => g.slash);
+            if (quick) lens = lens.map((l) => Math.min(l, PPQ / 8));
+            let total = lens.reduce((a, b) => a + b, 0);
+            let t = start - total;
+            if (!quick || t < 0) {
+              if (total > te.ticks / 2) { const f = te.ticks / 2 / total; lens = lens.map((l) => l * f); total = te.ticks / 2; }
+              t = start;
+              mainOn = start + total;
+            }
+            const gv = Math.max(1, velAt(start) - 8);
+            graces.forEach((g, gi) => {
+              for (const np of g.pitches) notes.push({ start: t, end: t + lens[gi], midi: pitchMidi(np.pitch), vel: gv, ch });
+              t += lens[gi];
+            });
+          }
+          // a rolled chord: the notes enter one after the other from the bottom, all ending together
+          const n = te.ev.pitches.length;
+          const step = te.ev.arpeggio && n > 1 ? Math.min(PPQ / 8, (end - mainOn) / (3 * (n - 1))) : 0;
+          te.ev.pitches.forEach((np, k) => {
+            const on = mainOn + k * step;
+            add(on, stac ? on + (end - on) * STACCATO : end, pitchMidi(np.pitch), vel, !!np.tie, true, !!stac, start);
+          });
+        }
+      }
+    });
+  });
+
+  // order: at one instant, releases come first
+  const evs: { sec: number; order: number; bytes: number[] }[] = [];
+  const used = new Set<number>();
+  for (const n of notes) {
+    if (n.midi < 0 || n.midi > 127) continue;
+    used.add(n.ch);
+    evs.push({ sec: tickToSec(n.start), order: 1, bytes: [0x90 | n.ch, n.midi, n.vel] });
+    evs.push({ sec: tickToSec(n.end), order: 0, bytes: [0x80 | n.ch, n.midi, 0] });
+  }
+  for (const p of pedal) {
+    used.add(p.ch);
+    evs.push({ sec: tickToSec(p.tick), order: p.down ? 1 : 0, bytes: [0xb0 | p.ch, 64, p.down ? 127 : 0] });
+  }
+  evs.sort((a, b) => a.sec - b.sec || a.order - b.order);
+  return { msgs: evs.map(({ sec, bytes }) => ({ sec, bytes })), channels: [...used].sort((a, b) => a - b), totalTicks: total, measureStart, tickToSec, secToTick };
+}

@@ -14,6 +14,7 @@ import { Palette } from './Palette.tsx';
 import { Inspector } from './Inspector.tsx';
 import { ScorePane } from './ScorePane.tsx';
 import { parseText } from '../src/textformat.ts';
+import { playing, toggle, midiPorts, midiOut, chooseOutput } from './player.ts';
 import { Shortcuts, showHelp } from './Shortcuts.tsx';
 
 const viewOpen = signal(false);
@@ -81,6 +82,13 @@ export function App() {
         <button title="Save as text file (Ctrl S)" onClick={() => { download(fileName.value, writeText(score.value)); dirty.value = false; }}>Save{dirty.value ? ' •' : ''}</button>
         <button title="Export every page as SVG" onClick={exportSvg}>SVG</button>
         <button title="Print or save as PDF" onClick={printPdf}>PDF</button>
+        <span class="sep" />
+        <button class="play" aria-pressed={playing.value} title="Play / stop (Space). Resumes where it stopped; Alt+click moves the playhead, Home rewinds" onClick={toggle}>{playing.value ? '■ Stop' : '▶ Play'}</button>
+        {midiPorts.value.length > 0 && (
+          <select title="MIDI output" value={midiOut.value ?? ''} onChange={(e) => chooseOutput((e.target as HTMLSelectElement).value)}>
+            {midiPorts.value.map((p) => <option value={p.id}>{p.name}</option>)}
+          </select>
+        )}
         <span class="sep" />
         <button disabled={!h.undo} title="Undo (Ctrl Z)" onClick={undo}>↶</button>
         <button disabled={!h.redo} title="Redo (Ctrl Shift Z)" onClick={redo}>↷</button>

@@ -11,6 +11,7 @@ export function headGlyph(base: number): string { return base === 1 ? 'noteheadW
 export const HEAD_SCALE = 1.1;
 export function headWidth(base: number): number { return sm.adv(headGlyph(base)) * HEAD_SCALE; }
 export const STEM_T = 0.12;
+export const GRACE_SCALE = 0.7; // grace notes are drawn at this fraction of the normal size
 export const DOT_STEP = 0.55;
 export const CROSS_STEM_SEP = 2.0; // least distance between an up-stem and the following down-stem of a cross-staff beam
 export const COMPRESS = 0.7; // minimum stretch factor allowed when fitting measures on a line
@@ -213,6 +214,28 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
   }
   // --- arpeggio sits left of everything
   if (evs.some((e) => e.ev.kind === 'note' && e.ev.arpeggio)) L += 0.5 + 0.9;
+  // --- grace notes stand to the left of the notes (and their accidentals) they belong to
+  const L0 = L;
+  for (const e of evs) {
+    if (e.ev.kind !== 'note' || !e.graces?.length) continue;
+    const gls = e.graces;
+    let x = -(L0 + 0.3 + (gls.length === 1 && gls[0].g.base >= 8 ? 0.7 : 0)); // right edge of the nearest grace note (a lone flag reaches out to the right)
+    for (let k = gls.length - 1; k >= 0; k--) {
+      const gl = gls[k];
+      gl.hw = headWidth(gl.g.base) * GRACE_SCALE;
+      gl.dx = x - gl.hw;
+      let left = gl.dx;
+      const accs = gl.heads.filter((h) => h.acc);
+      if (accs.length) {
+        const aw = Math.max(...accs.map((h) => sm.adv(h.acc!.glyph))) * GRACE_SCALE;
+        const gap = 0.1 + (gl.heads.some((h) => h.acc && (h.pos <= -2 || h.pos >= 10)) ? (sm.def.legerLineExtension as number) * GRACE_SCALE : 0); // clear of a ledger line
+        for (const h of accs) h.accX = gl.dx - gap - aw;
+        left = gl.dx - gap - aw;
+      }
+      L = Math.max(L, -left);
+      x = left - 0.45;
+    }
+  }
   c.L[s] = Math.max(c.L[s], L);
   c.R[s] = Math.max(c.R[s], R);
   c.has[s] = true;

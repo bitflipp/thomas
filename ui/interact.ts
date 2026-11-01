@@ -7,6 +7,7 @@ import * as C from '../src/editor/commands.ts';
 import { eventOf, markOf, refKey, voiceOf, type EvAddr, type Ref } from '../src/editor/addr.ts';
 import { hitTest, marquee, measureAt, measureAtStaff, posAtY, snapTick, type Box, type Target } from '../src/editor/hit.ts';
 import type { MeasureGeom } from '../src/engrave/system.ts';
+import { seek, measureTick } from './player.ts';
 import {
   score, hit, engraved, selection, tool, dur, dots, acc, voice, dynText, clefArg, tupletArg, tempoArg, textArg, run, say, commit,
 } from './state.ts';
@@ -127,6 +128,11 @@ export function onPointerDown(e: PointerEvent): void {
   if (t === 'tuplet') {
     if (target?.ref.t === 'ev') { const r = target.ref; run((s) => C.makeTuplet(s, r, tupletArg.value[0], tupletArg.value[1])); }
     else say('Click a note or rest to make it a tuplet', true);
+    return;
+  }
+  if (alt && t === 'select') { // Alt+click: put the playhead here
+    const g = measureAt(h.layout, w.page, w.x, w.y);
+    if (g) seek(measureTick(g.mi) + snapTick(g, lenOf(score.peek(), g.mi), w.x, PPQ / 4).tick);
     return;
   }
   // select tool

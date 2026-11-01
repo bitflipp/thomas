@@ -116,6 +116,7 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
       };
       let cursor = 0, lastStart = 0, lastLen = 0;
       let prev: RawNote | undefined;
+      const pendingGraces = new Map<number, import('./model.ts').Grace[]>(); // voice -> grace notes waiting for their note
       const homeStaff = new Map<number, number>(); // voice -> staff of its first note (cross-staff notes stay in their voice)
       if (pi === 0 && mx.attrs.implicit === 'yes') warn(`m${mi + 1}: implicit (pickup) measure not specially handled`);
       for (const el of mx.children) {
@@ -190,7 +191,16 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
             const voice = Number(text(el, 'voice') ?? 1);
             if (!homeStaff.has(voice)) homeStaff.set(voice, staffN);
             const staffId = sid(homeStaff.get(voice)!);
-            if (child(el, 'grace')) { warn(`m${mi + 1}: grace notes not supported, skipped`); break; }
+            const graceEl = child(el, 'grace');
+            if (graceEl) { // collected, then attached to the next note of the voice
+              if (!child(el, 'pitch')) break;
+              const gl = pendingGraces.get(voice) ?? pendingGraces.set(voice, []).get(voice)!;
+              if (isChord && gl.length) { gl[gl.length - 1].pitches.push(readPitch(el, mi)); break; }
+              const tn = text(el, 'type');
+              const base = tn && TYPE_BASE[tn] ? TYPE_BASE[tn] : 8;
+              gl.push({ pitches: [readPitch(el, mi)], base, ...(graceEl.attrs.slash === 'yes' ? { slash: true } : {}) });
+              break;
+            }
             const typeName = text(el, 'type');
             const rest = child(el, 'rest');
             const isMeasureRest = rest?.attrs.measure === 'yes';
@@ -212,6 +222,8 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
               rn.ev = ev;
             } else {
               const ev: NoteEvent = { kind: 'note', dur: d, pitches: [readPitch(el, mi)] };
+              const gr = pendingGraces.get(voice);
+              if (gr) { ev.graces = gr; pendingGraces.delete(voice); }
               rn.trem = readNotations(el, ev, false);
               rn.ev = ev;
             }
@@ -243,6 +255,7 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
           }
         }
       }
+      if (pendingGraces.size) warn(`m${mi + 1}: grace notes at the end of a measure dropped`);
       void lastStart; void lastLen;
     });
   }

@@ -2,7 +2,7 @@
 import { isTuplet, type TupletGroup, type Clef } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { posToY, beamLevels, type EvL, type BeamL, type Prepared } from './prep.ts';
-import { headGlyph, headWidth, HEAD_SCALE, restGlyph, STEM_T, DOT_STEP, type MeasureSpacing, type PlacedMeasure } from './spacing.ts';
+import { headGlyph, headWidth, HEAD_SCALE, GRACE_SCALE, restGlyph, STEM_T, DOT_STEP, type MeasureSpacing, type PlacedMeasure } from './spacing.ts';
 import { Skyline, tagFrom, oid, type Prim } from './scene.ts';
 
 const sm = loadSmufl();
@@ -139,6 +139,7 @@ export function drawSystemNotes(ctx: SysCtx): void {
           continue;
         }
         drawNoteBasics(ctx, e, s);
+        if (e.graces) drawGraces(ctx, e, s);
       }
     }
     for (let s = 0; s < nS; s++) {
@@ -379,6 +380,116 @@ function drawNoteBasics(ctx: SysCtx, e: EvL, s: number): void {
     tagFrom(prims, nArp, 'arpeggio', e);
     pushBox(ctx, s, right - w, right, top - 0.2, bot + 0.2);
   }
+}
+
+/** Grace notes: small heads with their own up-stems, a flag or beams, and a slash for an acciaccatura. */
+function drawGraces(ctx: SysCtx, e: EvL, s: number): void {
+  const gls = e.graces!;
+  const prims = ctx.prims[s];
+  const GS = GRACE_SCALE;
+  const STEM = 0.1, STEM_LEN = 2.7;
+  const bt = (D.beamThickness as number) * 0.8, bs = (D.beamSpacing as number) * 0.8;
+  const ext = (D.legerLineExtension as number) * GS;
+  // runs of beamed grace notes (consecutive, eighth or shorter)
+  const runOf: (object | undefined)[] = [];
+  for (let i = 0; i < gls.length;) {
+    let j = i;
+    while (j < gls.length && gls[j].g.base >= 8) j++;
+    if (j - i >= 2) { const run = {}; for (let k = i; k < j; k++) runOf[k] = run; i = j; } else i = Math.max(j, i + 1);
+  }
+  const tag = (from: number, k: 'head' | 'acc' | 'ledger' | 'stem' | 'flag' | 'beam', gl: (typeof gls)[number], i: number) => {
+    tagFrom(prims, from, k, gl.g, runOf[i] ? [runOf[i]] : undefined);
+    for (let q = from; q < prims.length; q++) prims[q].r = e.ev;
+  };
+  const geo = gls.map((gl, i) => {
+    const ys = gl.heads.map((h) => posToY(h.pos));
+    const yTop = Math.min(...ys), yBot = Math.max(...ys);
+    const x = e.x + gl.dx;
+    const stemX = x + gl.hw - STEM / 2;
+    gl.heads.forEach((h) => {
+      const n0 = prims.length;
+      prims.push({ t: 'glyph', name: headGlyph(gl.g.base), x, y: posToY(h.pos), sx: HEAD_SCALE * GS, sy: GS });
+      tag(n0, 'head', gl, i);
+      if (h.acc) {
+        const n1 = prims.length;
+        const ax = e.x + h.accX!;
+        prims.push({ t: 'glyph', name: h.acc.glyph, x: ax, y: posToY(h.pos), sx: GS, sy: GS });
+        tag(n1, 'acc', gl, i);
+        const ab = sm.bbox(h.acc.glyph);
+        pushBox(ctx, s, ax + ab.x0 * GS, ax + ab.x1 * GS, posToY(h.pos) - ab.y1 * GS - 0.1, posToY(h.pos) - ab.y0 * GS + 0.1);
+      }
+    });
+    const posMin = Math.min(...gl.heads.map((h) => h.pos)), posMax = Math.max(...gl.heads.map((h) => h.pos));
+    const ledger = (p: number) => {
+      const n0 = prims.length;
+      const prim: Prim = { t: 'line', x1: x - ext, x2: x + gl.hw + ext, y1: posToY(p), y2: posToY(p), w: D.legerLineThickness as number };
+      prims.push(prim);
+      tag(n0, 'ledger', gl, i);
+      ledgerSegs.push({ prim, s, y: posToY(p), x0: x - ext, x1: x + gl.hw + ext, hx0: x, hx1: x + gl.hw });
+    };
+    for (let p = -2; p >= posMin; p -= 2) ledger(p);
+    for (let p = 10; p <= posMax; p += 2) ledger(p);
+    return { yTop, yBot, x, stemX, tip: Math.min(yTop - STEM_LEN, 2) };
+  });
+  // stems, then flags or beams
+  const stem = (i: number, tip: number) => {
+    const gl = gls[i], g = geo[i];
+    if (gl.g.base < 2) return;
+    const n0 = prims.length;
+    prims.push({ t: 'line', x1: g.stemX, y1: g.yBot - 0.168 * GS, x2: g.stemX, y2: tip, w: STEM });
+    tag(n0, 'stem', gl, i);
+  };
+  for (let i = 0; i < gls.length;) {
+    const run = runOf[i];
+    if (!run) {
+      const gl = gls[i], g = geo[i];
+      stem(i, g.tip);
+      if (gl.g.base >= 8) {
+        const n = beamLevels(gl.g.base);
+        const name = `flag${n === 1 ? '8th' : n === 2 ? '16th' : n === 3 ? '32nd' : '64th'}Up`;
+        const n0 = prims.length;
+        prims.push({ t: 'glyph', name, x: g.stemX - STEM / 2, y: g.tip, sx: GS, sy: GS });
+        tag(n0, 'flag', gl, i);
+      }
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < gls.length && runOf[j] === run) j++;
+    const tip = Math.min(...geo.slice(i, j).map((g) => g.tip));
+    for (let k = i; k < j; k++) stem(k, tip);
+    const maxLv = Math.max(...gls.slice(i, j).map((gl) => beamLevels(gl.g.base)));
+    for (let lv = 1; lv <= maxLv; lv++) {
+      const y0 = tip + (lv - 1) * (bt + bs);
+      let a = i;
+      while (a < j) {
+        if (beamLevels(gls[a].g.base) < lv) { a++; continue; }
+        let b = a;
+        while (b + 1 < j && beamLevels(gls[b + 1].g.base) >= lv) b++;
+        let xa: number, xb: number;
+        if (b > a) { xa = geo[a].stemX - STEM / 2; xb = geo[b].stemX + STEM / 2; }
+        else if (a === i) { xa = geo[a].stemX - STEM / 2; xb = geo[a].stemX + 0.8; }
+        else { xa = geo[a].stemX - 0.8; xb = geo[a].stemX + STEM / 2; }
+        const n0 = prims.length;
+        prims.push({ t: 'path', d: `M${xa.toFixed(3)} ${y0.toFixed(3)}L${xb.toFixed(3)} ${y0.toFixed(3)}L${xb.toFixed(3)} ${(y0 + bt).toFixed(3)}L${xa.toFixed(3)} ${(y0 + bt).toFixed(3)}Z` });
+        tag(n0, 'beam', gls[a], a);
+        a = b + 1;
+      }
+    }
+    i = j;
+  }
+  // the slash of an acciaccatura runs through the stem of the first note of its run (or the lone note)
+  for (let i = 0; i < gls.length; i++) {
+    if (!gls[i].g.slash || gls[i].g.base < 8 || (runOf[i] && runOf[i] === runOf[i - 1])) continue;
+    const g = geo[i];
+    let tip = g.tip;
+    if (runOf[i]) { let j = i; while (runOf[j + 1] === runOf[i]) j++; tip = Math.min(...geo.slice(i, j + 1).map((q) => q.tip)); }
+    const n0 = prims.length;
+    prims.push({ t: 'line', x1: g.stemX - 0.9, y1: tip + 1.9, x2: g.stemX + 1.0, y2: tip + 0.5, w: 0.1 });
+    tag(n0, 'stem', gls[i], i);
+  }
+  const xs = geo.map((g) => g.x), top = Math.min(...geo.map((g) => g.tip)), bot = Math.max(...geo.map((g) => g.yBot));
+  pushBox(ctx, s, Math.min(...xs) - 0.3, e.x - 0.2, top - 0.3, bot + 0.5);
 }
 
 function drawRest(ctx: SysCtx, e: EvL, s: number): void {

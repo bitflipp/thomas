@@ -48,6 +48,7 @@ Voice numbers are local to a staff (`rh.1`, `rh.2`, `lh.1`, ...). Every voice of
 | Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |
 | Accidental override | `!` force, `?` cautionary (after the pitch) | `c#4!` `e4?` |
 | Arpeggio | `\arp` before a chord | `\arp <c3 g3 e4>:8` |
+| Grace notes | `\acc{ … }` (slashed) or `\grace{ … }` before a note; each grace note has an explicit value (8, 16, 32 …), no dots, no time in the measure | `\acc{ d5:8 } c5:4`, `\grace{ b4:16 c5:16 } d5:4` |
 | No beam | `\nobeam` keeps a note out of the automatic beaming | `\nobeam c5:8 d5` |
 | Stem override | `\stemup`, `\stemdown` (else automatic) | `\stemdown c5:4` |
 | Cross-staff | `\staff <id>` draws the following events of the voice on that staff, until `\staff <home>` switches back (resets at each line) | `lh.1: [ c3:16 e3 g3 \staff rh c4 e4 g4 ] \staff lh r:8` |

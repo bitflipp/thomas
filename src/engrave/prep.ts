@@ -2,7 +2,7 @@
 // accidentals, stem directions, beam groups ...) before any horizontal/vertical layout.
 import {
   STEPS, flattenVoice, measureTicks, pitchStep, timeAt, keyAt,
-  type Score, type Clef, type TimedEvent, type NoteEvent, type Event, type TupletGroup, type TremoloGroup, type Pitch, type Mark, type Voice,
+  type Score, type Grace, type Clef, type TimedEvent, type NoteEvent, type Event, type TupletGroup, type TremoloGroup, type Pitch, type Mark, type Voice,
 } from '../model.ts';
 import { beamGroups, beatTicks } from '../beams.ts';
 
@@ -30,6 +30,14 @@ export interface HeadL {
   skipDots?: boolean; // the first voice already draws at least as many dots here
 }
 
+/** A grace note (or chord) in front of an event: its heads and, once spaced, where it stands relative to the event's x. */
+export interface GraceL {
+  g: Grace;
+  heads: HeadL[];
+  dx: number; // left edge of the heads, relative to the event's notehead x (set during spacing)
+  hw: number; // head width
+}
+
 export interface EvL {
   id: number;
   mi: number; // measure index
@@ -44,6 +52,7 @@ export interface EvL {
   ticks: number;
   clef: Clef;
   heads: HeadL[];
+  graces?: GraceL[]; // grace notes in front, drawn small to the left
   stem: 'up' | 'down' | null;
   beam?: BeamL;
   tremPair?: EvL; // partner of a two-note tremolo (set on both)
@@ -155,10 +164,12 @@ export function prepare(score: Score): Prepared {
             te, ev: te.ev, start: te.start, ticks: te.ticks, clef, heads: [], stem: null, x: 0, tupletKeys: te.tuplets, ottavaShift: shift, shiftDx: 0,
           };
           if (te.ev.kind === 'note') {
-            e.heads = te.ev.pitches.map((np) => ({
+            const mkHead = (np: (typeof te.ev.pitches)[number]): HeadL => ({
               pitch: np.pitch, tie: !!np.tie, displaced: false, dx: 0,
               pos: staffPos({ ...np.pitch, octave: np.pitch.octave + shift }, clef),
-            }));
+            });
+            e.heads = te.ev.pitches.map(mkHead);
+            if (te.ev.graces?.length) e.graces = te.ev.graces.map((g) => ({ g, heads: g.pitches.map(mkHead), dx: 0, hw: 0 }));
           }
           return e;
         });
@@ -174,11 +185,9 @@ export function prepare(score: Score): Prepared {
       for (const e of all) {
         if (e.ev.kind !== 'note') continue;
         const ne = e.ev as NoteEvent;
-        ne.pitches.forEach((np, i) => {
-          const h = e.heads[i];
+        const accOf = (np: (typeof ne.pitches)[number], h: HeadL, tiedIn: boolean | undefined) => {
           const k = `${np.pitch.step}${np.pitch.octave}`;
           const cur = state.has(k) ? state.get(k)! : keyAlter(key, np.pitch.step);
-          const tiedIn = tiedFromPrev[si].get(`${e.voice}|${pitchStep(np.pitch)}|${np.pitch.alter}`);
           let show = np.pitch.alter !== cur;
           let caut = false;
           if (np.acc === 'force') show = true;
@@ -186,7 +195,9 @@ export function prepare(score: Score): Prepared {
           if (tiedIn && e.start === 0 && np.acc === undefined) show = false;
           if (show) h.acc = { glyph: ACC_GLYPH[np.pitch.alter], cautionary: caut };
           state.set(k, np.pitch.alter);
-        });
+        };
+        for (const gl of e.graces ?? []) gl.g.pitches.forEach((np, i) => accOf(np, gl.heads[i], false)); // grace notes come first
+        ne.pitches.forEach((np, i) => accOf(np, e.heads[i], tiedFromPrev[si].get(`${e.voice}|${pitchStep(np.pitch)}|${np.pitch.alter}`)));
       }
     }
     // tie carry to next measure (keyed by the staff the tied note is drawn on)

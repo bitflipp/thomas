@@ -5,6 +5,7 @@ import { flattenVoice, type Event } from '../src/model.ts';
 import { score, selection, tool, dur, dots, zoom, fit, showText, showInspector, undo, redo, run, say, voice, type Tool } from './state.ts';
 import { chooseDuration, chooseDots, nudge, flipStem, slurSelection, tieSelection, stepSelection } from './actions.ts';
 import { deleteSelection, evRefs, cancelDrag, menu } from './interact.ts';
+import { toggle, rewind } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 
 let clip: Event[] = [];
@@ -63,6 +64,8 @@ export function installKeys(): () => void {
         return;
       }
       case 'ArrowLeft': case 'ArrowRight': if (evRefs().length) { e.preventDefault(); stepSelection(key === 'ArrowLeft' ? -1 : 1, e.shiftKey); } return;
+      case ' ': if ((e.target as HTMLElement | null)?.closest?.('button, select, a')) return; e.preventDefault(); toggle(); return;
+      case 'Home': e.preventDefault(); rewind(); return;
       case '?': showHelp.value = !showHelp.value; return;
       case '.': chooseDots((dots.value + 1) % 3); return;
       default: break;
