@@ -25,6 +25,8 @@ export const ALLOW: readonly [Kind, Kind, Scope][] = [
   // Ledger lines run through the heads (and across stems) they serve. Scope `any` because a
   // ledger line also serves the heads of other voices at that position.
   ['ledger', 'head', 'any'], ['ledger', 'stem', 'any'],
+  // A tie may run through the accidental of the note it ends on (or of another voice) rather than bulge around it.
+  ['acc', 'tie', 'any'],
   // Staff furniture: the barline at the start of a system meets the brace; neither belongs
   // to any note, so there is no owner to scope it by.
   ['barline', 'brace', 'any'],

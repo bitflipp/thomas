@@ -67,7 +67,7 @@ export function xAtTick(ctx: SysCtx, mi: number, tick: number): number {
 }
 
 /** Records an occupied area in the staff's skyline: later passes (slurs, marks, other staves) keep clear of it. */
-function pushBox(ctx: SysCtx, s: number, x0: number, x1: number, y0: number, y1: number) { ctx.sky[s].add(x0, x1, y0, y1); }
+function pushBox(ctx: SysCtx, s: number, x0: number, x1: number, y0: number, y1: number, acc = false) { ctx.sky[s].add(x0, x1, y0, y1, false, acc); }
 
 /** Stem length in staff spaces for a note with `levels` flags/beams: 3.5, plus 0.75 for every level beyond two. */
 function stemLength(levels: number): number { return levels <= 2 ? 3.5 : 3.5 + 0.75 * (levels - 2); }
@@ -345,11 +345,11 @@ function drawNoteBasics(ctx: SysCtx, e: EvL, s: number): void {
         prims.push({ t: 'glyph', name: h.acc.glyph, x: ax + pw, y: ay });
         prims.push({ t: 'glyph', name: 'accidentalParensRight', x: ax + pw + sm.adv(h.acc.glyph), y: ay });
         const cb = sm.bbox(h.acc.glyph);
-        pushBox(ctx, s, ax, ax + pw * 2 + sm.adv(h.acc.glyph), ay - cb.y1 - 0.1, ay - cb.y0 + 0.1);
+        pushBox(ctx, s, ax, ax + pw * 2 + sm.adv(h.acc.glyph), ay - cb.y1 - 0.1, ay - cb.y0 + 0.1, true);
       } else {
         prims.push({ t: 'glyph', name: h.acc.glyph, x: ax, y: ay });
         const ab = sm.bbox(h.acc.glyph);
-        pushBox(ctx, s, ax + ab.x0, ax + ab.x1, ay - ab.y1 - 0.1, ay - ab.y0 + 0.1);
+        pushBox(ctx, s, ax + ab.x0, ax + ab.x1, ay - ab.y1 - 0.1, ay - ab.y0 + 0.1, true);
       }
     }
     tagFrom(prims, nAcc, 'acc', e);
@@ -456,7 +456,7 @@ function drawGraces(ctx: SysCtx, e: EvL, s: number): void {
         prims.push({ t: 'glyph', name: h.acc.glyph, x: ax, y: posToY(h.pos), sx: GS, sy: GS });
         tag(n1, 'acc', gl, i);
         const ab = sm.bbox(h.acc.glyph);
-        pushBox(ctx, s, ax + ab.x0 * GS, ax + ab.x1 * GS, posToY(h.pos) - ab.y1 * GS - 0.1, posToY(h.pos) - ab.y0 * GS + 0.1);
+        pushBox(ctx, s, ax + ab.x0 * GS, ax + ab.x1 * GS, posToY(h.pos) - ab.y1 * GS - 0.1, posToY(h.pos) - ab.y0 * GS + 0.1, true);
       }
     });
     const posMin = Math.min(...gl.heads.map((h) => h.pos)), posMax = Math.max(...gl.heads.map((h) => h.pos));

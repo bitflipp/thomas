@@ -157,12 +157,12 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
     const sk = ctx.sky[e.staff];
     for (let t = 0.1; t <= 0.9001; t += 0.05) {
       const x = xa + len * t, f = 4 * t * (1 - t);
-      const o = above ? sk.top(x - 0.35, x + 0.35, Infinity) : sk.bottom(x - 0.35, x + 0.35, -Infinity);
+      const o = above ? sk.top(x - 0.35, x + 0.35, Infinity, false, true) : sk.bottom(x - 0.35, x + 0.35, -Infinity, false, true); // accidentals are crossed, not avoided
       if (!Number.isFinite(o)) continue;
       const gap = above ? y - (o - 0.25) : o + 0.25 - y;
       if (gap > 0 && gap < 3) hgt = Math.max(hgt, gap / (f * 0.95));
     }
-    hgt = Math.min(hgt, 2.4, Math.max(0.4 + len * 0.045, 0.6 + 0.2 * len)); // a short tie never becomes a hump
+    hgt = Math.min(hgt, 1.6, Math.max(0.4 + len * 0.045, 0.5 + 0.12 * len)); // a short tie never becomes a hump
     return {
       hgt,
       draw: (hh: number) => {

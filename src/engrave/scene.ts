@@ -55,23 +55,23 @@ export interface Page { width: number; height: number; prims: Prim[] }
 
 /** Occupied regions, used to place marks without collisions (y down). */
 export class Skyline {
-  boxes: { x0: number; x1: number; y0: number; y1: number; spanner?: boolean }[] = [];
-  /** `spanner`: a slur/tie box (a long rectangle over a curve), ignored when only the notation itself matters. */
-  add(x0: number, x1: number, y0: number, y1: number, spanner = false): void {
+  boxes: { x0: number; x1: number; y0: number; y1: number; spanner?: boolean; acc?: boolean }[] = [];
+  /** `spanner`: a slur/tie box (a long rectangle over a curve), ignored when only the notation itself matters. `acc`: an accidental, which ties may cross. */
+  add(x0: number, x1: number, y0: number, y1: number, spanner = false, acc = false): void {
     if (x1 < x0) [x0, x1] = [x1, x0];
     if (y1 < y0) [y0, y1] = [y1, y0];
-    this.boxes.push({ x0, x1, y0, y1, spanner });
+    this.boxes.push({ x0, x1, y0, y1, spanner, acc });
   }
   /** The lowest occupied y (the maximum) within x0..x1, or `fallback` when nothing is there or lower. */
-  bottom(x0: number, x1: number, fallback: number, skipSpanners = false): number {
+  bottom(x0: number, x1: number, fallback: number, skipSpanners = false, skipAcc = false): number {
     let r = fallback;
-    for (const b of this.boxes) if (b.x1 > x0 && b.x0 < x1 && b.y1 > r && !(skipSpanners && b.spanner)) r = b.y1;
+    for (const b of this.boxes) if (b.x1 > x0 && b.x0 < x1 && b.y1 > r && !(skipSpanners && b.spanner) && !(skipAcc && b.acc)) r = b.y1;
     return r;
   }
   /** The highest occupied y (the minimum) within x0..x1, or `fallback`. */
-  top(x0: number, x1: number, fallback: number, skipSpanners = false): number {
+  top(x0: number, x1: number, fallback: number, skipSpanners = false, skipAcc = false): number {
     let r = fallback;
-    for (const b of this.boxes) if (b.x1 > x0 && b.x0 < x1 && b.y0 < r && !(skipSpanners && b.spanner)) r = b.y0;
+    for (const b of this.boxes) if (b.x1 > x0 && b.x0 < x1 && b.y0 < r && !(skipSpanners && b.spanner) && !(skipAcc && b.acc)) r = b.y0;
     return r;
   }
   /** Vertical extent of everything added, at least the staff itself (0..4); used to space staves apart. */
