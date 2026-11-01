@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseText, writeText } from '../src/textformat.ts';
-import { validate, flattenVoice, type Score } from '../src/model.ts';
+import { validate, flattenVoice, marksOf, type Score } from '../src/model.ts';
 import * as C from '../src/editor/commands.ts';
 import { indexScore } from '../src/editor/addr.ts';
+import { dependentNotes } from '../src/editor/hit.ts';
 
 const base = (m = '  rh.1: R:2\n  lh.1: R:2') => `page 210x297 margin=10 space=1.75
 staff rh clef=G2
@@ -64,11 +65,25 @@ test('marks and spans', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = ok(C.addMark(s, 'rh', 0, 0, { type: 'dynamic', text: 'mf' }));
   s = ok(C.addSpan(s, 'rh', 'cresc', { mi: 0, tick: 0 }, { mi: 1, tick: 0 }));
-  assert.equal(s.measures[1].staves.rh.marks[0].type, 'stop');
+  assert.equal(marksOf(s.measures[1].staves.rh)[0].type, 'stop');
   const idx = indexScore(s);
-  const mk = s.measures[0].staves.rh.marks.find((m) => m.type === 'hairpin')!;
+  const mk = marksOf(s.measures[0].staves.rh).find((m) => m.type === 'hairpin')!;
   s = ok(C.removeMark(s, idx.mark.get(mk)!));
-  assert.equal(s.measures[1].staves.rh.marks.length, 0);
+  assert.equal(marksOf(s.measures[1].staves.rh).length, 0);
+});
+test('marks hang on events: they follow a changed note, and a hairpin goes when the note carrying one end is replaced', () => {
+  let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
+  s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4);
+  s = ok(C.addMark(s, 'rh', 0, 0, { type: 'dynamic', text: 'mf' }));
+  s = ok(C.addSpan(s, 'rh', 'cresc', { mi: 0, tick: 0 }, { mi: 0, tick: PPQ4 }));
+  const types = () => marksOf(s.measures[0].staves.rh).map((m) => `${m.type}@${m.tick}`).join();
+  assert.equal(types(), 'dynamic@0,hairpin@0,stop@' + PPQ4);
+  s = ok(C.enterNote(s, loc, 0, { base: 4, dots: 0 }, { step: 'd', alter: 0, octave: 4 })); // another note in place of the first
+  assert.equal(types(), 'dynamic@0,hairpin@0,stop@' + PPQ4);
+  s = ok(C.setDuration(s, { ...loc, idx: 0 }, { base: 8, dots: 0 }));
+  assert.equal(types(), 'dynamic@0,hairpin@0,stop@' + PPQ4); // the note after it stays where it was
+  s = ok(C.enterNote(s, loc, 0, { base: 2, dots: 0 }, c4)); // the half note covers the event that carried the stop
+  assert.equal(types(), 'dynamic@0');
 });
 test('measures: time change refits, delete and insert', () => {
   let s = C.enterNote(load(), loc, PPQ4, { base: 4, dots: 0 }, c4);
@@ -169,4 +184,46 @@ test('cross-staff references vanish with their staff', () => {
   s = C.setStaffOf(s, [{ ...loc, idx: 0 }], 'lh');
   s = ok(C.removeStaff(s, 'lh'));
   assert.doesNotMatch(writeText(s), /staff lh/);
+});
+
+test('a selected hairpin names the events it hangs on, and the text format keeps the voice that carries a mark', () => {
+  const s = parseText('# music typesetter score\nstaff rh clef=G2\n\nm1 time=4/4 key=0\n  rh.1: c5:2 d5\n  rh.2: \\< e4:2 r \\!\n');
+  const idx = indexScore(s);
+  const mk = marksOf(s.measures[0].staves.rh).find((m) => m.type === 'hairpin')!;
+  const a = idx.mark.get(mk)!;
+  assert.deepEqual([a.voice, a.idx], [2, 0]);
+  assert.deepEqual(dependentNotes(s, { t: 'mark', ...a }).map((x) => [x.voice, x.idx]), [[2, 0], [2, 1]]);
+  assert.equal(marksOf(s.measures[0].staves.rh).find((m) => m.type === 'stop')!.idx, -1); // the end of the measure, on voice 2
+  assert.deepEqual(JSON.parse(JSON.stringify(parseText(writeText(s)))), JSON.parse(JSON.stringify(s)));
+});
+
+test('a line drawn from note to note hangs on those events (a stop goes before the starts at its position; the voice end when it ends on the last event)', () => {
+  let s = C.enterNote(load(base().replace('time=2/4', 'time=4/4').replace(/R:2/g, 'R:1')), loc, 0, { base: 4, dots: 0 }, c4);
+  s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4); // a quarter, a quarter, a half rest
+  s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 2 }, { ...loc, idx: 2 })); // ends on the last event of the voice
+  s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 1 }, { ...loc, idx: 0 })); // drawn backwards, and ending where the first one starts
+  const m = marksOf(s.measures[0].staves.rh).map((x) => `${x.type === 'stop' ? 'stop' : x.type}@${x.tick}`);
+  assert.deepEqual(m, ['pedal@0', 'stop@' + 2 * PPQ4, 'pedal@' + 2 * PPQ4, 'stop@' + 4 * PPQ4]);
+  assert.throws(() => C.addSpanOver(s, 'cresc', { ...loc, idx: 0 }, { ...loc, staff: 'lh', idx: 0 }), /one staff/);
+});
+
+test('a hairpin that stops before a note belongs to the note before it, also across a measure line (gewitter m33-34)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const s = parseText(readFileSync(new URL('../examples/gewitter.txt', import.meta.url), 'utf8'));
+  const mk = marksOf(s.measures[32].staves.lh).find((m) => m.type === 'hairpin')!;
+  const a = indexScore(s).mark.get(mk)!;
+  const ns = dependentNotes(s, { t: 'mark', ...a });
+  assert.deepEqual(ns.map((x) => [x.mi, x.idx]), [[32, 2], [33, 3]]); // eb2 in m33, the last 16th before the quintuplet in m34
+});
+
+test('the end of a slur on a unison head shared with another voice is still found (gewitter m78-79, voice 2)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { engrave } = await import('../src/engrave/system.ts');
+  const { buildHitIndex, noteBoxes } = await import('../src/editor/hit.ts');
+  const s = parseText(readFileSync(new URL('../examples/gewitter.txt', import.meta.url), 'utf8'));
+  const h = buildHitIndex(s, engrave(s));
+  const t = h.targets.find((x) => x.ref.t === 'slur' && x.ref.mi === 77 && x.ref.voice === 2)!;
+  const notes = dependentNotes(s, t.ref);
+  assert.equal(notes.length, 2);
+  assert.equal(noteBoxes(h, t.page, notes).length, 2);
 });

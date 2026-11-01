@@ -2,8 +2,8 @@
 // Failures throw EditError with a message fit for the user; the score is then unchanged.
 import { produce, type Draft } from 'immer';
 import {
-  PPQ, baseTicks, flattenVoice, isBeam, isEvent, isTremolo, isTuplet, measureTicks, timeAt,
-  type Clef, type Dur, type Event, type Item, type Mark, type MarkBody, type NoteEvent, type NotePitch, type Pitch, type Score, type StaffMeasure,
+  PPQ, anchorMarks, baseTicks, collectMarks, flattenVoice, isBeam, isEvent, isTremolo, isTuplet, measureTicks, timeAt,
+  type Clef, type Dur, type Event, type Item, type MarkBody, type TimedMark, type NoteEvent, type NotePitch, type Pitch, type Score, type StaffMeasure,
   type TimeSig, type TupletGroup, type Voice, type Articulation,
 } from '../model.ts';
 import { EditError, durOfTicks, eventAtTick, itemsTicks, itemTicks, putEvent, rest, restsFor, splitTicks } from './voice.ts';
@@ -37,7 +37,7 @@ function staffMeasure(d: Draft<Score>, mi: number, staff: string): Draft<StaffMe
   if (!d.staves.some((s) => s.id === staff)) throw new EditError(`Unknown staff ${staff}`);
   const m = d.measures[mi];
   if (!m) throw new EditError('No such measure');
-  return (m.staves[staff] ??= { voices: [], marks: [] });
+  return (m.staves[staff] ??= { voices: [] });
 }
 
 function voiceIn(d: Draft<Score>, loc: Loc, create = false): Draft<Voice> {
@@ -77,9 +77,11 @@ function tidy(d: Score, only?: Set<number>): void {
     return changed ? out : undefined;
   };
   const voicesTouched = new Set<string>();
+  const staffTouched = new Set<string>();
   d.measures.forEach((m, mi) => {
     if (only && !only.has(mi)) return;
     for (const [sid, sm] of Object.entries(m.staves)) for (const v of sm.voices) {
+      staffTouched.add(sid);
       voicesTouched.add(`${sid}|${v.id}`);
       const n = norm(v.items);
       if (n) v.items = n;
@@ -108,9 +110,47 @@ function tidy(d: Score, only?: Set<number>): void {
       }
     }
   }
+  // hairpins: a start without its stop (or the reverse) went away with the note that carried it
+  for (const sid of staffTouched) {
+    const open = new Map<number, MarkAt>();
+    const dead: MarkAt[] = [];
+    d.measures.forEach((m, mi) => {
+      const sm = m.staves[sid];
+      if (!sm) return;
+      for (const mk of collectMarks(sm as StaffMeasure)) {
+        if (mk.type === 'hairpin') { const old = open.get(mk.id); if (old) dead.push(old); open.set(mk.id, { mi, staff: sid, voice: mk.voice, idx: mk.idx, k: mk.k }); }
+        else if (mk.type === 'stop' && mk.of === 'hairpin') { if (open.has(mk.id)) open.delete(mk.id); else dead.push({ mi, staff: sid, voice: mk.voice, idx: mk.idx, k: mk.k }); }
+      }
+    });
+    dead.push(...open.values());
+    dropMarks(d, dead);
+  }
 }
 
-const sortMarks = (marks: Mark[]): void => { marks.sort((a, b) => a.tick - b.tick); };
+type MarkAt = MarkAddr;
+/** The list a mark lives in: the marks of an event, or the end marks of a voice (`idx` -1). */
+function markList(d: Draft<Score>, a: MarkAddr): Draft<MarkBody>[] | undefined {
+  const v = d.measures[a.mi]?.staves[a.staff]?.voices.find((x) => x.id === a.voice);
+  if (!v) return undefined;
+  return a.idx < 0 ? v.end : flattenVoice(v as Voice)[a.idx]?.ev.marks;
+}
+function setMarkList(d: Draft<Score>, a: MarkAddr, list: Draft<MarkBody>[]): void {
+  const v = d.measures[a.mi].staves[a.staff].voices.find((x) => x.id === a.voice)!;
+  const target = a.idx < 0 ? v : flattenVoice(v as Voice)[a.idx].ev as Draft<Event>;
+  const key = a.idx < 0 ? 'end' : 'marks';
+  if (list.length) (target as Record<string, unknown>)[key] = list; else delete (target as Record<string, unknown>)[key];
+}
+/** Remove marks by address (any order; addresses are resolved before anything is removed). */
+function dropMarks(d: Draft<Score>, addrs: MarkAddr[]): void {
+  const groups = new Map<string, MarkAddr[]>();
+  for (const a of addrs) { const key = `${a.mi}|${a.staff}|${a.voice}|${a.idx}`; (groups.get(key) ?? groups.set(key, []).get(key)!).push(a); }
+  for (const g of groups.values()) {
+    const list = markList(d, g[0]);
+    if (!list) continue;
+    const gone = new Set(g.map((a) => a.k));
+    setMarkList(d, g[0], list.filter((_, k) => !gone.has(k)));
+  }
+}
 
 // ------------------------------------------------------------------ notes and rests
 
@@ -120,7 +160,7 @@ function insertPitch(n: Draft<NoteEvent>, p: NotePitch): void {
 }
 
 function toRest(e: Draft<Event>): Event {
-  return { kind: 'rest', style: 'normal', dur: { ...e.dur } };
+  return { kind: 'rest', style: 'normal', dur: { ...e.dur }, ...(e.marks ? { marks: JSON.parse(JSON.stringify(e.marks)) } : {}) };
 }
 function replaceInPlace(v: Draft<Voice>, target: Event, repl: Event): void {
   const walk = (items: Draft<Item>[]): boolean => {
@@ -310,19 +350,18 @@ export function setSlurSide(score: Score, from: EvAddr, id: number, side: 'above
 export function addMark(score: Score, staff: string, mi: number, tick: number, body: MarkBody): Score {
   return edit(score, (d) => {
     const sm = staffMeasure(d, mi, staff);
+    if (!sm.voices.some((v) => v.items.length)) throw new EditError('Nothing to attach the mark to');
     // one dynamic, tempo or clef per position
     if (body.type === 'dynamic' || body.type === 'tempo' || body.type === 'clef') {
-      const i = sm.marks.findIndex((m) => m.type === body.type && m.tick === tick);
-      if (i >= 0) sm.marks.splice(i, 1);
+      dropMarks(d, collectMarks(sm as StaffMeasure).filter((m) => m.type === body.type && m.tick === tick).map((m) => ({ mi, staff, voice: m.voice, idx: m.idx, k: m.k })));
     }
-    sm.marks.push({ ...body, tick } as Draft<Mark>);
-    sortMarks(sm.marks as Mark[]);
+    anchorMarks(sm as StaffMeasure, [{ ...body, tick } as TimedMark]);
   });
 }
 
-export function updateMark(score: Score, a: MarkAddr, patch: Partial<Mark> | ((m: Draft<Mark>) => void)): Score {
+export function updateMark(score: Score, a: MarkAddr, patch: Partial<MarkBody> | ((m: Draft<MarkBody>) => void)): Score {
   return edit(score, (d) => {
-    const m = staffMeasure(d, a.mi, a.staff).marks[a.i];
+    const m = markList(d, a)?.[a.k];
     if (!m) throw new EditError('No such mark');
     if (typeof patch === 'function') patch(m); else Object.assign(m, patch);
     for (const k of Object.keys(m)) if ((m as Record<string, unknown>)[k] === undefined) delete (m as Record<string, unknown>)[k];
@@ -330,52 +369,84 @@ export function updateMark(score: Score, a: MarkAddr, patch: Partial<Mark> | ((m
 }
 
 /** Remove a mark; the start of a hairpin takes its end with it. */
-export function removeMark(score: Score, a: MarkAddr): Score {
+export function removeMark(score: Score, a: MarkAddr): Score { return removeMarks(score, [a]); }
+export function removeMarks(score: Score, addrs: MarkAddr[]): Score {
   return edit(score, (d) => {
-    const marks = staffMeasure(d, a.mi, a.staff).marks;
-    const m = marks[a.i];
-    if (!m) return;
-    marks.splice(a.i, 1);
-    if (m.type === 'hairpin') {
-      for (let mi = a.mi; mi < d.measures.length; mi++) {
-        const ms = d.measures[mi].staves[a.staff]?.marks;
-        const j = ms?.findIndex((x) => x.type === 'stop' && x.of === 'hairpin' && x.id === m.id) ?? -1;
-        if (j >= 0) { ms!.splice(j, 1); break; }
+    const gone: MarkAddr[] = [...addrs];
+    for (const a of addrs) {
+      const m = markList(d, a)?.[a.k];
+      if (m?.type !== 'hairpin') continue;
+      const start = collectMarks(d.measures[a.mi].staves[a.staff] as StaffMeasure).find((x) => x.voice === a.voice && x.idx === a.idx && x.k === a.k);
+      scan: for (let mi = a.mi; mi < d.measures.length; mi++) {
+        const sm = d.measures[mi].staves[a.staff];
+        if (!sm) continue;
+        for (const x of collectMarks(sm as StaffMeasure)) {
+          if (x.type === 'stop' && x.of === 'hairpin' && x.id === m.id && (mi > a.mi || x.tick > (start?.tick ?? 0))) { gone.push({ mi, staff: a.staff, voice: x.voice, idx: x.idx, k: x.k }); break scan; }
+        }
       }
     }
+    dropMarks(d, gone);
   });
 }
 
+/** Move a mark to a position (it is hung on the event there). */
 export function moveMark(score: Score, a: MarkAddr, mi: number, tick: number): Score {
   return edit(score, (d) => {
-    const from = staffMeasure(d, a.mi, a.staff).marks;
-    const [m] = from.splice(a.i, 1);
+    const m = markList(d, a)?.[a.k];
     if (!m) return;
-    m.tick = tick;
-    const to = staffMeasure(d, mi, a.staff).marks;
-    to.push(m);
-    sortMarks(to as Mark[]);
+    const body = JSON.parse(JSON.stringify(m)) as MarkBody;
+    dropMarks(d, [a]);
+    anchorMarks(staffMeasure(d, mi, a.staff) as StaffMeasure, [{ ...body, tick } as TimedMark]);
   });
 }
 
 export type SpanKind = 'cresc' | 'dim' | 'pedal' | '8va' | '8vb';
+
+/** The start and stop marks of a line; a hairpin gets the lowest id not used on the staff. */
+function spanBodies(d: Draft<Score>, staff: string, kind: SpanKind, placement?: 'above' | 'below'): { start: MarkBody; stop: MarkBody } {
+  if (kind === 'cresc' || kind === 'dim') {
+    const used = new Set<number>();
+    for (const m of d.measures) { const sm = m.staves[staff]; if (sm) for (const mk of collectMarks(sm as StaffMeasure)) if (mk.type === 'hairpin') used.add(mk.id); }
+    let id = 1; while (used.has(id)) id++;
+    return { start: { type: 'hairpin', kind, id, ...(placement ? { placement } : {}) }, stop: { type: 'stop', of: 'hairpin', id } };
+  }
+  if (kind === 'pedal') return { start: { type: 'pedal' }, stop: { type: 'stop', of: 'pedal' } };
+  return { start: { type: 'ottava', dir: kind === '8va' ? 'up' : 'down' }, stop: { type: 'stop', of: 'ottava' } };
+}
+
 /** A hairpin, pedal line or octave shift between two positions of a staff. */
 export function addSpan(score: Score, staff: string, kind: SpanKind, a: { mi: number; tick: number }, b: { mi: number; tick: number }, placement?: 'above' | 'below'): Score {
   if (b.mi < a.mi || (b.mi === a.mi && b.tick <= a.tick)) throw new EditError('The end must come after the start');
   return edit(score, (d) => {
-    let start: MarkBody, stop: MarkBody;
-    if (kind === 'cresc' || kind === 'dim') {
-      const used = new Set<number>();
-      for (const m of d.measures) for (const mk of m.staves[staff]?.marks ?? []) if (mk.type === 'hairpin') used.add(mk.id);
-      let id = 1; while (used.has(id)) id++;
-      start = { type: 'hairpin', kind, id, ...(placement ? { placement } : {}) }; stop = { type: 'stop', of: 'hairpin', id };
-    } else if (kind === 'pedal') { start = { type: 'pedal' }; stop = { type: 'stop', of: 'pedal' }; }
-    else { start = { type: 'ottava', dir: kind === '8va' ? 'up' : 'down' }; stop = { type: 'stop', of: 'ottava' }; }
+    const { start, stop } = spanBodies(d, staff, kind, placement);
     for (const [pt, body] of [[a, start], [b, stop]] as const) {
       const sm = staffMeasure(d, pt.mi, staff);
-      sm.marks.push({ ...body, tick: pt.tick } as Draft<Mark>);
-      sortMarks(sm.marks as Mark[]);
+      if (!sm.voices.some((v) => v.items.length)) throw new EditError('Nothing to attach the mark to');
+      anchorMarks(sm as StaffMeasure, [{ ...body, tick: pt.tick } as TimedMark]);
     }
+  });
+}
+
+/**
+ * The same line from the start of event `from` to the end of event `to` (either may come first; one staff).
+ * The stop hangs on the event after `to` in its voice, or on the end of the measure when `to` is the voice's last.
+ */
+export function addSpanOver(score: Score, kind: SpanKind, from: EvAddr, to: EvAddr, placement?: 'above' | 'below'): Score {
+  if (from.staff !== to.staff) throw new EditError('A line stays on one staff');
+  return edit(score, (d) => {
+    const te = (a: EvAddr) => { const t = flattenVoice(voiceIn(d, a) as Voice)[a.idx]; if (!t) throw new EditError('No such note'); return t; };
+    const key = (a: EvAddr) => a.mi * 1e9 + te(a).start;
+    const [first, last] = key(from) <= key(to) ? [from, to] : [to, from];
+    const { start, stop } = spanBodies(d, from.staff, kind, placement);
+    (te(first).ev.marks ??= []).push(start as Draft<MarkBody>);
+    const v = voiceIn(d, last), flat = flattenVoice(v as Voice), t = flat[last.idx];
+    const next = flat[last.idx + 1];
+    if (!next) { (v.end ??= []).push(stop as Draft<MarkBody>); return; }
+    // a stop comes before the marks that start something at the same position (a pedal change releases, then presses)
+    const marks = (next.ev.marks ??= []) as Draft<MarkBody>[];
+    const i = marks.findIndex((m) => m.type !== 'stop');
+    marks.splice(i < 0 ? marks.length : i, 0, stop as Draft<MarkBody>);
+    void t;
   });
 }
 
@@ -459,7 +530,7 @@ function refit(d: Draft<Score>, mi: number, len: number): void {
 
 function emptyMeasure(score: Score, at: number): Score['measures'][number] {
   const len = measureTicks(timeAt(score, Math.max(0, Math.min(at, score.measures.length - 1))));
-  return { staves: Object.fromEntries(score.staves.map((s) => [s.id, { voices: [{ id: 1, items: measureRest(len) }], marks: [] }])) };
+  return { staves: Object.fromEntries(score.staves.map((s) => [s.id, { voices: [{ id: 1, items: measureRest(len) }] }])) };
 }
 
 export function insertMeasures(score: Score, at: number, count = 1): Score {
@@ -561,7 +632,7 @@ export function addStaff(score: Score, o: { clef: Clef; name?: string; at?: numb
     // inserting between two joined staves splits the join
     const nc = [...conn.slice(0, Math.max(0, at - 1)), ...(at > 0 && at < score.staves.length ? [undefined, undefined] : at > 0 ? [undefined] : [undefined]), ...conn.slice(at)];
     d.groups = groupsFrom(d.staves.map((s) => s.id), nc.slice(0, d.staves.length - 1)) as Draft<Score['groups']>;
-    d.measures.forEach((m, mi) => { m.staves[id] = { voices: [{ id: 1, items: measureRest(measureTicks(timeAt(d as Score, mi))) as Draft<Item>[] }], marks: [] }; });
+    d.measures.forEach((m, mi) => { m.staves[id] = { voices: [{ id: 1, items: measureRest(measureTicks(timeAt(d as Score, mi))) as Draft<Item>[] }] }; });
   });
 }
 
@@ -624,7 +695,7 @@ export function pasteEvents(score: Score, loc: Loc, tick: number, evs: Event[]):
     let t = tick;
     for (const e of evs) {
       const c = JSON.parse(JSON.stringify(e)) as Event;
-      delete c.slurStart; delete c.slurStop; delete c.staff;
+      delete c.slurStart; delete c.slurStop; delete c.staff; delete c.marks;
       const w = baseTicks(c.dur);
       if (t + w > len) { if (t === tick) throw new EditError('Does not fit into the measure'); break; }
       v.items = putEvent(v.items as Item[], t, c) as Draft<Item>[];

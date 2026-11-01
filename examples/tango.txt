@@ -130,8 +130,7 @@ m32
   rh.2: d6:4 f#6 d6 c#6:8 d6:32 c#6 d6 c#6
   lh.1: 6:4{ \ped b4:16 f#5 b5 f#5 d5 f#5 } 6:4{ b5 f#5 d5 \unped \ped f#5-> d5 b4 } 6:4{ \unped \ped f#4 b3 f#4 d5 f#4 b4 } 6:4{ \unped \ped a#4 f#4 c#4 f#4 c#4 f#3 } \unped
 m33
-  rh.1: \p \arp <d#6 b6>:2 r
-  rh@: @1 \8off
+  rh.1: \p \arp <d#6 b6>:2 \8off r
   lh.1: \clef F4 ( b2:4. f#3:8 d#4:4-.) <a#2 c#4>-.
   lh.2: s:4. f#3:8~ f#3:2
 m34

@@ -1,5 +1,5 @@
 // Score -> timed MIDI messages. Headless: no browser APIs, so it can be tested with node --test.
-import { PPQ, baseTicks, flattenVoice, measureTicks, pitchMidi, timeAt, type Score } from '../model.ts';
+import { PPQ, baseTicks, flattenVoice, marksOf, measureTicks, pitchMidi, timeAt, type Score } from '../model.ts';
 
 export interface Msg { sec: number; bytes: number[] }
 export interface Sequence {
@@ -28,7 +28,7 @@ export function buildSequence(score: Score): Sequence {
   // tempo map: segments of constant seconds-per-tick
   const tempi: { tick: number; spt: number }[] = [{ tick: 0, spt: 60 / 120 / PPQ }];
   score.measures.forEach((m, mi) => {
-    for (const st of Object.values(m.staves)) for (const mk of st.marks) {
+    for (const st of Object.values(m.staves)) for (const mk of marksOf(st)) {
       if (mk.type !== 'tempo') continue;
       const beatTicks = baseTicks({ base: mk.unit, dots: mk.dots });
       tempi.push({ tick: measureStart[mi] + mk.tick, spt: 60 / (mk.bpm * (beatTicks / PPQ)) / PPQ });
@@ -61,7 +61,7 @@ export function buildSequence(score: Score): Sequence {
     const velAt = (tick: number) => { let v = DEFAULT_VEL; for (const d of dyn) if (d.tick <= tick) v = d.vel; return v; };
     let down = false;
     score.measures.forEach((m, mi) => {
-      for (const mk of m.staves[sd.id]?.marks ?? []) {
+      for (const mk of marksOf(m.staves[sd.id])) {
         const t = measureStart[mi] + mk.tick;
         if (mk.type === 'dynamic') { const v = DYN[mk.text]; if (v !== undefined) dyn.push({ tick: t, vel: v }); }
         else if (mk.type === 'pedal') { if (down) pedal.push({ tick: t, ch, down: false }); pedal.push({ tick: t, ch, down: true }); down = true; }

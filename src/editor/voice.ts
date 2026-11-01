@@ -40,7 +40,7 @@ function pieces(e: Event, a: number, from: number, to: number, head: boolean): E
   const durs = splitTicks(to - from, from);
   return durs.map((d, i) => {
     const n = { ...e, dur: d, pitches: e.pitches.map((p) => ({ ...p, tie: i < durs.length - 1 ? true : undefined })) };
-    if (i > 0) { delete n.slurStart; delete n.art; delete n.artSide; delete n.arpeggio; delete n.graces; delete n.stem; }
+    if (i > 0) { delete n.marks; delete n.slurStart; delete n.art; delete n.artSide; delete n.arpeggio; delete n.graces; delete n.stem; }
     if (i < durs.length - 1) delete n.slurStop;
     for (const p of n.pitches) if (p.tie === undefined) delete p.tie;
     void a;
@@ -65,6 +65,8 @@ export function overwrite(items: Item[], t0: number, t1: number, insert: Item[])
     pos = b;
     if (b <= t0) { out.push(it); continue; }
     if (a >= t1) { if (!placed) { out.push(...insert); placed = true; } out.push(it); continue; }
+    // what hangs on the event that starts where the new one goes stays with the new one
+    if (isEvent(it) && a === t0 && it.marks?.length && isEvent(insert[0]) && !insert[0].marks) insert[0] = { ...insert[0], marks: it.marks.map((m) => JSON.parse(JSON.stringify(m))) };
     if (!isEvent(it)) {
       if (a >= t0 && b <= t1) continue; // fully replaced
       throw new EditError('That would cut through a tuplet or tremolo (hold Alt to replace it as a whole)');

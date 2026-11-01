@@ -1,9 +1,9 @@
 // MusicXML (partwise) -> Score
 import { parseXml, child, children, text, type XNode } from './xml.ts';
 import {
-  PPQ, STEPS, baseTicks, measureTicks,
+  PPQ, STEPS, anchorMarks, baseTicks, measureTicks,
   type Score, type Measure, type Item, type Event, type NoteEvent, type RestEvent,
-  type Dur, type BaseDur, type Clef, type Mark, type TupletGroup, type BeamGroup, type Step, type StaffDef,
+  type Dur, type BaseDur, type Clef, type TimedMark, type TupletGroup, type BeamGroup, type Step, type StaffDef,
   type Articulation, type Pitch, type TimeSig,
 } from './model.ts';
 import { beatTicks, simplifyBeams, simplifyTupletBrackets } from './beams.ts';
@@ -93,7 +93,7 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
   const nMeasures = Math.max(...parts.map((p) => children(p, 'measure').length));
   const voiceNums = new Map<string, number[]>(); // staffId -> sorted source voice numbers
   const raw: Map<string, RawNote[]>[] = []; // per measure: key staffId|voice
-  const rawMarks: { staffId: string; mark: Mark }[][] = [];
+  const rawMarks: { staffId: string; mark: TimedMark }[][] = [];
   const curDivisions: number[] = parts.map(() => 1);
 
   for (let mi = 0; mi < nMeasures; mi++) {
@@ -101,7 +101,7 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
     measures.push(measure);
     const raws = new Map<string, RawNote[]>();
     raw.push(raws);
-    const marks: { staffId: string; mark: Mark }[] = [];
+    const marks: { staffId: string; mark: TimedMark }[] = [];
     rawMarks.push(marks);
 
     parts.forEach((part, pi) => {
@@ -283,12 +283,13 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
       // leave out what the engraver's automatic beaming / bracket choice does anyway
       simplifyBeams(voice, beatTicks(timeNow));
       simplifyTupletBrackets(voice, beatTicks(timeNow));
-      const sm = (measure.staves[sid] ??= { voices: [], marks: [] });
+      const sm = (measure.staves[sid] ??= { voices: [] });
       sm.voices.push(voice);
     }
     for (const sm of Object.values(measure.staves)) sm.voices.sort((a, b) => a.id - b.id);
-    for (const { staffId, mark } of rawMarks[mi]) (measure.staves[staffId] ??= { voices: [], marks: [] }).marks.push(mark);
-    for (const sm of Object.values(measure.staves)) sm.marks.sort((a, b) => a.tick - b.tick);
+    const byStaff = new Map<string, TimedMark[]>();
+    for (const { staffId, mark } of rawMarks[mi]) (byStaff.get(staffId) ?? byStaff.set(staffId, []).get(staffId)!).push(mark);
+    for (const [sid, ms] of byStaff) if (measure.staves[sid]) anchorMarks(measure.staves[sid], ms.sort((a, b) => a.tick - b.tick));
   }
   if (!measures[0].time) measures[0].time = timeNow;
   return { meta, page, staves, groups, measures };

@@ -1,17 +1,17 @@
 // Musical context at a position: clef, octave shift, key and the accidentals already in force; and pitch <-> staff position.
-import { STEPS, flattenVoice, keyAt, pitchStep, type Clef, type Pitch, type Score, type Step } from '../model.ts';
+import { STEPS, flattenVoice, marksOf, keyAt, pitchStep, type Clef, type Pitch, type Score, type Step } from '../model.ts';
 import { clefBottomStep, keyAlter } from '../engrave/prep.ts';
 
 export function clefAt(score: Score, staff: string, mi: number, tick: number): Clef {
   let c = score.staves.find((s) => s.id === staff)!.clef;
-  for (let m = 0; m <= mi; m++) for (const mk of score.measures[m].staves[staff]?.marks ?? []) if (mk.type === 'clef' && (m < mi || mk.tick <= tick)) c = mk.clef;
+  for (let m = 0; m <= mi; m++) for (const mk of marksOf(score.measures[m].staves[staff])) if (mk.type === 'clef' && (m < mi || mk.tick <= tick)) c = mk.clef;
   return c;
 }
 
 /** -1: under an 8va (written an octave below the sounding pitch), +1: under an 8vb, else 0. */
 export function ottavaAt(score: Score, staff: string, mi: number, tick: number): number {
   let sh = 0;
-  for (let m = 0; m <= mi; m++) for (const mk of score.measures[m].staves[staff]?.marks ?? []) {
+  for (let m = 0; m <= mi; m++) for (const mk of marksOf(score.measures[m].staves[staff])) {
     if (m === mi && mk.tick > tick) continue;
     if (mk.type === 'ottava') sh = mk.dir === 'up' ? -1 : 1;
     else if (mk.type === 'stop' && mk.of === 'ottava' && (m < mi || mk.tick < tick)) sh = 0;

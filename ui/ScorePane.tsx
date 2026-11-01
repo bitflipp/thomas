@@ -3,16 +3,17 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { pageToSvg } from '../src/render.ts';
 import { loadSmufl } from '../src/smufl.ts';
 import { refKey, type Ref } from '../src/editor/addr.ts';
-import { primRef, type HitIndex } from '../src/editor/hit.ts';
+import { dependentNotes, noteBoxes, primRef, type HitIndex } from '../src/editor/hit.ts';
 import type { Engraved } from '../src/engrave/system.ts';
 import type { Page, Prim } from '../src/engrave/scene.ts';
 import { findCollisions } from '../src/engrave/collide.ts';
 import { engraved, hit, selection, zoom, fit, tool, score, showCollisions, voiceColors, VOICE_COLORS } from './state.ts';
 import { playhead, playing } from './player.ts';
-import { ghost, pageEls, onPointerDown, onPointerMove, onPointerUp, onDoubleClick, onContextMenu, cancelDrag, type Ghost } from './interact.ts';
+import { ghost, hover, pageEls, onPointerDown, onPointerMove, onPointerUp, onDoubleClick, onContextMenu, cancelDrag, type Ghost } from './interact.ts';
 
 const MM_PX = 96 / 25.4;
 const SEL = '#2f6fed';
+const HOVER = '#6b9af0'; // the selection colour, lighter
 
 function GhostSvg({ g, page }: { g: Ghost | null; page: number }) {
   if (!g) return null;
@@ -83,13 +84,41 @@ function PageView({ i, res, h, sig, keys, cssW, cursor }: { i: number; res: Engr
       if (voiceColors.value && (r.t === 'ev' || r.t === 'tie' || r.t === 'slur' || r.t === 'tuplet')) return VOICE_COLORS[r.voice];
       return undefined;
     };
-    return pageToSvg(p, res.staffSpace, { color: colorFor }).replace(/^<\?xml[^>]*>\s*/, '');
+    return pageToSvg(p, res.staffSpace, { color: colorFor, index: true }).replace(/^<\?xml[^>]*>\s*/, '');
   }, [res, h, sig, near, voiceColors.value]);
+  // the hovered element is recoloured in place, like a selected one but lighter (no new SVG per pointer move)
+  const wrap = useRef<HTMLDivElement | null>(null);
+  const hov = hover.value;
+  const hovered = useMemo(() => {
+    if (!hov || hov.page !== i || !near) return [];
+    const key = refKey(hov.ref), curve = hov.k === 'slur' || hov.k === 'tie';
+    const out: number[] = [];
+    p.prims.forEach((q, n) => {
+      if (!q.k || q.k === 'beam' || !q.r || (curve && q.k !== hov.k)) return;
+      const r = primRef(h.index, q);
+      // like a selection: an event without a head index covers all its heads too
+      if (r && (refKey(r) === key || (hov.ref.t === 'ev' && hov.ref.pi === undefined && r.t === 'ev' && refKey({ ...r, pi: undefined } as Ref) === key))) out.push(n);
+    });
+    return out;
+  }, [hov, h, p, i, near]);
+  useEffect(() => {
+    const root = wrap.current;
+    if (!root || !hovered.length) return;
+    const undo: (() => void)[] = [];
+    for (const n of hovered) {
+      const el = root.querySelector<SVGElement>(`[data-p="${n}"]`);
+      if (!el || el.getAttribute('fill') === SEL || el.getAttribute('stroke') === SEL) continue; // selected: keep its colour
+      const prop = el.tagName === 'line' ? 'stroke' : 'fill', old = el.style.getPropertyValue(prop);
+      el.style.setProperty(prop, HOVER);
+      undo.push(() => el.style.setProperty(prop, old));
+    }
+    return () => undo.forEach((f) => f());
+  }, [hovered, svg]);
   const collisions = useMemo(() => (showCollisions.value && near ? findCollisionsOn(p, i) : []), [res, showCollisions.value, near]);
   const bands = selection.value.filter((r) => r.t === 'measure') as Extract<Ref, { t: 'measure' }>[];
   return (
     <div class="page" ref={(e) => { el.current = e; pageEls[i] = e; }} style={{ width: `${cssW}px`, height: near ? undefined : `${(cssW * p.height) / p.width}px`, cursor }} onPointerDown={onPointerDown} onDblClick={onDoubleClick}>
-      <div class="svgwrap" dangerouslySetInnerHTML={{ __html: svg }} />
+      <div class="svgwrap" ref={wrap} dangerouslySetInnerHTML={{ __html: svg }} />
       <svg class="overlay" viewBox={`0 0 ${p.width} ${p.height}`}>
         {bands.map((b) => {
           const gs = res.layout.measures.filter((m) => m.mi === b.mi && m.page === i);
@@ -98,11 +127,25 @@ function PageView({ i, res, h, sig, keys, cssW, cursor }: { i: number; res: Engr
           return <rect x={gs[0].x0} y={top} width={gs[0].x1 - gs[0].x0} height={bot - top} fill={SEL} fill-opacity="0.09" />;
         })}
         {collisions.map((c) => <rect x={c.x} y={c.y} width={c.w} height={c.h} fill="none" stroke="#d33" stroke-width="0.12" />)}
+        <NotesSvg page={i} h={h} />
         <GhostSvg g={ghost.value} page={i} />
         <PlayheadSvg page={i} />
       </svg>
     </div>
   );
+}
+
+/** Notes that the selected slurs, ties and tuplets belong to. */
+function NotesSvg({ page, h }: { page: number; h: HitIndex }) {
+  const sel = selection.value, sc = score.value;
+  const boxes = useMemo(() => {
+    const want = new Set<string>();
+    for (const r of sel) for (const a of dependentNotes(sc, r)) want.add(`${a.mi}:${a.staff}:${a.voice}:${a.idx}`);
+    if (!want.size) return [];
+    return noteBoxes(h, page, [...want].map((k) => { const [mi, staff, voice, idx] = k.split(':'); return { mi: Number(mi), staff, voice: Number(voice), idx: Number(idx) }; }));
+  }, [sel, sc, h, page]);
+  const pad = 0.25;
+  return <g pointer-events="none">{boxes.map((b) => <rect x={b.x0 - pad} y={b.y0 - pad} width={b.x1 - b.x0 + 2 * pad} height={b.y1 - b.y0 + 2 * pad} rx="0.4" fill="#f59f00" fill-opacity="0.3" stroke="#f08c00" stroke-width="0.12" />)}</g>;
 }
 
 function PlayheadSvg({ page }: { page: number }) {
@@ -121,9 +164,11 @@ export function ScorePane() {
   const sel = selection.value;
   const z = zoom.value;
   const box = useRef<HTMLDivElement>(null);
+  const [paneW, setPaneW] = useState(0); // measured pane width: the first render happens before the pane exists
   useEffect(() => {
     const el = box.current!;
-    const ro = new ResizeObserver(() => { if (fit.value) zoom.value = zoom.peek(); });
+    const ro = new ResizeObserver(() => setPaneW(el.clientWidth));
+    setPaneW(el.clientWidth);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -165,7 +210,7 @@ export function ScorePane() {
     return out;
   }, [h, keys]);
   if (!res || !h) return <div class="scroll" ref={box} />;
-  const cssW = (pw: number) => (fit.value ? Math.max(200, (box.current?.clientWidth ?? 800) - 48) * z : pw * res.staffSpace * MM_PX * z);
+  const cssW = (pw: number) => (fit.value ? Math.max(200, (paneW || 800) - 48) * z : pw * res.staffSpace * MM_PX * z);
   const cursor = tool.value === 'select' ? 'default' : 'crosshair';
   return (
     <div class="scroll" ref={box} onContextMenu={onContextMenu}>

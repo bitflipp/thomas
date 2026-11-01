@@ -1,7 +1,7 @@
 // Analysis pass: turns the Score into per-event layout records (written pitch positions,
 // accidentals, stem directions, beam groups ...) before any horizontal/vertical layout.
 import {
-  STEPS, flattenVoice, measureTicks, pitchStep, timeAt, keyAt,
+  marksOf, STEPS, flattenVoice, measureTicks, pitchStep, timeAt, keyAt,
   type Score, type Grace, type Clef, type TimedEvent, type NoteEvent, type Event, type TupletGroup, type TremoloGroup, type Pitch, type Mark, type Voice,
 } from '../model.ts';
 import { beamGroups, beatTicks } from '../beams.ts';
@@ -110,7 +110,7 @@ export function prepare(score: Score): Prepared {
   // clef timeline per staff: list of {mi,tick,clef}
   const clefChanges: { mi: number; tick: number; clef: Clef }[][] = score.staves.map(() => []);
   score.measures.forEach((m, mi) => {
-    for (const [sid, sm] of Object.entries(m.staves)) for (const mk of sm.marks) if (mk.type === 'clef') clefChanges[staffIdx.get(sid)!].push({ mi, tick: mk.tick, clef: mk.clef });
+    for (const [sid, sm] of Object.entries(m.staves)) for (const mk of marksOf(sm)) if (mk.type === 'clef') clefChanges[staffIdx.get(sid)!].push({ mi, tick: mk.tick, clef: mk.clef });
   });
   const clefAt = (s: number, mi: number, tick: number): Clef => {
     let c = score.staves[s].clef;
@@ -122,7 +122,7 @@ export function prepare(score: Score): Prepared {
   type Ott = { mi: number; tick: number; shift: number }; // shift: -1 (8va), +1 (8vb), 0 stop
   const ottChanges: Ott[][] = score.staves.map(() => []);
   score.measures.forEach((m, mi) => {
-    for (const [sid, sm] of Object.entries(m.staves)) for (const mk of sm.marks) {
+    for (const [sid, sm] of Object.entries(m.staves)) for (const mk of marksOf(sm)) {
       if (mk.type === 'ottava') ottChanges[staffIdx.get(sid)!].push({ mi, tick: mk.tick, shift: mk.dir === 'up' ? -1 : 1 });
       else if (mk.type === 'stop' && mk.of === 'ottava') ottChanges[staffIdx.get(sid)!].push({ mi, tick: mk.tick, shift: 0 });
     }
@@ -145,7 +145,7 @@ export function prepare(score: Score): Prepared {
     const key = keyAt(score, mi);
     const bt = beatTicks(timeAt(score, mi));
     const row: StaffMeasureL[] = [];
-    const smOf = (si: number) => m.staves[score.staves[si].id] ?? { voices: [], marks: [] };
+    const smOf = (si: number) => m.staves[score.staves[si].id] ?? { voices: [] };
     // ----- pass 1: events of every voice (a cross-staff event takes clef, octave shift and accidentals of its display staff)
     const voicesOf: { id: number; evs: EvL[] }[][] = [];
     for (let si = 0; si < nS; si++) {
@@ -264,7 +264,7 @@ export function prepare(score: Score): Prepared {
       for (const v of voices) for (const e of v.evs) if (e.ev.kind === 'note') displaceHeads(e);
 
       voices.forEach((v) => v.evs.forEach((e) => allEvs.push(e)));
-      row.push({ evs: [], voices, marks: sm.marks });
+      row.push({ evs: [], voices, marks: marksOf(sm) });
     }
     for (const r of row) r.evs = [];
     for (const r of row) for (const v of r.voices) for (const e of v.evs) row[e.staff].evs.push(e);

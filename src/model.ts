@@ -38,6 +38,7 @@ export interface EventBase {
   staff?: string; // cross-staff: drawn on this other staff (default: the staff of the voice); stem and beam stay with the voice
   slurStart?: SlurStart[];
   slurStop?: number[];
+  marks?: MarkBody[]; // dynamics, hairpin/pedal/ottava starts and stops, clef changes, tempo, text: at the start of this event
 }
 export interface NoteEvent extends EventBase {
   kind: 'note';
@@ -73,7 +74,11 @@ export interface BeamGroup { kind: 'beam'; items: Item[] }
 export interface TremoloGroup { kind: 'tremolo'; beams: number; items: Item[] }
 export type Item = Event | TupletGroup | BeamGroup | TremoloGroup;
 
-export interface Voice { id: number; items: Item[] }
+export interface Voice {
+  id: number;
+  items: Item[];
+  end?: MarkBody[]; // marks at the end of the measure (the stops of spans that run up to the barline)
+}
 
 export type Placement = 'above' | 'below';
 export type MarkBody =
@@ -86,9 +91,15 @@ export type MarkBody =
   | { type: 'clef'; clef: Clef }
   | { type: 'tempo'; unit: BaseDur; dots: number; bpm: number; text?: string }
   | { type: 'text'; text: string; placement?: Placement };
-export type Mark = MarkBody & { tick: number }; // tick within the measure
+/** A mark with a position, as in MusicXML or on a text-format mark line; `anchorMarks` hangs it on an event. */
+export type TimedMark = MarkBody & { tick: number };
+/**
+ * A mark as the engraver and playback see it, derived from the events carrying it (`marksOf`): `tick` within the measure,
+ * `voice`/`idx`/`k` its address (event index in the voice, -1 for the voice's `end` list; position in that list).
+ */
+export type Mark = TimedMark & { voice: number; idx: number; k: number };
 
-export interface StaffMeasure { voices: Voice[]; marks: Mark[] }
+export interface StaffMeasure { voices: Voice[] }
 
 export interface TimeSig { beats: number; beatType: number }
 export interface Clef { sign: 'G' | 'F' | 'C'; line: number; octave?: number }
@@ -170,6 +181,46 @@ export function flattenVoice(v: Voice): TimedEvent[] {
   return out;
 }
 
+/** The marks of a staff-measure with their ticks, in time order (ties: voice, then event). Uncached: use on drafts. */
+export function collectMarks(sm: StaffMeasure): Mark[] {
+  const out: Mark[] = [];
+  for (const v of sm.voices) {
+    const fl = flattenVoice(v);
+    for (const te of fl) te.ev.marks?.forEach((b, k) => out.push({ ...b, tick: te.start, voice: v.id, idx: te.index, k } as Mark));
+    const last = fl[fl.length - 1], len = last ? last.start + last.ticks : 0;
+    v.end?.forEach((b, k) => out.push({ ...b, tick: len, voice: v.id, idx: -1, k } as Mark));
+  }
+  return out.sort((a, b) => a.tick - b.tick);
+}
+const marksCache = new WeakMap<StaffMeasure, Mark[]>();
+/** `collectMarks`, cached per staff-measure object (edits replace the objects they change), so mark objects are stable for hit testing. Never call it on an Immer draft. */
+export function marksOf(sm: StaffMeasure | undefined): Mark[] {
+  if (!sm) return [];
+  let r = marksCache.get(sm);
+  if (!r) marksCache.set(sm, (r = collectMarks(sm)));
+  return r;
+}
+
+/**
+ * Hang timed marks on events: the first voice with an event starting at the tick takes it, else the end of the first voice,
+ * else (inside an event) the next event start. Mutates `sm`.
+ */
+export function anchorMarks(sm: StaffMeasure, marks: TimedMark[]): void {
+  for (const { tick, ...b } of marks) {
+    const body = b as MarkBody;
+    let done = false;
+    for (const v of sm.voices) {
+      const te = flattenVoice(v).find((t) => t.start === tick);
+      if (te) { (te.ev.marks ??= []).push(body); done = true; break; }
+    }
+    if (done) continue;
+    const v = sm.voices.find((x) => x.items.length > 0);
+    if (!v) continue;
+    const fl = flattenVoice(v), next = fl.find((t) => t.start > tick);
+    if (next) (next.ev.marks ??= []).push(body); else (v.end ??= []).push(body);
+  }
+}
+
 export function voiceTicks(v: Voice): number {
   const f = flattenVoice(v);
   return f.length ? f[f.length - 1].start + f[f.length - 1].ticks : 0;
@@ -218,7 +269,7 @@ export function validate(score: Score): string[] {
         else if (t < len && t > 0) errs.push(`${at}.${v.id}: voice too short (${t} < ${len})`);
         groupErrs(v.items, `${at}.${v.id}`);
       }
-      for (const mk of sm.marks) if (mk.tick < 0 || mk.tick > len) errs.push(`${at}: mark outside measure`);
+      for (const v of sm.voices) for (const b of v.end ?? []) if (b.type !== 'stop') errs.push(`${at}.${v.id}: only stops can sit at the end of a measure`);
     }
   });
   return errs;

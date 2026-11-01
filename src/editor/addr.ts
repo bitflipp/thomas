@@ -1,9 +1,10 @@
 // Addresses: stable ways to name things in a Score across edits (objects are replaced by Immer, indices are not).
-import { flattenVoice, isTuplet, type Event, type Mark, type Score, type TupletGroup, type Voice } from '../model.ts';
+import { flattenVoice, isTuplet, marksOf, type Event, type Mark, type Score, type TupletGroup, type Voice } from '../model.ts';
 
 /** An event: measure, staff id, voice id and its index in the voice's flattened event order. */
 export interface EvAddr { mi: number; staff: string; voice: number; idx: number }
-export interface MarkAddr { mi: number; staff: string; i: number }
+/** A mark: the voice it hangs on, the event (index in the voice; -1 = the voice's end marks) and its place in that list. */
+export interface MarkAddr { mi: number; staff: string; voice: number; idx: number; k: number }
 
 export type Ref =
   | ({ t: 'ev'; pi?: number } & EvAddr) // a note/rest; `pi`: one head of a chord
@@ -19,7 +20,7 @@ export const refKey = (r: Ref): string => {
     case 'tie': return `tie:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.pi}`;
     case 'slur': return `slur:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.id}`;
     case 'tuplet': return `tup:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.depth}`;
-    case 'mark': return `mark:${r.mi}:${r.staff}:${r.i}`;
+    case 'mark': return `mark:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.k}`;
     case 'measure': return `m:${r.mi}`;
   }
 };
@@ -34,7 +35,7 @@ export function indexScore(score: Score): ScoreIndex {
   const ev = new Map<Event, EvAddr>(), mark = new Map<Mark, MarkAddr>(), tuplet = new Map<TupletGroup, EvAddr & { depth: number }>();
   score.measures.forEach((m, mi) => {
     for (const [staff, sm] of Object.entries(m.staves)) {
-      sm.marks.forEach((mk, i) => mark.set(mk, { mi, staff, i }));
+      for (const mk of marksOf(sm)) mark.set(mk, { mi, staff, voice: mk.voice, idx: mk.idx, k: mk.k });
       for (const v of sm.voices) {
         for (const te of flattenVoice(v)) {
           const a = { mi, staff, voice: v.id, idx: te.index };
@@ -54,7 +55,7 @@ export function eventOf(score: Score, a: EvAddr): Event | undefined {
   const v = voiceOf(score, a);
   return v ? flattenVoice(v)[a.idx]?.ev : undefined;
 }
-export function markOf(score: Score, a: MarkAddr): Mark | undefined { return score.measures[a.mi]?.staves[a.staff]?.marks[a.i]; }
+export function markOf(score: Score, a: MarkAddr): Mark | undefined { return marksOf(score.measures[a.mi]?.staves[a.staff]).find((m) => m.voice === a.voice && m.idx === a.idx && m.k === a.k); }
 export function tupletOf(score: Score, a: EvAddr & { depth: number }): TupletGroup | undefined {
   const v = voiceOf(score, a);
   return v ? flattenVoice(v)[a.idx]?.tuplets[a.depth] : undefined;

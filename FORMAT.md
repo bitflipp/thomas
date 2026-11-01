@@ -84,11 +84,16 @@ beam covers the whole group; `bracket`/`nobracket` override that. The importer w
 | Tempo | `\tempo 4=115`, `\tempo 4.=60` |
 | Text | `\text "dolce"`, `^`/`_` for above/below |
 
-Marks are stored per staff with their time position. When no voice has an event boundary at that position
-the writer emits them on a separate mark line, which holds nothing but `@position` tokens and marks:
+A mark hangs on the event it is written before, in that event's voice (several voices may carry marks); a mark at the end of a line
+hangs on the end of the voice's measure (the stop of a span that runs up to the barline). Deleting or replacing the event
+removes its marks, and a hairpin loses both ends when one of them goes.
+
+For hand-written scores there is also a mark line, which holds nothing but `@position` tokens and marks (positions in quarter notes;
+1/4 = a 16th into the measure). The parser hangs each mark on the event starting there, or, inside an event, on the next one;
+the writer never emits such lines:
 
 ```
-  rh@: @1/4 \< @3/4 \!        # positions in quarter notes: 1/4 = a 16th into the measure
+  rh@: @1/4 \< @3/4 \!
 ```
 
 ## Layout directives

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseText, writeText } from '../src/textformat.ts';
-import { validate, flattenVoice, type Score, type Mark } from '../src/model.ts';
+import { validate, flattenVoice, marksOf, type Score, type Mark } from '../src/model.ts';
 import { beamGroups, simplifyBeams, simplifyTupletBrackets } from '../src/beams.ts';
 
 const HEAD = 'page 210x297 margin=10 space=1.9\nstaff rh clef=G2\n';
@@ -22,7 +22,7 @@ m1 time=2/4
 
 test('marks are positioned from the parsed tree (tuplets, end of measure, mark lines)', () => {
   const s = parse('  rh.1: \\p c5:8 3:2{ \\f d5:16 e5 f5 } \\!\n  rh@: @1/2 \\ped');
-  const at = (pred: (m: Mark) => boolean) => s.measures[0].staves.rh.marks.find(pred)!.tick;
+  const at = (pred: (m: Mark) => boolean) => marksOf(s.measures[0].staves.rh).find(pred)!.tick;
   assert.equal(at((m) => m.type === 'dynamic' && m.text === 'p'), 0);
   assert.equal(at((m) => m.type === 'dynamic' && m.text === 'f'), 1680);
   assert.equal(at((m) => m.type === 'stop'), 1680 + 1680); // 8th, then three 16ths in the time of two 8ths

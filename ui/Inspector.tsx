@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { timeAt, keyAt, type Event, type Mark, type NoteEvent } from '../src/model.ts';
+import { timeAt, keyAt, type Event, type MarkBody, type NoteEvent } from '../src/model.ts';
 import * as C from '../src/editor/commands.ts';
 import { eventOf, markOf, tupletOf, voiceOf, type Ref } from '../src/editor/addr.ts';
 import { flattenVoice } from '../src/model.ts';
@@ -154,7 +154,7 @@ function EventSection() {
 function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
   const m = markOf(score.value, r);
   if (!m) return null;
-  const upd = (patch: Partial<Mark>) => run((x) => C.updateMark(x, r, patch));
+  const upd = (patch: Partial<MarkBody>) => run((x) => C.updateMark(x, r, patch));
   const place = (m as { placement?: 'above' | 'below' }).placement;
   const label = m.type === 'stop' ? `End of ${m.of}` : m.type === 'ottava' ? (m.dir === 'up' ? '8va' : '8vb') : m.type[0].toUpperCase() + m.type.slice(1);
   return (

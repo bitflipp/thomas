@@ -1,7 +1,7 @@
 // Human-readable text format <-> Score.   See FORMAT.md for the grammar.
 import {
-  PPQ, gcd, flattenVoice, isBeam, isTuplet, isTremolo,
-  type Score, type Item, type Event, type NoteEvent, type RestEvent, type Dur, type BaseDur, type Mark, type Clef,
+  PPQ, gcd, anchorMarks, isBeam, isTuplet, isTremolo,
+  type Score, type Item, type Event, type NoteEvent, type RestEvent, type Dur, type BaseDur, type TimedMark, type Clef,
   type Pitch, type NotePitch, type TupletGroup, type BeamGroup, type TremoloGroup, type Measure, type StaffMeasure,
   type MarkBody, type Placement, type Grace,
 } from './model.ts';
@@ -10,12 +10,6 @@ const DYNAMICS = new Set(['pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff'
 
 // ------------------------------------------------------------------ writing
 
-function fracStr(tick: number): string {
-  if (tick === 0) return '0';
-  const g = gcd(tick, PPQ);
-  const n = tick / g, d = PPQ / g;
-  return d === 1 ? String(n) : `${n}/${d}`;
-}
 function fracParse(s: string): number {
   const [n, d] = s.split('/');
   const t = (Number(n) * PPQ) / Number(d ?? 1);
@@ -59,18 +53,13 @@ function markStr(m: MarkBody): string {
 class VoiceWriter {
   out: string[] = [];
   lastBase: BaseDur | 0 = 0;
-  marksAt: Map<number, string[]>;
-  flat: ReturnType<typeof flattenVoice>;
-  eventIdx = 0;
   home: string;
   curStaff: string; // staff the following events are drawn on (see \staff)
-  constructor(marksAt: Map<number, string[]>, flat: ReturnType<typeof flattenVoice>, home: string) { this.marksAt = marksAt; this.flat = flat; this.home = this.curStaff = home; }
+  constructor(home: string) { this.home = this.curStaff = home; }
 
   eventStr(e: Event): string {
     const pre: string[] = [];
-    const t = this.flat[this.eventIdx++].start;
-    const mk = this.marksAt.get(t);
-    if (mk) { pre.push(...mk); this.marksAt.delete(t); }
+    for (const m of e.marks ?? []) pre.push(markStr(m));
     if ((e.staff ?? this.home) !== this.curStaff) { this.curStaff = e.staff ?? this.home; pre.push(`\\staff ${this.curStaff}`); }
     for (const s of e.slurStart ?? []) pre.push('(' + idStr(s.id) + sideStr(s.side));
     if (e.stem) pre.push(e.stem === 'up' ? '\\stemup' : '\\stemdown');
@@ -133,28 +122,12 @@ function graceStrs(gs: Grace[]): string[] {
 }
 
 function writeStaffMeasure(sm: StaffMeasure, sid: string, lines: string[]): void {
-  const flats = sm.voices.map((v) => flattenVoice(v));
-  // assign marks to a voice that has an event boundary at that tick
-  const perVoice: Map<number, string[]>[] = sm.voices.map(() => new Map());
-  const orphans: Mark[] = [];
-  for (const m of sm.marks) {
-    let placed = false;
-    for (let vi = 0; vi < sm.voices.length && !placed; vi++) {
-      const f = flats[vi];
-      const ok = f.some((e) => e.start === m.tick) || (f.length > 0 && f[f.length - 1].start + f[f.length - 1].ticks === m.tick);
-      if (ok) { (perVoice[vi].get(m.tick) ?? perVoice[vi].set(m.tick, []).get(m.tick)!).push(markStr(m)); placed = true; }
-    }
-    if (!placed) orphans.push(m);
-  }
-  sm.voices.forEach((v, vi) => {
-    const w = new VoiceWriter(perVoice[vi], flats[vi], sid);
+  for (const v of sm.voices) {
+    const w = new VoiceWriter(sid);
     w.items(v.items);
-    const endT = flats[vi].length ? flats[vi][flats[vi].length - 1].start + flats[vi][flats[vi].length - 1].ticks : 0;
-    const tail = perVoice[vi].get(endT);
-    if (tail) w.out.push(...tail);
+    for (const m of v.end ?? []) w.out.push(markStr(m));
     lines.push(`  ${sid}.${v.id}: ${w.out.join(' ')}`);
-  });
-  if (orphans.length) lines.push(`  ${sid}@: ${orphans.map((m) => `@${fracStr(m.tick)} ${markStr(m)}`).join(' ')}`);
+  }
 }
 
 export function writeText(score: Score): string {
@@ -232,10 +205,9 @@ interface PendingEv { stem?: 'up' | 'down'; arpeggio?: boolean; noBeam?: boolean
 
 /**
  * Parses the items of one voice line, or of a mark line (`markLine`: only marks, each placed by an `@position`).
- * A mark in a voice line belongs to the event that follows it (or to the end of the measure); its tick is
- * resolved afterwards from the parsed tree, so tuplet arithmetic lives in `flattenVoice` only.
+ * A mark in a voice line belongs to the event that follows it (or to the end of the voice's measure: `end`).
  */
-function parseVoiceLine(line: string, where: string, home: string, markLine = false): { items: Item[]; marks: Mark[] } {
+function parseVoiceLine(line: string, where: string, home: string, markLine = false): { items: Item[]; marks: TimedMark[]; end: MarkBody[] } {
   const sc = new Scanner(line, where);
   type Frame = { kind: 'root' | 'tuplet' | 'beam' | 'tremolo'; items: Item[] };
   const stack: Frame[] = [{ kind: 'root', items: [] }];
@@ -247,8 +219,8 @@ function parseVoiceLine(line: string, where: string, home: string, markLine = fa
   let pendingEv: PendingEv = {};
   let lastEv: Event | null = null;
   let curStaff = home; // set by \staff, sticky within the line
-  const marks: Mark[] = [];
-  const later: { body: MarkBody; ev: Event | null }[] = [];
+  const marks: TimedMark[] = [];
+  let end: MarkBody[] = [];
 
   const readNP = (): NotePitch => {
     const np: NotePitch = { pitch: parsePitch(sc) };
@@ -256,7 +228,7 @@ function parseVoiceLine(line: string, where: string, home: string, markLine = fa
     if (sc.peek() === '~') { sc.i++; np.tie = true; }
     return np;
   };
-  const flush = (ev: Event | null) => { for (const body of pending) later.push({ body, ev }); pending = []; };
+  const flush = (ev: Event | null) => { if (ev) { if (pending.length) ev.marks = [...(ev.marks ?? []), ...pending]; } else end = pending; pending = []; };
   const num = () => { const n = sc.take(/\d+/y); return n ? Number(n) : 1; };
   const placement = (): Side | undefined => {
     const c = sc.peek();
@@ -265,7 +237,7 @@ function parseVoiceLine(line: string, where: string, home: string, markLine = fa
     return undefined;
   };
   const withSide = <T extends object>(o: T, side?: Side): T & { placement?: Side } => (side ? { ...o, placement: side } : o);
-  const addMark = (body: MarkBody) => { if (at !== null) marks.push({ ...body, tick: at } as Mark); else pending.push(body); };
+  const addMark = (body: MarkBody) => { if (at !== null) marks.push({ ...body, tick: at } as TimedMark); else pending.push(body); };
   const open = (kind: Frame['kind'], node: TupletGroup | BeamGroup | TremoloGroup) => { top().items.push(node); stack.push({ kind, items: node.items }); };
   const close = (kind: Frame['kind'], ch: string) => { sc.i++; if (top().kind !== kind) sc.fail(`unmatched ${ch}`); stack.pop(); };
 
@@ -406,13 +378,7 @@ function parseVoiceLine(line: string, where: string, home: string, markLine = fa
   if (stack.length !== 1) sc.fail('unclosed group');
   flush(null);
   const items = stack[0].items;
-  if (later.length) {
-    const flat = flattenVoice({ id: 0, items });
-    const start = new Map(flat.map((t) => [t.ev, t.start]));
-    const end = flat.length ? flat[flat.length - 1].start + flat[flat.length - 1].ticks : 0;
-    for (const { body, ev } of later) marks.push({ ...body, tick: ev ? start.get(ev)! : end } as Mark);
-  }
-  return { items, marks };
+  return { items, marks, end };
 }
 
 function readString(sc: Scanner): string {
@@ -434,6 +400,7 @@ function tokens(line: string): string[] {
 export function parseText(src: string): Score {
   const score: Score = { meta: {}, page: { width: 210, height: 297, margin: 10, staffSpace: 1.91 }, staves: [], groups: [], measures: [] };
   let cur: Measure | null = null;
+  const timed = new Map<StaffMeasure, TimedMark[]>(); // positioned marks (mark lines), hung on events once the voices are known
   const lines = src.split(/\r?\n/);
   lines.forEach((raw, ln) => {
     const where = `line ${ln + 1}`;
@@ -445,11 +412,11 @@ export function parseText(src: string): Score {
         if (!m) throw new Error('bad voice line');
         const sid = m[1];
         if (!score.staves.some((s) => s.id === sid)) throw new Error(`unknown staff ${sid}`);
-        const sm = (cur.staves[sid] ??= { voices: [], marks: [] });
+        const sm = (cur.staves[sid] ??= { voices: [] });
         const markLine = m[2] === undefined;
-        const { items, marks } = parseVoiceLine(m[3], where, sid, markLine);
-        if (!markLine) sm.voices.push({ id: Number(m[2]), items });
-        sm.marks.push(...marks);
+        const { items, marks, end } = parseVoiceLine(m[3], where, sid, markLine);
+        if (!markLine) sm.voices.push({ id: Number(m[2]), items, ...(end.length ? { end } : {}) });
+        if (marks.length) (timed.get(sm) ?? timed.set(sm, []).get(sm)!).push(...marks);
         return;
       }
       const t = tokens(raw.trim());
@@ -476,6 +443,6 @@ export function parseText(src: string): Score {
       throw new Error(`${where}: ${(e as Error).message}`);
     }
   });
-  for (const m of score.measures) for (const sm of Object.values(m.staves)) { sm.voices.sort((a, b) => a.id - b.id); sm.marks.sort((a, b) => a.tick - b.tick); }
+  for (const m of score.measures) for (const sm of Object.values(m.staves)) { sm.voices.sort((a, b) => a.id - b.id); const tm = timed.get(sm); if (tm) anchorMarks(sm, tm.sort((a, b) => a.tick - b.tick)); }
   return score;
 }

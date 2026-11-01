@@ -47,11 +47,11 @@ export function Palette() {
       <h4>Lines</h4>
       <div class="grid">
         <ToolBtn t="slur" title="Slur: drag from note to note"><Icon.slur /></ToolBtn>
-        <ToolBtn t="cresc" title="Crescendo: drag along a staff"><Icon.cresc /></ToolBtn>
-        <ToolBtn t="dim" title="Diminuendo: drag along a staff"><Icon.dim /></ToolBtn>
-        <ToolBtn t="pedal" title="Pedal: drag along a staff"><Glyph cp={CPS.ped} /></ToolBtn>
-        <ToolBtn t="8va" title="8va: drag along a staff"><Label italic>8va</Label></ToolBtn>
-        <ToolBtn t="8vb" title="8vb: drag along a staff"><Label italic>8vb</Label></ToolBtn>
+        <ToolBtn t="cresc" title="Crescendo: drag from note to note"><Icon.cresc /></ToolBtn>
+        <ToolBtn t="dim" title="Diminuendo: drag from note to note"><Icon.dim /></ToolBtn>
+        <ToolBtn t="pedal" title="Pedal: drag from note to note"><Glyph cp={CPS.ped} /></ToolBtn>
+        <ToolBtn t="8va" title="8va: drag from note to note"><Label italic>8va</Label></ToolBtn>
+        <ToolBtn t="8vb" title="8vb: drag from note to note"><Label italic>8vb</Label></ToolBtn>
       </div>
       <h4>Marks</h4>
       <div class="grid">
@@ -78,8 +78,8 @@ const HINTS: Record<Tool, string> = {
   note: 'Click on a staff: the note lands where the ghost shows. Click an existing note to add or remove a chord tone. Alt replaces tuplets.',
   rest: 'Click on a staff to put a rest of the chosen duration.',
   slur: 'Drag from the first note to the last.',
-  cresc: 'Drag along a staff from start to end.', dim: 'Drag along a staff from start to end.', pedal: 'Drag along a staff from press to release.',
-  '8va': 'Drag along a staff over the notes to shift.', '8vb': 'Drag along a staff over the notes to shift.',
+  cresc: 'Drag from the first note to the last.', dim: 'Drag from the first note to the last.', pedal: 'Drag from the note where the pedal goes down to the last note under it.',
+  '8va': 'Drag from the first note to the last to shift.', '8vb': 'Drag from the first note to the last to shift.',
   dynamic: 'Click a position (above the staff centre puts it above).', text: 'Click a position.', tempo: 'Click a position.', clef: 'Click a position.',
   tuplet: 'Click a note or rest: it becomes a tuplet of that length.',
 };

@@ -2,8 +2,8 @@
 import type { Engraved, Layout, MeasureGeom } from '../engrave/system.ts';
 import type { Kind, Prim } from '../engrave/scene.ts';
 import { loadSmufl } from '../smufl.ts';
-import { indexScore, refKey, type Ref, type ScoreIndex } from './addr.ts';
-import type { Score } from '../model.ts';
+import { markOf, eventOf, type EvAddr, indexScore, refKey, tupletOf, voiceOf, type Ref, type ScoreIndex } from './addr.ts';
+import { flattenVoice, marksOf, type Mark, type Score } from '../model.ts';
 
 export interface Box { x0: number; y0: number; x1: number; y1: number }
 export interface Target {
@@ -106,7 +106,16 @@ function distBox(b: Box, x: number, y: number): number {
   return Math.hypot(dx, dy);
 }
 function distTarget(t: Target, x: number, y: number): number {
-  if (t.pts) return t.pts.reduce((m, q) => Math.min(m, Math.hypot(q.x - x, q.y - y)), Infinity);
+  if (t.pts) {
+    // distance to the polyline (the samples of a long slur are far apart)
+    let m = Infinity;
+    for (let i = 0; i < t.pts.length; i++) {
+      const a = t.pts[i], b = t.pts[i + 1] ?? a, dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+      const u = l2 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2)) : 0;
+      m = Math.min(m, Math.hypot(a.x + u * dx - x, a.y + u * dy - y));
+    }
+    return m;
+  }
   return t.boxes.reduce((m, b) => Math.min(m, distBox(b, x, y)), Infinity);
 }
 
@@ -191,4 +200,82 @@ export function measureAtStaff(layout: Layout, page: number, x: number, y: numbe
     if (d < bd) { bd = d; best = g; }
   }
   return best;
+}
+
+// ---------------------------------------------------------------- dependents
+
+/** The notes a selected slur, tie or tuplet belongs to (its start and end notes; all notes of a tuplet). */
+export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
+  if (ref.t === 'mark') return markNotes(score, ref);
+  if (ref.t !== 'slur' && ref.t !== 'tie' && ref.t !== 'tuplet') return [];
+  const out: EvAddr[] = [{ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: ref.idx }];
+  if (ref.t === 'tuplet') {
+    const v = voiceOf(score, ref), g = v && tupletOf(score, ref);
+    if (v && g) for (const te of flattenVoice(v)) if (te.tuplets[ref.depth] === g) out.push({ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: te.index });
+    return out;
+  }
+  // walk forward through the voice (across measures) to the note that ends the slur / receives the tie
+  const start = eventOf(score, ref);
+  for (let mi = ref.mi; mi < score.measures.length; mi++) {
+    const v = voiceOf(score, { mi, staff: ref.staff, voice: ref.voice });
+    if (!v) break;
+    for (const te of flattenVoice(v)) {
+      if (mi === ref.mi && te.index <= ref.idx) continue;
+      if (te.ev === start) continue;
+      if (ref.t === 'tie' ? te.ev.kind === 'note' : te.ev.slurStop?.includes(ref.id)) { out.push({ mi, staff: ref.staff, voice: ref.voice, idx: te.index }); return out; }
+      if (ref.t === 'tie') return out;
+    }
+  }
+  return out;
+}
+
+/**
+ * The event a mark belongs to, as a reader sees it: the one it hangs on, except for a stop, which ends the event before
+ * (marks at the end of a measure hang on the voice's last event).
+ */
+function anchorOf(score: Score, staff: string, mi: number, m: Mark): EvAddr | undefined {
+  const at = { staff, voice: m.voice };
+  const count = (i: number) => { const v = voiceOf(score, { mi: i, ...at }); return v ? flattenVoice(v).length : 0; };
+  if (m.idx < 0) { const n = count(mi); return n ? { mi, ...at, idx: n - 1 } : undefined; }
+  if (m.type !== 'stop') return { mi, ...at, idx: m.idx };
+  if (m.idx > 0) return { mi, ...at, idx: m.idx - 1 };
+  for (let i = mi - 1; i >= 0; i--) { const n = count(i); if (n) return { mi: i, ...at, idx: n - 1 }; } // the previous measure's last event
+  return { mi, ...at, idx: 0 };
+}
+
+/** The events a mark hangs on; for the start of a hairpin, pedal or octave shift also those of its end. */
+function markNotes(score: Score, ref: Extract<Ref, { t: 'mark' }>): EvAddr[] {
+  const m = markOf(score, ref);
+  if (!m) return [];
+  const out: EvAddr[] = [];
+  const own = anchorOf(score, ref.staff, ref.mi, m);
+  if (own) out.push(own);
+  const ends = m.type === 'hairpin' ? (x: Mark) => x.type === 'stop' && x.of === 'hairpin' && x.id === m.id
+    : m.type === 'pedal' || m.type === 'ottava' ? (x: Mark) => x.type === 'stop' && x.of === m.type : undefined;
+  if (ends) for (let mi = ref.mi; mi < score.measures.length; mi++) {
+    const stop = marksOf(score.measures[mi].staves[ref.staff]).find((x) => ends(x) && (mi > ref.mi || x.tick > m.tick));
+    if (stop) { const a = anchorOf(score, ref.staff, mi, stop); if (a) out.push(a); break; }
+  }
+  return out;
+}
+
+/**
+ * Where the notes `want` sit on a page. A note whose head is shared with a note of another voice (a unison) has no head of its own
+ * in the drawing: it is found as the head touching the end of its stem.
+ */
+export function noteBoxes(h: HitIndex, page: number, want: EvAddr[]): Box[] {
+  const keys = new Set(want.map((a) => `${a.mi}:${a.staff}:${a.voice}:${a.idx}`));
+  const key = (r: Ref) => (r.t === 'ev' ? `${r.mi}:${r.staff}:${r.voice}:${r.idx}` : '');
+  const ts = h.byPage[page] ?? [];
+  const heads = ts.filter((t) => t.ref.t === 'ev' && (t.k === 'head' || t.k === 'rest'));
+  const out: Box[] = [];
+  const own = new Set<string>();
+  for (const t of heads) if (keys.has(key(t.ref))) { out.push(t.bbox); own.add(key(t.ref)); }
+  for (const t of ts) {
+    if (t.ref.t !== 'ev' || t.k !== 'stem' || !keys.has(key(t.ref)) || own.has(key(t.ref))) continue;
+    const b = t.bbox, r = 0.8;
+    const ends: Box[] = [{ x0: b.x0 - r, x1: b.x1 + r, y0: b.y0 - r, y1: b.y0 + r }, { x0: b.x0 - r, x1: b.x1 + r, y0: b.y1 - r, y1: b.y1 + r }];
+    for (const hd of heads) if (ends.some((e) => hd.bbox.x0 <= e.x1 && hd.bbox.x1 >= e.x0 && hd.bbox.y0 <= e.y1 && hd.bbox.y1 >= e.y0)) out.push(hd.bbox);
+  }
+  return out;
 }

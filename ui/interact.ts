@@ -1,6 +1,6 @@
 // Pointer interaction on the score: selection, note input, dragging, and the tools that create spanners and marks.
 import { signal } from '@preact/signals';
-import { PPQ, baseTicks, flattenVoice, measureTicks, timeAt, type Event, type Mark, type Score } from '../src/model.ts';
+import { PPQ, baseTicks, flattenVoice, marksOf, measureTicks, timeAt, type Event, type MarkBody, type Score } from '../src/model.ts';
 import { eventAtTick } from '../src/editor/voice.ts';
 import { pitchAtPos } from '../src/editor/context.ts';
 import * as C from '../src/editor/commands.ts';
@@ -21,6 +21,9 @@ export type Ghost =
   | { kind: 'rect'; page: number; box: Box }
   | { kind: 'head'; page: number; x: number; y: number; pos: number; top: number; w: number; label: string };
 export const ghost = signal<Ghost | null>(null);
+
+/** The element the pointer is over (select tool), shown in light blue as the next thing a click selects. */
+export const hover = signal<Target | null>(null);
 
 export interface Menu { x: number; y: number; items: { label: string; run: () => void; danger?: boolean; sep?: boolean }[] }
 export const menu = signal<Menu | null>(null);
@@ -94,7 +97,7 @@ type Drag =
   | { k: 'none' }
   | { k: 'head'; ref: Extract<Ref, { t: 'ev' }>; start: Where; cx: number; cy: number; moved: boolean; target: Target; startTick: number }
   | { k: 'marquee'; start: Where; additive: boolean; moved: boolean; base: Ref[] }
-  | { k: 'span'; tool: 'slur' | 'cresc' | 'dim' | 'pedal' | '8va' | '8vb'; start: Where; cx: number; cy: number; from?: Extract<Ref, { t: 'ev' }>; geom?: MeasureGeom; tick?: number }
+  | { k: 'span'; tool: 'slur' | 'cresc' | 'dim' | 'pedal' | '8va' | '8vb'; start: Where; cx: number; cy: number; from: Extract<Ref, { t: 'ev' }> }
   | { k: 'mark'; ref: Extract<Ref, { t: 'mark' }>; start: Where; cx: number; cy: number; moved: boolean };
 let drag: Drag = { k: 'none' };
 
@@ -117,11 +120,8 @@ export function onPointerDown(e: PointerEvent): void {
     return;
   }
   if (t === 'cresc' || t === 'dim' || t === 'pedal' || t === '8va' || t === '8vb') {
-    const g = measureAt(h.layout, w.page, w.x, w.y);
-    if (!g) return;
-    const sn = snapTick(g, lenOf(score.peek(), g.mi), w.x, PPQ / 2);
-    drag = { k: 'span', tool: t, start: w, cx: e.clientX, cy: e.clientY, geom: g, tick: sn.tick };
-    ghost.value = { kind: 'span', from: { page: g.page, x: sn.x, y: g.y + 2 }, to: { page: g.page, x: sn.x, y: g.y + 2 } };
+    if (target?.ref.t === 'ev') { drag = { k: 'span', tool: t, start: w, cx: e.clientX, cy: e.clientY, from: { ...target.ref, pi: undefined } as never }; select([target.ref]); }
+    else say('Start the line on a note or rest', true);
     return;
   }
   if (t === 'dynamic' || t === 'text' || t === 'tempo' || t === 'clef') { addMarkAt(w); return; }
@@ -157,8 +157,10 @@ export function onPointerDown(e: PointerEvent): void {
 export function onPointerMove(e: PointerEvent): void {
   const w = locate(e.clientX, e.clientY);
   const h = hit.peek();
-  if (!w || !h) { if (drag.k === 'none') ghost.value = null; return; }
+  if (!w || !h) { if (drag.k === 'none') { ghost.value = null; hover.value = null; } return; }
   const t = tool.value;
+  const ht = drag.k === 'none' && t === 'select' ? hitTest(h, w.page, w.x, w.y) : undefined;
+  if (ht !== hover.peek() && (!ht || !hover.peek() || ht.page !== hover.peek()!.page || refKey(ht.ref) !== refKey(hover.peek()!.ref) || ht.k !== hover.peek()!.k)) hover.value = ht ?? null;
   if (drag.k === 'none') {
     if (t === 'note' || t === 'rest') ghost.value = ghostFor(w, e.altKey);
     else if (t === 'dynamic' || t === 'text' || t === 'tempo' || t === 'clef') {
@@ -184,18 +186,8 @@ export function onPointerMove(e: PointerEvent): void {
     d.moved = true;
     if (w.page === d.start.page) ghost.value = { kind: 'rect', page: w.page, box: { x0: Math.min(w.x, d.start.x), y0: Math.min(w.y, d.start.y), x1: Math.max(w.x, d.start.x), y1: Math.max(w.y, d.start.y) } };
   } else if (d.k === 'span') {
-    if (d.tool === 'slur') {
-      const tg = hitTest(h, w.page, w.x, w.y);
-      ghost.value = { kind: 'span', from: d.start, to: w, bad: !(tg?.ref.t === 'ev') };
-    } else if (d.geom) {
-      const sc = score.peek();
-      const g = measureAtStaff(h.layout, w.page, w.x, w.y, d.geom.staff);
-      if (!g) return;
-      const sn = snapTick(g, lenOf(sc, g.mi), w.x, PPQ / 2);
-      const s0 = snapTick(d.geom, lenOf(sc, d.geom.mi), d.start.x, PPQ / 2);
-      const after = g.mi > d.geom.mi || (g.mi === d.geom.mi && sn.tick > (d.tick ?? 0));
-      ghost.value = { kind: 'span', from: { page: d.geom.page, x: s0.x, y: d.geom.y + 2 }, to: { page: g.page, x: sn.x, y: g.y + 2 }, bad: !after };
-    }
+    const tg = hitTest(h, w.page, w.x, w.y);
+    ghost.value = { kind: 'span', from: d.start, to: w, bad: !(tg?.ref.t === 'ev' && tg.ref.staff === d.from.staff) };
   } else if (d.k === 'mark') {
     if (!d.moved && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 4) return;
     d.moved = true;
@@ -237,19 +229,10 @@ export function onPointerUp(e: PointerEvent): void {
     const pi = d.ref.pi ?? 0;
     run((s) => C.setPitch(s, d.ref, pi, p));
   } else if (d.k === 'span') {
-    if (d.tool === 'slur') {
-      const tg = hitTest(h, w.page, w.x, w.y);
-      if (tg?.ref.t === 'ev' && d.from) { const to = tg.ref, from = d.from; run((s) => C.addSlur(s, from, to)); }
-      return;
-    }
-    if (!d.geom) return;
-    const g = measureAtStaff(h.layout, w.page, w.x, w.y, d.geom.staff);
-    if (!g) return;
-    const a = { mi: d.geom.mi, tick: d.tick ?? 0 }, sn = snapTick(g, lenOf(sc, g.mi), w.x, PPQ / 2);
-    const b = { mi: g.mi, tick: sn.tick };
-    const id = staffId(sc, d.geom.staff);
-    const kind = d.tool;
-    run((s) => C.addSpan(s, id, kind, a, b));
+    const tg = hitTest(h, w.page, w.x, w.y);
+    if (tg?.ref.t !== 'ev') return;
+    const to = tg.ref, from = d.from, kind = d.tool;
+    if (kind === 'slur') run((s) => C.addSlur(s, from, to)); else run((s) => C.addSpanOver(s, kind, from, to));
   } else if (d.k === 'mark') {
     if (!d.moved) return;
     const g = measureAtStaff(h.layout, w.page, w.x, w.y, sc.staves.findIndex((s) => s.id === d.ref.staff));
@@ -298,8 +281,8 @@ function addMarkAt(w: Where): void {
   else if (t === 'tempo') ok = run((s) => C.addMark(s, id, g.mi, sn.tick, { type: 'tempo', unit: tempoArg.value.unit, dots: tempoArg.value.dots, bpm: tempoArg.value.bpm }));
   else if (t === 'clef') ok = run((s) => C.addMark(s, id, g.mi, sn.tick, { type: 'clef', clef: { ...clefArg.value } }));
   if (ok) {
-    const m = score.peek().measures[g.mi].staves[id].marks.findIndex((x: Mark) => x.tick === sn.tick && x.type === t);
-    if (m >= 0) selection.value = [{ t: 'mark', mi: g.mi, staff: id, i: m }];
+    const m = marksOf(score.peek().measures[g.mi].staves[id]).findLast((x) => x.tick === sn.tick && x.type === t);
+    if (m) selection.value = [{ t: 'mark', mi: g.mi, staff: id, voice: m.voice, idx: m.idx, k: m.k }];
   }
 }
 
@@ -309,8 +292,8 @@ export function onDoubleClick(e: MouseEvent): void {
   const tg = hitTest(h, w.page, w.x, w.y);
   if (tg?.ref.t !== 'mark') return;
   const ref = tg.ref, m = markOf(score.peek(), ref);
-  if (m?.type === 'text') { const v = prompt('Text', m.text); if (v) run((s) => C.updateMark(s, ref, { text: v } as Partial<Mark>)); }
-  else if (m?.type === 'tempo') { const v = Number(prompt('Beats per minute', String(m.bpm))); if (v > 0) run((s) => C.updateMark(s, ref, { bpm: v } as Partial<Mark>)); }
+  if (m?.type === 'text') { const v = prompt('Text', m.text); if (v) run((s) => C.updateMark(s, ref, { text: v } as Partial<MarkBody>)); }
+  else if (m?.type === 'tempo') { const v = Number(prompt('Beats per minute', String(m.bpm))); if (v > 0) run((s) => C.updateMark(s, ref, { bpm: v } as Partial<MarkBody>)); }
 }
 
 export function onContextMenu(e: MouseEvent): void {
@@ -356,8 +339,8 @@ export function deleteSelection(): void {
   try {
     const evs = sel.filter((r) => r.t === 'ev') as Extract<Ref, { t: 'ev' }>[];
     if (evs.length) s = C.deleteEvents(s, evs);
-    // marks: highest index first so indices stay valid
-    for (const r of sel.filter((x): x is Extract<Ref, { t: 'mark' }> => x.t === 'mark').sort((a, b) => b.mi - a.mi || b.i - a.i)) s = C.removeMark(s, r);
+    const marks = sel.filter((x): x is Extract<Ref, { t: 'mark' }> => x.t === 'mark');
+    if (marks.length) s = C.removeMarks(s, marks);
     for (const r of sel.filter((x): x is Extract<Ref, { t: 'slur' }> => x.t === 'slur')) s = C.removeSlur(s, r, r.id);
     for (const r of sel.filter((x): x is Extract<Ref, { t: 'tuplet' }> => x.t === 'tuplet')) s = C.removeTuplet(s, r);
     for (const r of sel.filter((x): x is Extract<Ref, { t: 'tie' }> => x.t === 'tie')) s = C.toggleTie(s, [{ ...r, pi: r.pi }]);
