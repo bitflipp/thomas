@@ -14,23 +14,23 @@ import type { Ref } from '../src/editor/addr.ts';
 // ---------------------------------------------------------------- document
 
 const EMPTY = `page 210x297 margin=10 space=1.75
-staff rh clef=G2 name="Piano"
-staff lh clef=F4 name="Piano"
-brace rh lh
+staff s1 clef=G2 name="Piano"
+staff s2 clef=F4 name="Piano"
+brace s1 s2
 title "Untitled"
 
 m1 time=4/4 key=0
-  rh.1: R:1
-  lh.1: R:1
+  s1.1: R:1
+  s2.1: R:1
 m2
-  rh.1: R:1
-  lh.1: R:1
+  s1.1: R:1
+  s2.1: R:1
 m3
-  rh.1: R:1
-  lh.1: R:1
+  s1.1: R:1
+  s2.1: R:1
 m4 barline=final
-  rh.1: R:1
-  lh.1: R:1
+  s1.1: R:1
+  s2.1: R:1
 `;
 export const NEW_SCORE_TEXT = EMPTY;
 

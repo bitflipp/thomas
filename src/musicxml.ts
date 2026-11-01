@@ -102,7 +102,7 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
     const ids: string[] = [];
     for (let k = 0; k < n; k++) {
       staffCounter++;
-      const id = parts.length === 1 && n === 2 && sound.startsWith('keyboard') ? (k === 0 ? 'rh' : 'lh') : `s${staffCounter}`;
+      const id = `s${staffCounter}`;
       ids.push(id);
       staves.push({ id, clef: { sign: 'G', line: 2 }, name: text(sp, 'part-name') });
     }

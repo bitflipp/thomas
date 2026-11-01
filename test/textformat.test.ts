@@ -107,10 +107,10 @@ test('writeTextMap: same text as writeText, with the places of events, marks, tu
   const { text, ranges } = writeTextMap(s);
   assert.equal(text, writeText(s));
   const at = (key: string) => (ranges.get(key) ?? []).map(([a, b]) => text.slice(a, b));
-  // The text being addressed is measure 33, lh voice 1: `d2:4-^_) r:16 \< eb2 d2 eb2`. Each ref
+  // The text being addressed is measure 33, s2 voice 1: `d2:4-^_) r:16 \< eb2 d2 eb2`. Each ref
   // below must map to exactly the characters of its object in that text.
-  assert.deepEqual(at(refKey({ t: 'ev', mi: 32, staff: 'lh', voice: 1, idx: 0 })), ['d2:4-^_)']);
-  assert.deepEqual(at(refKey({ t: 'mark', mi: 32, staff: 'lh', voice: 1, idx: 2, k: 0 })), ['\\<']);
-  assert.deepEqual(at(refKey({ t: 'tuplet', mi: 32, staff: 'rh', voice: 1, idx: 0, depth: 0 })).map((x) => x.slice(0, 8)), ['12:4(nob']);
-  assert.match(at(refKey({ t: 'measure', mi: 32 }))[0], /^m33\n {2}rh\.1: .*\n {2}lh\.1: .*d2 eb2$/);
+  assert.deepEqual(at(refKey({ t: 'ev', mi: 32, staff: 's2', voice: 1, idx: 0 })), ['d2:4-^_)']);
+  assert.deepEqual(at(refKey({ t: 'mark', mi: 32, staff: 's2', voice: 1, idx: 2, k: 0 })), ['\\<']);
+  assert.deepEqual(at(refKey({ t: 'tuplet', mi: 32, staff: 's1', voice: 1, idx: 0, depth: 0 })).map((x) => x.slice(0, 8)), ['12:4(nob']);
+  assert.match(at(refKey({ t: 'measure', mi: 32 }))[0], /^m33\n {2}s1\.1: .*\n {2}s2\.1: .*d2 eb2$/);
 });

@@ -13,15 +13,15 @@ subtitle "임윤찬 gewidmet"
 composer "Philipp Naumann (2026)"
 rights   "© Philipp Naumann, licensed under CC BY-SA 4.0"
 page 210.1x296.9 margin=10 space=1.91         # mm: width x height, margin, staff space (= the global scale); optional numbers=all|none (measure numbers; default: per system)
-staff rh clef=F4 name="Piano"                 # clef: G2, F4, C3, G2_8 (8 below), G2^8 (8 above)
-staff lh clef=F4
-brace rh lh                                   # or: bracket a b c
+staff s1 clef=F4 name="Piano"                 # clef: G2, F4, C3, G2_8 (8 below), G2^8 (8 above)
+staff s2 clef=F4
+brace s1 s2                                   # or: bracket a b c
 
 m1 time=2/4 key=0                             # key = number of sharps (+) / flats (-)
-  rh.1: 12:4(bracket,above,label=6){trem2{\tempo 4=115 \p g#3:4. a3:4.}}
-  lh.1: \ped (d3:2~
+  s1.1: 12:4(bracket,above,label=6){trem2{\tempo 4=115 \p g#3:4. a3:4.}}
+  s2.1: \ped (d3:2~
 m2
-  rh.1: ...
+  s1.1: ...
 m5 break=system barline=final                 # break=system|page (before this measure)
 ```
 
@@ -31,7 +31,7 @@ stay fixed. `thomas render --space <mm>` overrides it without editing the file.
 
 Header attributes of a measure: `time=B/T`, `key=N`, `break=system|page`, `barline=single|double|final`.
 The number in `m<N>` is only a label (the measure's number is its position). Lines indented by two spaces belong to the preceding measure: `<staff>.<voice>: <items>`.
-Voice numbers are local to a staff (`rh.1`, `rh.2`, `lh.1`, ...). Every voice of a measure must fill the measure exactly
+Voice numbers are local to a staff (`s1.1`, `s1.2`, `s2.1`, ...). Every voice of a measure must fill the measure exactly
 (use `s` spacers to skip time). `thomas check` validates this.
 
 ## Events
@@ -51,7 +51,7 @@ Voice numbers are local to a staff (`rh.1`, `rh.2`, `lh.1`, ...). Every voice of
 | Grace notes | `\acc{…}` (slashed) or `\grace{…}` before a note; each grace note has an explicit value (8, 16, 32 …), no dots, no time in the measure | `\acc{d5:8} c5:4`, `\grace{b4:16 c5:16} d5:4` |
 | No beam | `\nobeam` keeps a note out of the automatic beaming | `\nobeam c5:8 d5` |
 | Stem override | `\stemup`, `\stemdown` (else automatic) | `\stemdown c5:4` |
-| Cross-staff | `\staff <id>` draws the following events of the voice on that staff, until `\staff <home>` switches back (resets at each line) | `lh.1: [c3:16 e3 g3 \staff rh c4 e4 g4] \staff lh r:8` |
+| Cross-staff | `\staff <id>` draws the following events of the voice on that staff, until `\staff <home>` switches back (resets at each line) | `s2.1: [c3:16 e3 g3 \staff s1 c4 e4 g4] \staff s2 r:8` |
 
 Pitches are written with sounding octave. Under an octave shift (`\8va`/`\8vb`) the engraver writes them an octave away;
 you never write the shifted pitch yourself.
@@ -93,7 +93,7 @@ For hand-written scores there is also a mark line, which holds nothing but `@pos
 the writer never emits such lines:
 
 ```
-  rh@: @1/4 \< @3/4 \!
+  s1@: @1/4 \< @3/4 \!
 ```
 
 ## Layout directives

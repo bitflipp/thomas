@@ -12,8 +12,10 @@ import { deleteSelection, evRefs } from './interact.ts';
 import { DYNAMICS } from './Palette.tsx';
 
 function Row({ label, children }: { label: string; children: preact.ComponentChildren }) { return <div class="row"><span>{label}</span><div class="ctl">{children}</div></div>; }
-function Seg<T extends string | number | boolean | undefined>({ value, opts, onChange }: { value: T | 'mixed'; opts: [T, string][]; onChange: (v: T) => void }) {
-  return <div class="seg">{opts.map(([v, l]) => <button aria-pressed={value === v} onClick={() => onChange(v)}>{l}</button>)}</div>;
+/** A dropdown over (value, label) pairs; a mixed selection shows an empty entry. */
+function Pick<T extends string | number | boolean | undefined>({ value, opts, onChange }: { value: T | 'mixed'; opts: [T, string][]; onChange: (v: T) => void }) {
+  const i = opts.findIndex(([v]) => v === value);
+  return <select value={i} onChange={(e) => onChange(opts[Number((e.target as HTMLSelectElement).value)][0])}>{i < 0 && <option value={-1}></option>}{opts.map(([, l], k) => <option value={k}>{l}</option>)}</select>;
 }
 function Num({ value, min, max, step, onChange, w }: { value: number; min?: number; max?: number; step?: number; onChange: (n: number) => void; w?: string }) {
   return <input type="number" style={{ width: w ?? '4.5em' }} min={min} max={max} step={step} value={value} onChange={(e) => { const n = Number((e.target as HTMLInputElement).value); if (Number.isFinite(n)) onChange(n); }} />;
@@ -36,7 +38,7 @@ function ScoreSection() {
       <Row label="Staff space"><Num value={space.value ?? s.page.staffSpace} step={0.05} min={0.8} max={4} onChange={(n) => run((x) => C.setPage(x, { staffSpace: n }))} /> mm</Row>
       <Row label="Margin"><Num value={s.page.margin} step={1} min={0} max={40} onChange={(n) => run((x) => C.setPage(x, { margin: n }))} /> mm</Row>
       <Row label="Page"><Num value={s.page.width} min={50} max={600} w="4.5em" onChange={(n) => run((x) => C.setPage(x, { width: n }))} /> × <Num value={s.page.height} min={50} max={900} onChange={(n) => run((x) => C.setPage(x, { height: n }))} /> mm</Row>
-      <Row label="Bar numbers"><Seg value={s.page.measureNumbers ?? 'system'} opts={[['system', 'per system'], ['all', 'all'], ['none', 'none']]} onChange={(v) => run((x) => C.setMeasureNumbers(x, v === 'system' ? undefined : (v as 'all' | 'none')))} /></Row>
+      <Row label="Bar numbers"><Pick value={s.page.measureNumbers ?? 'system'} opts={[['system', 'per system'], ['all', 'all'], ['none', 'none']]} onChange={(v) => run((x) => C.setMeasureNumbers(x, v === 'system' ? undefined : (v as 'all' | 'none')))} /></Row>
       <StavesSection />
     </section>
   );
@@ -68,7 +70,7 @@ function StavesSection() {
           {i < s.staves.length - 1 && (
             <div class="joinrow">
               <span>joined by</span>
-              <Seg value={conn[i]} opts={[[undefined, 'nothing'], ['brace', 'brace'], ['bracket', 'bracket']]} onChange={(k) => run((x) => C.setConnection(x, i, k))} />
+              <Pick value={conn[i]} opts={[[undefined, 'nothing'], ['brace', 'brace'], ['bracket', 'bracket']]} onChange={(k) => run((x) => C.setConnection(x, i, k))} />
             </div>
           )}
         </>
@@ -91,8 +93,8 @@ function MeasureSection({ mi }: { mi: number }) {
         {mi > 0 && m.time && <button class="mini" title="Inherit from the previous measure" onClick={() => run((x) => C.setTimeSig(x, mi, undefined))}>×</button>}</Row>
       <Row label="Key"><select value={keyAt(s, mi)} onChange={(e) => run((x) => C.setKeySig(x, mi, Number((e.target as HTMLSelectElement).value)))}>{KEYS.map((k) => <option value={k}>{KEYNAME(k)}</option>)}</select>
         {mi > 0 && m.key !== undefined && <button class="mini" title="Inherit from the previous measure" onClick={() => run((x) => C.setKeySig(x, mi, undefined))}>×</button>}</Row>
-      <Row label="Barline"><Seg value={m.barline ?? 'single'} opts={[['single', '│'], ['double', '║'], ['final', '𝄂']]} onChange={(v) => run((x) => C.setBarline(x, mi, v))} /></Row>
-      <Row label="Break before"><Seg value={m.breakBefore ?? 'none'} opts={[['none', 'auto'], ['system', 'system'], ['page', 'page']]} onChange={(v) => run((x) => C.setBreak(x, mi, v === 'none' ? undefined : (v as 'system' | 'page')))} /></Row>
+      <Row label="Barline"><Pick value={m.barline ?? 'single'} opts={[['single', '│'], ['double', '║'], ['final', '𝄂']]} onChange={(v) => run((x) => C.setBarline(x, mi, v))} /></Row>
+      <Row label="Break before"><Pick value={m.breakBefore ?? 'none'} opts={[['none', 'auto'], ['system', 'system'], ['page', 'page']]} onChange={(v) => run((x) => C.setBreak(x, mi, v === 'none' ? undefined : (v as 'system' | 'page')))} /></Row>
       <div class="btns">
         <button onClick={() => run((x) => C.insertMeasures(x, mi))}>Insert before</button>
         <button onClick={() => run((x) => C.insertMeasures(x, mi + 1))}>Insert after</button>
@@ -153,8 +155,8 @@ function EventSection() {
       </div>
       <Group id="rhythm" title="Rhythm">
         <div class="g7">{([1, 2, 4, 8, 16, 32, 64] as const).map((b) => <button aria-pressed={same(evs.map((e) => e.dur.base)) === b} onClick={() => chooseDuration(b)}>{b === 1 ? '1' : `1/${b}`}</button>)}</div>
-        <div class="gap"><Seg value={same(evs.map((e) => e.dur.dots))} opts={[[0, 'no dot'], [1, '·'], [2, '··']]} onChange={(n) => chooseDots(n)} /></div>
-        {evs.some((e) => e.kind === 'rest') && <div class="gap"><Seg value={same(evs.filter((e) => e.kind === 'rest').map((e) => (e as { style: string }).style))} opts={[['normal', 'rest shown'], ['hidden', 'hidden']]} onChange={(v) => run((x) => C.updateEvents(x, refs, (e) => { if (e.kind === 'rest' && e.style !== 'measure') e.style = v as 'normal' | 'hidden'; }))} /></div>}
+        <div class="gap"><Pick value={same(evs.map((e) => e.dur.dots))} opts={[[0, 'no dot'], [1, '·'], [2, '··']]} onChange={(n) => chooseDots(n)} /></div>
+        {evs.some((e) => e.kind === 'rest') && <div class="gap"><Pick value={same(evs.filter((e) => e.kind === 'rest').map((e) => (e as { style: string }).style))} opts={[['normal', 'rest shown'], ['hidden', 'hidden']]} onChange={(v) => run((x) => C.updateEvents(x, refs, (e) => { if (e.kind === 'rest' && e.style !== 'measure') e.style = v as 'normal' | 'hidden'; }))} /></div>}
       </Group>
       {notes.length > 0 && <>
         <Group id="pitch" title="Pitch">
@@ -163,8 +165,8 @@ function EventSection() {
             <button title="Semitone down (↓)" onClick={() => nudge(-1)}>♭↓</button><button title="Octave down (Ctrl ↓)" onClick={() => nudge(-12)}>8vb↓</button><button title="Letter name down (Shift ↓)" onClick={() => nudge(undefined, -1)}>step↓</button>
           </div>
           <div class="two">
-            <div><label>Accidental</label><Seg value={same(notes.flatMap((n) => n.pitches.map((p) => p.acc)))} opts={[[undefined, 'auto'], ['force', 'show'], ['cautionary', '( )']]} onChange={(v) => run((x) => C.updateNotes(x, refs, (n) => { for (const p of n.pitches) if (v) p.acc = v; else delete p.acc; }))} /></div>
-            {nonHome.length > 0 && <div><label>Staff</label><Seg value={same(notes.map((n) => n.staff ?? r0.staff))} opts={[[r0.staff, `own (${r0.staff})`], ...nonHome.map((s): [string, string] => [s.id, s.id])]} onChange={(v) => run((x) => C.setStaffOf(x, refs, v === r0.staff ? undefined : v))} /></div>}
+            <div><label>Accidental</label><Pick value={same(notes.flatMap((n) => n.pitches.map((p) => p.acc)))} opts={[[undefined, 'auto'], ['force', 'show'], ['cautionary', '( )']]} onChange={(v) => run((x) => C.updateNotes(x, refs, (n) => { for (const p of n.pitches) if (v) p.acc = v; else delete p.acc; }))} /></div>
+            {nonHome.length > 0 && <div><label>Staff</label><Pick value={same(notes.map((n) => n.staff ?? r0.staff))} opts={[[r0.staff, `own (${r0.staff})`], ...nonHome.map((s): [string, string] => [s.id, s.name ? `${s.name} (${s.id})` : s.id])]} onChange={(v) => run((x) => C.setStaffOf(x, refs, v === r0.staff ? undefined : v))} /></div>}
           </div>
         </Group>
         <Group id="notation" title="Notation">
@@ -177,8 +179,8 @@ function EventSection() {
             <Tog on={notes.some((n) => n.noBeam)} title="Do not beam" onClick={() => flag('noBeam', false)}>⌐</Tog>
           </div>
           <div class="two">
-            <div><label>Stem</label><Seg value={same(notes.map((n) => n.stem))} opts={[[undefined, 'auto'], ['up', '↑'], ['down', '↓']]} onChange={(v) => upd((n) => { if (v) n.stem = v; else delete n.stem; })} /></div>
-            {notes.some((n) => n.art?.length) && <div><label>Articulation placed</label><Seg value={same(notes.map((n) => n.artSide))} opts={[[undefined, 'auto'], ['above', '▲'], ['below', '▼']]} onChange={(v) => upd((n) => { if (v) n.artSide = v; else delete n.artSide; })} /></div>}
+            <div><label>Stem</label><Pick value={same(notes.map((n) => n.stem))} opts={[[undefined, 'auto'], ['up', '↑'], ['down', '↓']]} onChange={(v) => upd((n) => { if (v) n.stem = v; else delete n.stem; })} /></div>
+            {notes.some((n) => n.art?.length) && <div><label>Articulation placed</label><Pick value={same(notes.map((n) => n.artSide))} opts={[[undefined, 'auto'], ['above', '▲'], ['below', '▼']]} onChange={(v) => upd((n) => { if (v) n.artSide = v; else delete n.artSide; })} /></div>}
           </div>
         </Group>
       </>}
@@ -213,11 +215,11 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
       {m.type === 'text' && <Row label="Text"><Txt value={m.text} onChange={(v) => upd({ text: v } as never)} /></Row>}
       {m.type === 'tempo' && <>
         <Row label="Beats per min"><Num value={m.bpm} min={10} max={600} onChange={(n) => upd({ bpm: n } as never)} /></Row>
-        <Row label="Beat unit"><Seg value={m.unit} opts={[[2, 'half'], [4, 'quarter'], [8, 'eighth']]} onChange={(u) => upd({ unit: u } as never)} /></Row>
-        <Row label="Dotted"><Seg value={m.dots} opts={[[0, 'no'], [1, 'yes']]} onChange={(d) => upd({ dots: d } as never)} /></Row>
+        <Row label="Beat unit"><Pick value={m.unit} opts={[[2, 'half'], [4, 'quarter'], [8, 'eighth']]} onChange={(u) => upd({ unit: u } as never)} /></Row>
+        <Row label="Dotted"><Pick value={m.dots} opts={[[0, 'no'], [1, 'yes']]} onChange={(d) => upd({ dots: d } as never)} /></Row>
       </>}
-      {m.type === 'hairpin' && <Row label="Shape"><Seg value={m.kind} opts={[['cresc', 'cresc.'], ['dim', 'dim.']]} onChange={(k) => upd({ kind: k } as never)} /></Row>}
-      {(m.type === 'dynamic' || m.type === 'hairpin' || m.type === 'text') && <Row label="Placed"><Seg value={place} opts={[[undefined, 'auto'], ['above', 'above'], ['below', 'below']]} onChange={(p) => upd({ placement: p } as never)} /></Row>}
+      {m.type === 'hairpin' && <Row label="Shape"><Pick value={m.kind} opts={[['cresc', 'cresc.'], ['dim', 'dim.']]} onChange={(k) => upd({ kind: k } as never)} /></Row>}
+      {(m.type === 'dynamic' || m.type === 'hairpin' || m.type === 'text') && <Row label="Placed"><Pick value={place} opts={[[undefined, 'auto'], ['above', 'above'], ['below', 'below']]} onChange={(p) => upd({ placement: p } as never)} /></Row>}
       {m.type === 'clef' && <Row label="Clef"><select value={`${m.clef.sign}${m.clef.line}`} onChange={(e) => { const v = (e.target as HTMLSelectElement).value; upd({ clef: { sign: v[0] as 'G', line: Number(v[1]) } } as never); }}><option value="G2">Treble</option><option value="F4">Bass</option><option value="C3">Alto</option><option value="C4">Tenor</option></select></Row>}
       <Row label="Position">{`measure ${r.mi + 1}, ${(m.tick / 3360).toFixed(2).replace(/\.?0+$/, '')} quarters`}</Row>
       <div class="btns"><button class="danger" onClick={() => deleteSelection()}>Delete</button></div>
@@ -230,7 +232,7 @@ function SlurSection({ r }: { r: Extract<Ref, { t: 'slur' }> }) {
   const sl = e?.slurStart?.find((s) => s.id === r.id);
   return (
     <section>
-      <Row label="Side"><Seg value={sl?.side} opts={[[undefined, 'auto'], ['above', 'above'], ['below', 'below']]} onChange={(v) => run((x) => C.setSlurSide(x, r, r.id, v))} /></Row>
+      <Row label="Side"><Pick value={sl?.side} opts={[[undefined, 'auto'], ['above', 'above'], ['below', 'below']]} onChange={(v) => run((x) => C.setSlurSide(x, r, r.id, v))} /></Row>
       <div class="btns"><button class="danger" onClick={() => deleteSelection()}>Delete slur</button></div>
     </section>
   );
@@ -243,10 +245,10 @@ function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
   const upd = (p: Parameters<typeof C.updateTuplet>[2]) => run((x) => C.updateTuplet(x, r, p));
   return (
     <section>
-      <Row label="Bracket"><Seg value={g.bracket} opts={[[undefined, 'auto'], [true, 'yes'], [false, 'no']]} onChange={(v) => upd({ bracket: v })} /></Row>
-      <Row label="Number"><Seg value={g.number ?? 'actual'} opts={[['actual', 'shown'], ['none', 'hidden']]} onChange={(v) => upd({ number: v === 'actual' ? undefined : 'none' })} /></Row>
+      <Row label="Bracket"><Pick value={g.bracket} opts={[[undefined, 'auto'], [true, 'yes'], [false, 'no']]} onChange={(v) => upd({ bracket: v })} /></Row>
+      <Row label="Number"><Pick value={g.number ?? 'actual'} opts={[['actual', 'shown'], ['none', 'hidden']]} onChange={(v) => upd({ number: v === 'actual' ? undefined : 'none' })} /></Row>
       <Row label="Label"><Num value={g.label ?? g.actual} min={1} max={99} onChange={(n) => { setLab(String(n)); upd({ label: n === g.actual ? undefined : n }); }} /></Row>
-      <Row label="Placed"><Seg value={g.placement} opts={[[undefined, 'auto'], ['above', 'above'], ['below', 'below']]} onChange={(v) => upd({ placement: v })} /></Row>
+      <Row label="Placed"><Pick value={g.placement} opts={[[undefined, 'auto'], ['above', 'above'], ['below', 'below']]} onChange={(v) => upd({ placement: v })} /></Row>
       <div class="btns"><button class="danger" onClick={() => deleteSelection()}>Remove tuplet</button></div>
       <span hidden>{lab}</span>
     </section>

@@ -228,7 +228,7 @@ test('a line drawn from note to note hangs on those events (a stop goes before t
 test('a hairpin that stops before a note belongs to the note before it, also across a measure line (gewitter m33-34)', async () => {
   const { readFileSync } = await import('node:fs');
   const s = parseText(readFileSync(new URL('../examples/gewitter.txt', import.meta.url), 'utf8'));
-  const mk = marksOf(s.measures[32].staves.lh).find((m) => m.type === 'hairpin')!;
+  const mk = marksOf(s.measures[32].staves.s2).find((m) => m.type === 'hairpin')!;
   const a = indexScore(s).mark.get(mk)!;
   const ns = dependentNotes(s, { t: 'mark', ...a });
   assert.deepEqual(ns.map((x) => [x.mi, x.idx]), [[32, 2], [33, 3]]); // eb2 in m33, the last 16th before the quintuplet in m34
