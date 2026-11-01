@@ -109,10 +109,7 @@ export function onPointerDown(e: PointerEvent): void {
   if (!w || !h) return;
   const t = tool.value;
   const alt = e.altKey;
-  const target = hitTest(h, w.page, w.x, w.y);
-  if (target && target.ref.t === 'ev' && target.ref.pi !== undefined && (eventOf(score.peek(), target.ref) as { pitches?: unknown[] } | undefined)?.pitches?.length === 1) {
-    target.ref = { ...target.ref, pi: undefined }; // a single note is selected as a whole, a chord tone on its own
-  }
+  const target = asSelected(hitTest(h, w.page, w.x, w.y));
   if (t === 'note' || t === 'rest') { enter(w, alt); return; }
   if (t === 'slur') {
     if (target?.ref.t === 'ev') { drag = { k: 'span', tool: 'slur', start: w, cx: e.clientX, cy: e.clientY, from: { ...target.ref, pi: undefined } as never }; select([target.ref]); }
@@ -154,12 +151,20 @@ export function onPointerDown(e: PointerEvent): void {
   if (g) select([{ t: 'measure', mi: g.mi }], false); else if (!additive) select([]);
 }
 
+/** What a click on the target selects: a single note as a whole (stem and all), a chord tone on its own. Hover shows the same. */
+function asSelected(t: Target | undefined): Target | undefined {
+  if (t && t.ref.t === 'ev' && t.ref.pi !== undefined && (eventOf(score.peek(), t.ref) as { pitches?: unknown[] } | undefined)?.pitches?.length === 1) {
+    return { ...t, ref: { ...t.ref, pi: undefined } };
+  }
+  return t;
+}
+
 export function onPointerMove(e: PointerEvent): void {
   const w = locate(e.clientX, e.clientY);
   const h = hit.peek();
   if (!w || !h) { if (drag.k === 'none') { ghost.value = null; hover.value = null; } return; }
   const t = tool.value;
-  const ht = drag.k === 'none' && t === 'select' ? hitTest(h, w.page, w.x, w.y) : undefined;
+  const ht = drag.k === 'none' && t === 'select' ? asSelected(hitTest(h, w.page, w.x, w.y)) : undefined;
   if (ht !== hover.peek() && (!ht || !hover.peek() || ht.page !== hover.peek()!.page || refKey(ht.ref) !== refKey(hover.peek()!.ref) || ht.k !== hover.peek()!.k)) hover.value = ht ?? null;
   if (drag.k === 'none') {
     if (t === 'note' || t === 'rest') ghost.value = ghostFor(w, e.altKey);
