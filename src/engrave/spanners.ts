@@ -53,7 +53,7 @@ export function drawSpanners(systems: SysCtx[]): void {
           if (!h.tie) return;
           let next: EvL | undefined, nh: number = -1;
           for (let k = i + 1; k < evs.length && k <= i + 2; k++) {
-            if (evs[k].ev.kind !== 'note') { if (evs[k].ev.kind === 'rest' && !(evs[k].ev as { hidden?: boolean }).hidden) break; continue; }
+            if (evs[k].ev.kind !== 'note') { if (evs[k].ev.kind === 'rest' && (evs[k].ev as { style?: string }).style !== 'hidden') break; continue; }
             nh = evs[k].heads.findIndex((x) => pitchStep(x.pitch) === pitchStep(h.pitch) && x.pitch.alter === h.pitch.alter);
             if (nh >= 0) { next = evs[k]; }
             break;
@@ -109,10 +109,10 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
   const dots = e.te.ev.dur.dots;
   const y = posToY(h.pos) + (above ? -0.38 : 0.38);
   const ledgerExt = D.legerLineExtension as number;
-  // a ledger line in the space next to the tie's end would be crossed: start/stop beyond its extension
+  // the tie runs in the space next to a ledger line (the first one past the head, whether the head sits on a line
+  // or in a space): start/stop beyond that line's extension, so that the arc between the ends can bulge freely
   const ledgerNear = (ev: EvL, hh: { pos: number }, ab = above): boolean => {
-    const q = ab ? hh.pos + 1 : hh.pos - 1;
-    if (q % 2 !== 0) return false;
+    const q = ab ? (hh.pos % 2 === 0 ? hh.pos + 2 : hh.pos + 1) : (hh.pos % 2 === 0 ? hh.pos - 2 : hh.pos - 1);
     const own = ev.heads.filter((x) => !x.shared);
     return (q <= -2 && own.some((x) => x.pos <= q)) || (q >= 10 && own.some((x) => x.pos >= q));
   };
@@ -125,19 +125,10 @@ function drawTie(systems: SysCtx[], sysOf: number[], e: EvL, hi: number, next: E
   if (flagged) x0 = Math.max(x0, g.stemX + sm.bbox(`flag${e.te.ev.dur.base >= 32 ? '32nd' : e.te.ev.dur.base >= 16 ? '16th' : '8th'}${above ? 'Up' : 'Down'}`).x1 + 0.1);
   const si = systems[e.mi >= 0 ? sysOfIndex(systems, e.mi) : 0];
   const thick = D.tieMidpointThickness as number;
-  // between ledger lines of the chord there is little room for the arc
-  const ledgerCap = (ev: EvL, hh: { pos: number }, above: boolean): number => {
-    const own = ev.heads.filter((x) => !x.shared);
-    const lo = Math.min(...own.map((x) => x.pos)), hi = Math.max(...own.map((x) => x.pos));
-    const q0 = above ? (hh.pos % 2 === 0 ? hh.pos + 2 : hh.pos + 1) : (hh.pos % 2 === 0 ? hh.pos - 2 : hh.pos - 1);
-    const exists = (q0 <= -2 && lo <= q0) || (q0 >= 10 && hi >= q0);
-    return exists ? Math.abs(q0 - hh.pos) / 2 - 0.38 - 0.25 : Infinity;
-  };
-  const cap = Math.max(0.25, Math.min(...sibs.flatMap((i) => [ledgerCap(e, e.heads[i], tieAbove(e, i)), next && nextOf(i) >= 0 ? ledgerCap(next, next.heads[nextOf(i)], tieAbove(e, i)) : Infinity])));
   const place = (ctx: SysCtx, xa: number, xb: number, y: number): { hgt: number; draw: (hh: number) => void } | undefined => {
     const len = xb - xa;
     if (len < 0.4) return undefined;
-    let hgt = Math.min(1.1, 0.4 + len * 0.045, cap);
+    let hgt = Math.min(1.1, 0.4 + len * 0.045);
     // bulge further if something (accidentals of other voices ...) stands in the way
     const sk = ctx.sky[e.staff];
     for (let t = 0.1; t <= 0.9001; t += 0.05) {
@@ -337,11 +328,14 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
           break;
         }
         case 'hairpin': { const sp: Span = { mark: m, mi }; openHair.set(m.id, sp); hairs.push(sp); break; }
-        case 'hairpin-stop': { const sp = openHair.get(m.id); if (sp) { sp.end = { mark: m, mi }; openHair.delete(m.id); } break; }
-        case 'pedal-start': { if (openPedal && !openPedal.end) openPedal.end = { mark: m, mi }; openPedal = { mark: m, mi }; pedals.push(openPedal); break; }
-        case 'pedal-stop': { if (openPedal) { openPedal.end = { mark: m, mi }; openPedal = null; } break; }
-        case 'ottava-start': { openOtt = { mark: m, mi }; otts.push(openOtt); break; }
-        case 'ottava-stop': { if (openOtt) { openOtt.end = { mark: m, mi }; openOtt = null; } break; }
+        case 'pedal': { if (openPedal && !openPedal.end) openPedal.end = { mark: m, mi }; openPedal = { mark: m, mi }; pedals.push(openPedal); break; }
+        case 'ottava': { openOtt = { mark: m, mi }; otts.push(openOtt); break; }
+        case 'stop': {
+          if (m.of === 'hairpin') { const sp = openHair.get(m.id); if (sp) { sp.end = { mark: m, mi }; openHair.delete(m.id); } }
+          else if (m.of === 'pedal') { if (openPedal) { openPedal.end = { mark: m, mi }; openPedal = null; } }
+          else if (openOtt) { openOtt.end = { mark: m, mi }; openOtt = null; }
+          break;
+        }
         case 'tempo': {
           const unit = m.unit === 4 ? 'metNoteQuarterUp' : m.unit === 2 ? 'metNoteHalfUp' : 'metNoteQuarterUp';
           const nb = sm.bbox(unit);
@@ -461,7 +455,7 @@ function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
   }
   // octave shifts
   for (const sp of otts) {
-    const m = sp.mark as Mark & { type: 'ottava-start' };
+    const m = sp.mark as Mark & { type: 'ottava' };
     const above = m.dir === 'up';
     const gname = above ? 'ottavaAlta' : 'ottavaBassa';
     const gb = sm.bbox(gname);
