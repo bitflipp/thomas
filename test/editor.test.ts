@@ -57,7 +57,7 @@ test('slurs get free numbers and tidy removes dangling ones', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4);
   s = ok(C.addSlur(s, { ...loc, idx: 0 }, { ...loc, idx: 1 }));
-  assert.match(show(s), /\( c4:4 c4\)/);
+  assert.match(show(s), /\(c4:4 c4\)/);
   s = ok(C.deleteEvents(s, [{ ...loc, idx: 1 }]));
   assert.doesNotMatch(show(s), /\(/);
 });

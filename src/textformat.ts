@@ -81,7 +81,9 @@ class VoiceWriter {
     const d = e.dur.base !== this.lastBase || e.dur.dots ? ':' + durStr(e.dur) : '';
     this.lastBase = e.dur.base;
     const slurEnd = (e.slurStop ?? []).map((i) => ')' + idStr(i)).join('');
-    return [...pre, core + d + tie + arts + slurEnd].join(' ');
+    // a slur start sticks to what follows it (what follows never starts with a digit, so `(2` stays unambiguous): `(f#2:16 ... d#2)`
+    const toks = [...pre, core + d + tie + arts + slurEnd];
+    return toks.reduce((acc, t, i) => (i > 0 && /^\(\d*[\^_]?$/.test(toks[i - 1]) ? acc + t : acc ? acc + ' ' + t : t), '');
   }
 
   items(items: Item[]): void {

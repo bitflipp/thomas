@@ -19,7 +19,7 @@ brace rh lh                                   # or: bracket a b c
 
 m1 time=2/4 key=0                             # key = number of sharps (+) / flats (-)
   rh.1: 12:4(bracket,above,label=6){trem2{\tempo 4=115 \p g#3:4. a3:4.}}
-  lh.1: \ped ( d3:2~
+  lh.1: \ped (d3:2~
 m2
   rh.1: ...
 m5 break=system barline=final                 # break=system|page (before this measure)
@@ -44,7 +44,7 @@ Voice numbers are local to a staff (`rh.1`, `rh.2`, `lh.1`, ...). Every voice of
 | Displaced rest | `r@<pitch>` | `r@b4:4` |
 | Chord | `<pitches>` then duration | `<c4 e4 g4>:2` |
 | Tie | `~` after the duration of a single note; inside a chord after each tied pitch | `c4:2~ c4:4` `<c4~ e4>:2` |
-| Slur | `(` before the first note, `)` after the last. Optional number (overlap) and side `^` `_` | `( c5:8 d5 e5 )` `(2^ ... )2` |
+| Slur | `(` before the first note, `)` after the last. Optional number (overlap) and side `^` `_` | `(c5:8 d5 e5)` `(2^c5 ... d5)2` |
 | Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |
 | Accidental override | `!` force, `?` cautionary (after the pitch) | `c#4!` `e4?` |
 | Arpeggio | `\arp` before a chord | `\arp <c3 g3 e4>:8` |
