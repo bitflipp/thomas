@@ -1,5 +1,5 @@
 import { effect } from '@preact/signals';
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { pageToSvg } from '../src/render.ts';
 import { loadSmufl } from '../src/smufl.ts';
 import { refKey, type Ref } from '../src/editor/addr.ts';
@@ -9,7 +9,7 @@ import type { Page, Prim } from '../src/engrave/scene.ts';
 import { findCollisions } from '../src/engrave/collide.ts';
 import { engraved, hit, selection, zoom, fit, tool, score, showCollisions, voiceColors, VOICE_COLORS } from './state.ts';
 import { playhead, playing } from './player.ts';
-import { ghost, hover, pageEls, onPointerDown, onPointerMove, onPointerUp, onDoubleClick, onContextMenu, cancelDrag, type Ghost } from './interact.ts';
+import { zoomBy, takeZoomAnchor, ghost, hover, pageEls, onPointerDown, onPointerMove, onPointerUp, onDoubleClick, onContextMenu, cancelDrag, type Ghost } from './interact.ts';
 
 const MM_PX = 96 / 25.4;
 const SEL = '#2f6fed';
@@ -172,6 +172,16 @@ export function ScorePane() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  useLayoutEffect(() => {
+    const a = takeZoomAnchor(), el = box.current, pg = pageEls[0];
+    if (!a || !el || !pg) return;
+    // content coordinate under the cursor scales about the pages' origin (the pane's padding stays fixed)
+    const b = el.getBoundingClientRect(), p = pg.getBoundingClientRect();
+    const cx = a.x - b.left, cy = a.y - b.top;
+    const padX = p.left - b.left + el.scrollLeft, padY = p.top - b.top + el.scrollTop;
+    el.scrollLeft = (el.scrollLeft + cx - padX) * a.r + padX - cx;
+    el.scrollTop = (el.scrollTop + cy - padY) * a.r + padY - cy;
+  }, [z]);
   useEffect(() => {
     const move = (e: PointerEvent) => onPointerMove(e), up = (e: PointerEvent) => onPointerUp(e);
     addEventListener('pointermove', move); addEventListener('pointerup', up);
@@ -180,7 +190,7 @@ export function ScorePane() {
   }, []);
   useEffect(() => {
     const el = box.current!;
-    const w = (e: WheelEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); fit.value = false; zoom.value = Math.max(0.2, Math.min(4, zoom.peek() * (e.deltaY < 0 ? 1.1 : 1 / 1.1))); } };
+    const w = (e: WheelEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1, { x: e.clientX, y: e.clientY }); } };
     el.addEventListener('wheel', w, { passive: false });
     return () => el.removeEventListener('wheel', w);
   }, []);

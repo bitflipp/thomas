@@ -8,7 +8,7 @@ import {
   score, zoom, fit, showText, showInspector, showCollisions, engraved, timing, engraveError, histLen, undo, redo, fileName, dirty,
   loadText, load, toast, NEW_SCORE_TEXT, say, tool, voiceColors,
 } from './state.ts';
-import { menu } from './interact.ts';
+import { menu, zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
 import { Palette } from './Palette.tsx';
 import { Inspector } from './Inspector.tsx';
@@ -93,9 +93,9 @@ export function App() {
         <button disabled={!h.undo} title="Undo (Ctrl Z)" onClick={undo}>↶</button>
         <button disabled={!h.redo} title="Redo (Ctrl Shift Z)" onClick={redo}>↷</button>
         <span class="sep" />
-        <button title="Zoom out" onClick={() => { fit.value = false; zoom.value = Math.max(0.2, zoom.value / 1.2); }}>−</button>
+        <button title="Zoom out" onClick={() => zoomBy(1 / 1.2)}>−</button>
         <span class="status zoomv">{fit.value ? 'fit' : `${Math.round(zoom.value * 100)}%`}</span>
-        <button title="Zoom in" onClick={() => { fit.value = false; zoom.value = Math.min(4, zoom.value * 1.2); }}>+</button>
+        <button title="Zoom in" onClick={() => zoomBy(1.2)}>+</button>
         <button aria-pressed={fit.value} title="Fit the pages to the window" onClick={() => { fit.value = !fit.value; zoom.value = 1; }}>Fit</button>
         <div class="viewmenu" onPointerDown={(e) => e.stopPropagation()}>
           <button aria-pressed={viewOpen.value} onClick={() => (viewOpen.value = !viewOpen.value)}>View ▾</button>

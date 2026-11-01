@@ -9,7 +9,7 @@ import { hitTest, marquee, measureAt, measureAtStaff, posAtY, snapTick, type Box
 import type { MeasureGeom } from '../src/engrave/system.ts';
 import { seek, measureTick } from './player.ts';
 import {
-  score, hit, engraved, selection, tool, dur, dots, acc, voice, dynText, clefArg, tupletArg, tempoArg, textArg, run, say, commit,
+  score, hit, engraved, selection, tool, dur, dots, acc, voice, dynText, clefArg, tupletArg, tempoArg, textArg, run, say, commit, zoom, fit,
 } from './state.ts';
 
 // ---------------------------------------------------------------- what is drawn on top of the pages
@@ -31,6 +31,20 @@ export const menu = signal<Menu | null>(null);
 // ---------------------------------------------------------------- page geometry
 
 export const pageEls: (HTMLElement | null)[] = [];
+
+/** Zoom by a factor. Leaving "fit" starts from the zoom the pages are shown at, not from 100%. */
+export function zoomBy(f: number, at?: { x: number; y: number }): void {
+  const res = engraved.peek(), el = pageEls[0];
+  if (fit.peek() && res && el) zoom.value = el.clientWidth / (res.pages[0].width * res.staffSpace * (96 / 25.4));
+  const z0 = zoom.peek();
+  fit.value = false;
+  zoom.value = Math.max(0.2, Math.min(4, z0 * f));
+  // the pane keeps the point under the cursor in place once it has re-rendered at the new size
+  zoomAnchor = at && zoom.peek() !== z0 ? { ...at, r: zoom.peek() / z0 } : null;
+}
+/** Set by `zoomBy`, consumed by the score pane after its next render. */
+export let zoomAnchor: { x: number; y: number; r: number } | null = null;
+export const takeZoomAnchor = () => { const a = zoomAnchor; zoomAnchor = null; return a; };
 
 export interface Where { page: number; x: number; y: number }
 /** Client coordinates -> page and staff-space coordinates (the nearest page when outside all). */

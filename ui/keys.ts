@@ -4,7 +4,7 @@ import { eventOf, voiceOf } from '../src/editor/addr.ts';
 import { flattenVoice, type Event } from '../src/model.ts';
 import { score, selection, tool, dur, dots, zoom, fit, showText, showInspector, undo, redo, run, say, voice, type Tool } from './state.ts';
 import { chooseDuration, chooseDots, nudge, flipStem, slurSelection, tieSelection, stepSelection } from './actions.ts';
-import { deleteSelection, evRefs, cancelDrag, menu } from './interact.ts';
+import { deleteSelection, evRefs, cancelDrag, menu, zoomBy } from './interact.ts';
 import { toggle, rewind } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 
@@ -47,8 +47,8 @@ export function installKeys(): () => void {
       if (k === 'a') { e.preventDefault(); return; }
     }
     if (mod && e.key.toLowerCase() === 'e') { e.preventDefault(); showText.value = !showText.value; return; }
-    if (mod && (e.key === '+' || e.key === '=')) { e.preventDefault(); fit.value = false; zoom.value = Math.min(4, zoom.value * 1.2); return; }
-    if (mod && e.key === '-') { e.preventDefault(); fit.value = false; zoom.value = Math.max(0.2, zoom.value / 1.2); return; }
+    if (mod && (e.key === '+' || e.key === '=')) { e.preventDefault(); zoomBy(1.2); return; }
+    if (mod && e.key === '-') { e.preventDefault(); zoomBy(1 / 1.2); return; }
     if (mod && e.key.toLowerCase() === 'i') { e.preventDefault(); showInspector.value = !showInspector.value; return; }
     if (typing(e) || mod || e.altKey && e.key.length > 1) return;
     const key = e.key;
