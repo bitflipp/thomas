@@ -933,12 +933,19 @@ function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
   );
 }
 
+/** Whether the selection mixes kinds of elements (notes, marks of different types, slurs, ...). */
+function isMixed(sc: Score, sel: Ref[]): boolean {
+  const kinds = new Set(sel.map((r) => (r.t === 'mark' ? `mark:${markOf(sc, r)?.type}` : r.t)));
+  return kinds.size > 1;
+}
+
 /** Tab label for what is selected (null: nothing but measures, so there is no selection tab). */
 function selectionLabel(sc: Score, sel: Ref[]): string | null {
   const first = sel[0];
   const evs = sel.filter((r) => r.t === 'ev');
   if (evs.length) return eventTitle(sc, evs);
   if (!first || first.t === 'measure') return null;
+  if (isMixed(sc, sel)) return 'Mixed selection';
   if (first.t === 'mark') {
     const m = markOf(sc, first);
     return m ? markLabel(m) : 'Mark';
@@ -984,7 +991,12 @@ export function Inspector() {
         ))}
       </div>
       <div class="insp-body">
-        {active === 'sel' && (
+        {active === 'sel' && isMixed(sc, sel) && (
+          <section>
+            <p class="ctx">Selected elements are of different types; select one type to edit its properties.</p>
+          </section>
+        )}
+        {active === 'sel' && !isMixed(sc, sel) && (
           <>
             {sel.some((r) => r.t === 'ev') && <EventSection />}
             {first?.t === 'mark' && <MarkSection r={first} />}
