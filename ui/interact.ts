@@ -13,6 +13,7 @@ import { pitchAtPos } from '../src/editor/context.ts';
 import type { Box, HitIndex, Target } from '../src/editor/hit.ts';
 import { eventAtX, hitTest, marquee, measureAt, measureAtStaff, posAtY, snapTick } from '../src/editor/hit.ts';
 import { eventAtTick } from '../src/editor/voice.ts';
+import type { MeasureGeom } from '../src/engrave/system.ts';
 import type { Event, MarkBody, Score } from '../src/model.ts';
 import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, timeAt } from '../src/model.ts';
 import { must } from '../src/util.ts';
@@ -373,51 +374,123 @@ export function onPointerMove(e: PointerEvent): void {
     else ghost.value = null;
     return;
   }
-  const d = drag;
-  if (d.k === 'head') {
-    if (!d.moved && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 4) return;
+  continueDrag(drag, e, w, h);
+}
+
+const DRAG_THRESHOLD_PX = 4;
+const MARQUEE_THRESHOLD = 0.4;
+const pastThreshold = (d: { cx: number; cy: number }, e: PointerEvent) =>
+  Math.hypot(e.clientX - d.cx, e.clientY - d.cy) >= DRAG_THRESHOLD_PX;
+
+/** The rectangle spanned by two points. */
+function rectBetween(a: Where, b: Where): Box {
+  return { x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) };
+}
+
+/** The staff-measure a dragged head belongs to: the one under the pointer if in the head's measure, else the staff the head is drawn on. */
+function measureForHeadDrag(
+  h: HitIndex,
+  w: Where,
+  ref: Extract<Ref, { t: 'ev' }>,
+  staff: string,
+): MeasureGeom | undefined {
+  const g = measureAt(h.layout, w.page, w.x, w.y);
+  if (g && g.mi === ref.mi) return g;
+  const idx = score.peek().staves.findIndex((s) => s.id === staff);
+  return h.layout.measures.find((m) => m.mi === ref.mi && m.staff === idx);
+}
+
+const clampPos = (pos: number) => Math.max(-9, Math.min(17, pos));
+
+/** Shows where a dragged head would land: its staff position and the pitch name. */
+function dragHeadGhost(d: Extract<Drag, { k: 'head' }>, e: PointerEvent, w: Where, h: HitIndex): void {
+  if (!(d.moved || pastThreshold(d, e))) return;
+  d.moved = true;
+  const sc = score.peek();
+  const g = measureForHeadDrag(h, w, d.ref, d.ref.staff);
+  if (!g) return;
+  const pos = clampPos(posAtY(g.y, w.y));
+  const p = pitchAtPos(sc, staffId(sc, g.staff), d.ref.mi, d.startTick, pos, acc.value);
+  ghost.value = {
+    kind: 'head',
+    page: g.page,
+    x: d.target.bbox.x0,
+    y: g.y + 4 - pos / 2,
+    pos,
+    top: g.y,
+    w: d.target.bbox.x1 - d.target.bbox.x0,
+    label: `${p.step.toUpperCase()}${'#'.repeat(Math.max(0, p.alter))}${'b'.repeat(Math.max(0, -p.alter))}${p.octave}`,
+  };
+}
+
+function continueDrag(d: Drag, e: PointerEvent, w: Where, h: HitIndex): void {
+  if (d.k === 'head') dragHeadGhost(d, e, w, h);
+  else if (d.k === 'marquee') {
+    if (!d.moved && Math.hypot(w.x - d.start.x, w.y - d.start.y) < MARQUEE_THRESHOLD) return;
     d.moved = true;
-    const sc = score.peek();
-    const g = measureAt(h.layout, w.page, w.x, w.y);
-    const home = h.layout.measures.find(
-      (m) => m.mi === d.ref.mi && m.staff === sc.staves.findIndex((s) => s.id === d.ref.staff),
-    );
-    const useG = g && g.mi === d.ref.mi ? g : home;
-    if (!useG) return;
-    const pos = Math.max(-9, Math.min(17, posAtY(useG.y, w.y)));
-    const p = pitchAtPos(sc, staffId(sc, useG.staff), d.ref.mi, d.startTick, pos, acc.value);
-    ghost.value = {
-      kind: 'head',
-      page: useG.page,
-      x: d.target.bbox.x0,
-      y: useG.y + 4 - pos / 2,
-      pos,
-      top: useG.y,
-      w: d.target.bbox.x1 - d.target.bbox.x0,
-      label: `${p.step.toUpperCase()}${'#'.repeat(Math.max(0, p.alter))}${'b'.repeat(Math.max(0, -p.alter))}${p.octave}`,
-    };
-  } else if (d.k === 'marquee') {
-    if (!d.moved && Math.hypot(w.x - d.start.x, w.y - d.start.y) < 0.4) return;
-    d.moved = true;
-    if (w.page === d.start.page)
-      ghost.value = {
-        kind: 'rect',
-        page: w.page,
-        box: {
-          x0: Math.min(w.x, d.start.x),
-          y0: Math.min(w.y, d.start.y),
-          x1: Math.max(w.x, d.start.x),
-          y1: Math.max(w.y, d.start.y),
-        },
-      };
+    if (w.page === d.start.page) ghost.value = { kind: 'rect', page: w.page, box: rectBetween(w, d.start) };
   } else if (d.k === 'span') {
     const tg = hitTest(h, w.page, w.x, w.y);
     ghost.value = { kind: 'span', from: d.start, to: w, bad: !(tg?.ref.t === 'ev' && tg.ref.staff === d.from.staff) };
   } else if (d.k === 'mark') {
-    if (!d.moved && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) < 4) return;
+    if (!(d.moved || pastThreshold(d, e))) return;
     d.moved = true;
     setHover(eventHover(w, d.ref.staff, d.ref.voice));
   }
+}
+
+function finishMarquee(d: Extract<Drag, { k: 'marquee' }>, w: Where, h: HitIndex): void {
+  if (!d.moved || w.page !== d.start.page) return;
+  const refs = marquee(h, w.page, rectBetween(w, d.start));
+  selection.value = d.additive ? [...new Map([...d.base, ...refs].map((r) => [refKey(r), r])).values()] : refs;
+}
+
+/** Drops a dragged head: onto the other staff it becomes a cross-staff note (pitch kept), else it takes the pitch of the position. */
+function finishHeadDrag(d: Extract<Drag, { k: 'head' }>, w: Where, h: HitIndex): void {
+  if (!d.moved) return;
+  const sc = score.peek();
+  const ev = eventOf(sc, d.ref);
+  if (ev?.kind !== 'note') return;
+  const currentStaff = ev.staff ?? d.ref.staff;
+  const g = measureForHeadDrag(h, w, d.ref, currentStaff);
+  if (!g) return;
+  const targetStaff = staffId(sc, g.staff);
+  if (targetStaff !== currentStaff) {
+    run((s) => C.setStaffOf(s, [d.ref], targetStaff === d.ref.staff ? undefined : targetStaff));
+    return;
+  }
+  const pitch = pitchAtPos(sc, targetStaff, d.ref.mi, d.startTick, clampPos(posAtY(g.y, w.y)), acc.value);
+  const pi = d.ref.pi ?? 0;
+  run((s) => C.setPitch(s, d.ref, pi, pitch));
+}
+
+function finishSpan(d: Extract<Drag, { k: 'span' }>, w: Where, h: HitIndex): void {
+  const tg = hitTest(h, w.page, w.x, w.y);
+  if (tg?.ref.t !== 'ev') return;
+  const to = tg.ref;
+  const from = d.from;
+  const kind = d.tool;
+  if (kind === 'slur') run((s) => C.addSlur(s, from, to));
+  else run((s) => C.addSpanOver(s, kind, from, to));
+}
+
+/** Moves a dragged mark to the event under the pointer. */
+function finishMarkMove(d: Extract<Drag, { k: 'mark' }>, w: Where, h: HitIndex): void {
+  if (!d.moved) return;
+  const sc = score.peek();
+  const g = measureAtStaff(
+    h.layout,
+    w.page,
+    w.x,
+    w.y,
+    sc.staves.findIndex((s) => s.id === d.ref.staff),
+  );
+  if (!g) return;
+  const at = eventAtX(sc, g, d.ref.staff, lenOf(sc, g.mi), w.x, d.ref.voice);
+  if (!at || (at.mi === d.ref.mi && at.voice === d.ref.voice && at.idx === d.ref.idx)) return;
+  const ref = d.ref;
+  run((s) => C.moveMark(s, ref, at));
+  selection.value = [];
 }
 
 export function onPointerUp(e: PointerEvent): void {
@@ -428,68 +501,10 @@ export function onPointerUp(e: PointerEvent): void {
   if (d.k === 'none' || !w || !h) return;
   ghost.value = null;
   if (d.k === 'mark') hover.value = null;
-  const sc = score.peek();
-  if (d.k === 'marquee') {
-    if (!d.moved || w.page !== d.start.page) return;
-    const box = {
-      x0: Math.min(w.x, d.start.x),
-      y0: Math.min(w.y, d.start.y),
-      x1: Math.max(w.x, d.start.x),
-      y1: Math.max(w.y, d.start.y),
-    };
-    const refs = marquee(h, w.page, box);
-    selection.value = d.additive ? [...new Map([...d.base, ...refs].map((r) => [refKey(r), r])).values()] : refs;
-  } else if (d.k === 'head') {
-    if (!d.moved) {
-      return;
-    }
-    const g = measureAt(h.layout, w.page, w.x, w.y);
-    const homeIdx = sc.staves.findIndex((s) => s.id === d.ref.staff);
-    const ev = eventOf(sc, d.ref);
-    if (ev?.kind !== 'note') return;
-    const curStaffId = ev.staff ?? d.ref.staff;
-    const targetG =
-      g && g.mi === d.ref.mi
-        ? g
-        : h.layout.measures.find(
-            (m) => m.mi === d.ref.mi && m.staff === sc.staves.findIndex((s) => s.id === curStaffId),
-          );
-    if (!targetG) return;
-    const tid = staffId(sc, targetG.staff);
-    const pos = Math.max(-9, Math.min(17, posAtY(targetG.y, w.y)));
-    if (tid !== curStaffId) {
-      // moved to the other staff: cross-staff, pitch kept
-      run((s) => C.setStaffOf(s, [d.ref], tid === d.ref.staff ? undefined : tid));
-      return;
-    }
-    void homeIdx;
-    const p = pitchAtPos(sc, tid, d.ref.mi, d.startTick, pos, acc.value);
-    const pi = d.ref.pi ?? 0;
-    run((s) => C.setPitch(s, d.ref, pi, p));
-  } else if (d.k === 'span') {
-    const tg = hitTest(h, w.page, w.x, w.y);
-    if (tg?.ref.t !== 'ev') return;
-    const to = tg.ref;
-    const from = d.from;
-    const kind = d.tool;
-    if (kind === 'slur') run((s) => C.addSlur(s, from, to));
-    else run((s) => C.addSpanOver(s, kind, from, to));
-  } else if (d.k === 'mark') {
-    if (!d.moved) return;
-    const g = measureAtStaff(
-      h.layout,
-      w.page,
-      w.x,
-      w.y,
-      sc.staves.findIndex((s) => s.id === d.ref.staff),
-    );
-    if (!g) return;
-    const at = eventAtX(sc, g, d.ref.staff, lenOf(sc, g.mi), w.x, d.ref.voice);
-    if (!at || (at.mi === d.ref.mi && at.voice === d.ref.voice && at.idx === d.ref.idx)) return;
-    const ref = d.ref;
-    run((s) => C.moveMark(s, ref, at));
-    selection.value = [];
-  }
+  if (d.k === 'marquee') finishMarquee(d, w, h);
+  else if (d.k === 'head') finishHeadDrag(d, w, h);
+  else if (d.k === 'span') finishSpan(d, w, h);
+  else finishMarkMove(d, w, h);
 }
 
 function enter(w: Where, alt: boolean): void {
