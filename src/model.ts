@@ -342,42 +342,51 @@ export function keyAt(score: Score, mi: number): number {
   return 0;
 }
 
+/** Problems with the groups (beams, tremolos) among `items`, recursively. */
+function groupProblems(items: Item[], where: string): string[] {
+  const errs: string[] = [];
+  for (const it of items) {
+    if (isEvent(it)) continue;
+    const flat = flattenVoice({ id: 0, items: it.items });
+    const notes = flat.filter((t) => t.ev.kind === 'note').length;
+    if (isBeam(it) && notes < 2)
+      errs.push(`${where}: beam group needs at least two notes (use \\nobeam to keep a note unbeamed)`);
+    if (isTremolo(it) && (notes !== 2 || flat.length !== 2))
+      errs.push(`${where}: tremolo must contain exactly two notes`);
+    errs.push(...groupProblems(it.items, where));
+  }
+  return errs;
+}
+
+/** Problems with one voice of staff `sid` in a measure of `len` ticks. */
+function voiceProblems(v: Voice, sid: string, at: string, len: number, staffIds: Set<string>): string[] {
+  const errs: string[] = [];
+  const here = `${at}.${v.id}`;
+  for (const te of flattenVoice(v))
+    if (te.ev.staff !== undefined && (!staffIds.has(te.ev.staff) || te.ev.staff === sid))
+      errs.push(`${here}: bad cross-staff target ${te.ev.staff}`);
+  let ticks: number;
+  try {
+    ticks = voiceTicks(v);
+  } catch (e) {
+    return [...errs, `${here}: ${(e as Error).message}`];
+  }
+  if (ticks > len) errs.push(`${here}: voice too long (${ticks} > ${len})`);
+  else if (ticks < len && ticks > 0) errs.push(`${here}: voice too short (${ticks} < ${len})`);
+  errs.push(...groupProblems(v.items, here));
+  return errs;
+}
+
 /** Structural checks; returns a list of problems. */
 export function validate(score: Score): string[] {
   const errs: string[] = [];
-  const ids = new Set(score.staves.map((s) => s.id));
-  const groupErrs = (items: Item[], where: string) => {
-    for (const it of items) {
-      if (isEvent(it)) continue;
-      const flat = flattenVoice({ id: 0, items: it.items });
-      const notes = flat.filter((t) => t.ev.kind === 'note').length;
-      if (isBeam(it) && notes < 2)
-        errs.push(`${where}: beam group needs at least two notes (use \\nobeam to keep a note unbeamed)`);
-      if (isTremolo(it) && (notes !== 2 || flat.length !== 2))
-        errs.push(`${where}: tremolo must contain exactly two notes`);
-      groupErrs(it.items, where);
-    }
-  };
+  const staffIds = new Set(score.staves.map((s) => s.id));
   score.measures.forEach((m, mi) => {
     const len = measureTicks(timeAt(score, mi));
     for (const [sid, sm] of Object.entries(m.staves)) {
       const at = `m${mi + 1} ${sid}`;
-      if (!ids.has(sid)) errs.push(`m${mi + 1}: unknown staff ${sid}`);
-      for (const v of sm.voices) {
-        for (const te of flattenVoice(v))
-          if (te.ev.staff !== undefined && (!ids.has(te.ev.staff) || te.ev.staff === sid))
-            errs.push(`${at}.${v.id}: bad cross-staff target ${te.ev.staff}`);
-        let t: number;
-        try {
-          t = voiceTicks(v);
-        } catch (e) {
-          errs.push(`${at}.${v.id}: ${(e as Error).message}`);
-          continue;
-        }
-        if (t > len) errs.push(`${at}.${v.id}: voice too long (${t} > ${len})`);
-        else if (t < len && t > 0) errs.push(`${at}.${v.id}: voice too short (${t} < ${len})`);
-        groupErrs(v.items, `${at}.${v.id}`);
-      }
+      if (!staffIds.has(sid)) errs.push(`m${mi + 1}: unknown staff ${sid}`);
+      for (const v of sm.voices) errs.push(...voiceProblems(v, sid, at, len, staffIds));
       for (const v of sm.voices)
         for (const b of v.end ?? [])
           if (b.type !== 'stop') errs.push(`${at}.${v.id}: only stops can sit at the end of a measure`);
