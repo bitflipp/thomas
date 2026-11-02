@@ -11,7 +11,7 @@ import { cancelDrag, deleteSelection, evRefs, selectSimilar, zoomBy } from './in
 import { rewind, toggle } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
-import { dots, redo, run, say, score, selection, showInspector, showText, tool, undo, voice } from './state.ts';
+import { dots, redo, run, say, score, selection, showProperties, showText, tool, undo, voice } from './state.ts';
 
 let clip: Event[] = [];
 
@@ -107,7 +107,7 @@ function onViewShortcut(e: KeyboardEvent): boolean {
       zoomBy(1 / ZOOM_STEP);
       break;
     case 'i':
-      toggleSignal(showInspector);
+      toggleSignal(showProperties);
       break;
     default:
       return false;

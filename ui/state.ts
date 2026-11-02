@@ -146,7 +146,7 @@ export const zoom = signal(1);
 export const shownZoom = signal(1); // the zoom the pages are displayed at (differs from `zoom` while fitting)
 export const fit = signal(true); // fit pages to the pane width
 export const showText = signal(false);
-export const showInspector = signal(true);
+export const showProperties = signal(true);
 export const space = signal<number | null>(null);
 export const showCollisions = signal(false);
 /** True while the PDF print dialog is being prepared: every page then generates its SVG, whether near the viewport or not. */

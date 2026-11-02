@@ -291,7 +291,7 @@ button.mini {
   pointer-events: none;
 }
 
-.inspector {
+.properties {
   width: 324px;
   flex: none;
   overflow-y: auto;
@@ -299,7 +299,7 @@ button.mini {
   border-left: 1px solid var(--line);
   padding: 0 12px 16px;
 }
-.inspector h3 {
+.properties h3 {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -307,7 +307,7 @@ button.mini {
   color: var(--muted);
   margin: 14px 0 8px;
 }
-.inspector .row {
+.properties .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -315,12 +315,12 @@ button.mini {
   margin: 5px 0;
   min-height: 26px;
 }
-.inspector .row > span {
+.properties .row > span {
   color: var(--muted);
   flex: none;
   width: 86px;
 }
-.inspector .ctl {
+.properties .ctl {
   display: flex;
   gap: 4px;
   align-items: center;
@@ -328,10 +328,10 @@ button.mini {
   flex: 1;
   justify-content: flex-end;
 }
-.inspector .ctl input[type="text"] {
+.properties .ctl input[type="text"] {
   width: 100%;
 }
-.inspector .btns {
+.properties .btns {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   gap: var(--gap);
@@ -368,11 +368,11 @@ button.mini {
 .insp-body {
   padding-top: 0;
 }
-.inspector .ctx {
+.properties .ctx {
   color: var(--muted);
   font-size: 12px;
 }
-.inspector .ctx .chip {
+.properties .ctx .chip {
   margin-left: 5px;
   color: var(--fg);
 }
@@ -472,7 +472,7 @@ button.mini {
 @media print {
   .toolbar,
   .palette,
-  .inspector,
+  .properties,
   .textpane,
   .toast,
   .overlay {

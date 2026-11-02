@@ -1,4 +1,4 @@
-// Inspector: edits the properties of whatever is selected (event, mark, slur, tuplet, measure) or of
+// Properties panel: edits the properties of whatever is selected (event, mark, slur, tuplet, measure) or of
 // the score and its staves when nothing is. Every control calls a command from src/editor/commands.ts through `run`, so
 // each change is one undo step and refusals appear as toasts.
 
@@ -1023,7 +1023,7 @@ selection.subscribe(() => {
   userTab.value = null;
 });
 
-export function Inspector() {
+export function Properties() {
   const sel = selection.value;
   const sc = score.value;
   const first = sel[0];
@@ -1036,7 +1036,7 @@ export function Inspector() {
   const want = userTab.value;
   const active = tabs.find(([id]) => id === want)?.[0] ?? tabs[0][0];
   return (
-    <aside class="inspector" aria-label="Properties">
+    <aside class="properties" aria-label="Properties">
       <div class="tabs" role="tablist">
         {tabs.map(([id, label]) => (
           <button

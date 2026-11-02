@@ -622,7 +622,7 @@ export function tupletsAround(): { label: string; ref: Ref }[] {
   return out;
 }
 
-// ---------------------------------------------------------------- commands shared with the keyboard and inspector
+// ---------------------------------------------------------------- commands shared with the keyboard and Properties panel
 
 /** Select everything in the score that is like the (first) selected element: any dynamic, same hairpin kind, same duration ... */
 export function selectSimilar(): void {

@@ -142,7 +142,7 @@ function drawClefChanges(P: Prim[], ctx: SysCtx, mi: number, s: number, y0: numb
     const cx = xAtTick(ctx, mi, mk.tick);
     const col = ctx.spacing[mi].cols.find((c) => c.tick === mk.tick);
     const L = col ? col.L[s] : 0;
-    P.push({ t: 'glyph', name: g.name, x: cx - L + 0.5, y: y0 + g.y, k: 'clef', o: oid({}) });
+    P.push({ t: 'glyph', name: g.name, x: cx - L + 0.5, y: y0 + g.y, k: 'clef', o: oid(mk), r: mk });
   }
 }
 

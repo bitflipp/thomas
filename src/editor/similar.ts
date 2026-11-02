@@ -5,10 +5,10 @@ import { flattenVoice, marksOf } from '../model.ts';
 import type { Ref } from './addr.ts';
 import { eventOf } from './addr.ts';
 
-/** Elements are "similar" when the Inspector edits them together: marks of one type, all notes (or all rests), all slurs ... */
+/** Elements are "similar" when the Properties panel edits them together: marks of one type, all notes (or all rests), all slurs ... */
 const markKey = (m: MarkBody): string => m.type;
 
-/** Refs to everything in `score` that is like `ref` (including `ref` itself): everything the Inspector would bulk-edit along with it; empty for measures. */
+/** Refs to everything in `score` that is like `ref` (including `ref` itself): everything the Properties panel would bulk-edit along with it; empty for measures. */
 export function similarTo(score: Score, ref: Ref): Ref[] {
   const out: Ref[] = [];
   if (ref.t === 'mark') {

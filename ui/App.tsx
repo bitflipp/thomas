@@ -1,4 +1,4 @@
-// The application shell: toolbar (file, view, playback), the palette, score pane, inspector and the
+// The application shell: toolbar (file, view, playback), the palette, score pane, Properties panel and the
 // optional text pane. It owns file handling (open/save text, MusicXML import, printing to PDF) and
 // otherwise only wires the panes to the signals in state.ts.
 
@@ -8,11 +8,11 @@ import { useEffect, useRef } from 'preact/hooks';
 import { importMusicXml } from '../src/musicxml.ts';
 import { parseText, writeText } from '../src/textformat.ts';
 import { Dropdown } from './Dropdown.tsx';
-import { Inspector } from './Inspector.tsx';
 import { Ui } from './icons.tsx';
 import { zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
 import { Palette } from './Palette.tsx';
+import { Properties } from './Properties.tsx';
 import { chooseOutput, midiOut, midiPorts, playing, toggle } from './player.ts';
 import { ScorePane } from './ScorePane.tsx';
 import { Shortcuts, showHelp } from './Shortcuts.tsx';
@@ -31,8 +31,8 @@ import {
   say,
   score,
   showCollisions,
-  showInspector,
   shownZoom,
+  showProperties,
   showText,
   timing,
   toast,
@@ -259,9 +259,9 @@ export function App() {
         <div class="seg">
           <button
             type="button"
-            aria-pressed={showInspector.value}
+            aria-pressed={showProperties.value}
             title="Properties (Ctrl I)"
-            onClick={() => (showInspector.value = !showInspector.value)}
+            onClick={() => (showProperties.value = !showProperties.value)}
           >
             Properties
           </button>
@@ -287,7 +287,7 @@ export function App() {
       <div class="main">
         <Palette />
         <ScorePane />
-        {showInspector.value && <Inspector />}
+        {showProperties.value && <Properties />}
         {showText.value && (
           <Suspense fallback={null}>
             <TextPane />
