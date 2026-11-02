@@ -807,7 +807,7 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
                   ['above', 'above'],
                   ['below', 'below'],
                   ['between', 'between'],
-                ].filter(([v]) => v !== 'between' || m.type !== 'text') as [MarkPlacement | undefined, string][]
+                ] as [MarkPlacement | undefined, string][]
               }
               onChange={(p) => upd({ placement: p } as never)}
             />

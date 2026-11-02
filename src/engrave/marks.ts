@@ -26,6 +26,8 @@ interface Item {
   up: number;
   down: number;
   draw: (ref: number) => Prim[];
+  /** Moves a text-like item horizontally (set for tempo and text). */
+  move?: (dx: number) => void;
   /** The model mark (the start mark of a span). */
   src?: Mark;
   /** Placed between the staves: its `side` is the one facing the neighbouring staff. */
@@ -162,7 +164,8 @@ function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' })
   };
 }
 
-function tempoItem(m: Mark & { type: 'tempo' }, x: number): Item {
+function tempoItem(m: Mark & { type: 'tempo' }, x0: number): Item {
+  let x = x0;
   const unit = m.unit === 2 ? 'metNoteHalfUp' : 'metNoteQuarterUp';
   const noteBox = sm.bbox(unit);
   const label = `= ${m.bpm}`;
@@ -172,6 +175,11 @@ function tempoItem(m: Mark & { type: 'tempo' }, x: number): Item {
   return {
     src: m,
     kind: 'tempo',
+    move(dx) {
+      x += dx;
+      this.x0 += dx;
+      this.x1 += dx;
+    },
     x0: x,
     x1: x + noteBox.x1 + dotsWidth + 0.5 + textWidth,
     side: 'above',
@@ -189,14 +197,21 @@ function tempoItem(m: Mark & { type: 'tempo' }, x: number): Item {
   };
 }
 
-function textItem(m: Mark & { type: 'text' }, x: number): Item {
+function textItem(sm0: StaffMarks, m: Mark & { type: 'text' }, x0: number): Item {
+  let x = x0;
   const size = 2.0;
   return {
     src: m,
     kind: 'text',
+    move(dx) {
+      x += dx;
+      this.x0 += dx;
+      this.x1 += dx;
+    },
     x0: x,
     x1: x + m.text.length * size * 0.5,
-    side: m.placement ?? 'above',
+    side: markSide(sm0, m.placement ?? 'above'),
+    between: m.placement === 'between',
     up: 1.5,
     down: 0.5,
     row: 0,
@@ -233,7 +248,7 @@ function collectMarks(sm0: StaffMarks, items: Item[][]): Spans {
           items[si].push(tempoItem(m, xAtTick(sm0.systems[si], mi, m.tick)));
           break;
         case 'text':
-          items[si].push(textItem(m, xAtTick(sm0.systems[si], mi, m.tick)));
+          items[si].push(textItem(sm0, m, xAtTick(sm0.systems[si], mi, m.tick)));
           break;
         case 'hairpin': {
           const span: Span = { mark: m, mi };
@@ -452,6 +467,22 @@ function keepHairpinsOffDynamics(its: Item[]): void {
   }
 }
 
+const TEXT_PAD = 0.6;
+
+/** Text and tempo marks that would sit over a dynamic (or each other) on the same side slide right of it, leaving some padding. */
+function spreadHorizontally(list: Item[]): void {
+  const movers = list.filter((i) => i.move).sort((a, b) => a.x0 - b.x0);
+  const fixed = list.filter((i) => i.kind === 'dyn');
+  const placed: Item[] = [];
+  for (const it of movers) {
+    for (const o of [...fixed, ...placed].sort((a, b) => a.x0 - b.x0)) {
+      if (o.x0 < it.x1 + TEXT_PAD && o.x1 + TEXT_PAD > it.x0 && o.x0 <= it.x1 && o.x1 >= it.x0 - TEXT_PAD)
+        it.move?.(o.x1 + TEXT_PAD - it.x0);
+    }
+    placed.push(it);
+  }
+}
+
 /**
  * Groups items of one side that share a baseline: all dynamics and hairpins over the whole system, so
  * that a row of them reads as a line, and all pedal lines; every other item (and pedal and ottava rows
@@ -461,7 +492,12 @@ function baselineGroups(list: Item[]): Item[][] {
   const groups: Item[][] = [];
   const shared = new Map<'dyn' | 'pedal', Item[]>();
   for (const it of list) {
-    const key = it.kind === 'dyn' || it.kind === 'hair' ? 'dyn' : it.kind === 'pedal' ? 'pedal' : undefined;
+    const key =
+      it.kind === 'dyn' || it.kind === 'hair' || (it.kind === 'text' && it.between)
+        ? 'dyn'
+        : it.kind === 'pedal'
+          ? 'pedal'
+          : undefined;
     if (!key) {
       groups.push([it]);
       continue;
@@ -514,13 +550,13 @@ function placeGroup(ctx: SysCtx, s: number, group: Item[], side: Side): void {
       p.k = kind;
       p.o = owner;
       p.r = it.src;
-      if (it.kind === 'dyn' || it.kind === 'hair') p.a = ref;
+      if (it.kind === 'dyn' || it.kind === 'hair' || it.between) p.a = ref;
       ctx.prims[s].push(p);
     }
     sky.add(it.x0, it.x1, y - it.up, y + it.down);
     const box = sky.boxes[sky.boxes.length - 1];
     if (it.between) box.btw = true;
-    if (it.kind === 'dyn' || it.kind === 'hair') box.o = owner;
+    if (it.kind === 'dyn' || it.kind === 'hair' || it.between) box.o = owner;
   }
 }
 
@@ -529,6 +565,7 @@ function stackItems(ctx: SysCtx, s: number, items: Item[]): void {
   keepHairpinsOffDynamics(items);
   for (const side of ['above', 'below'] as const) {
     const list = items.filter((i) => i.side === side).sort((a, b) => a.row - b.row || a.order - b.order || a.x0 - b.x0);
+    spreadHorizontally(list);
     for (const group of baselineGroups(list)) placeGroup(ctx, s, group, side);
   }
 }

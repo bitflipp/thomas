@@ -568,7 +568,7 @@ class VoiceLineParser {
     else this.pending.push(body);
   }
 
-  /** `between` (`=`) is for dynamics and hairpins only. */
+  /** `between` (`=`) is for dynamics, hairpins and text. */
   private addMarkWithSide<T extends MarkBody>(body: T, between = false): void {
     let side: MarkPlacement | undefined;
     if (between && this.sc.peek() === '=') {
@@ -601,7 +601,7 @@ class VoiceLineParser {
         break;
       case 'text':
         sc.ws();
-        this.addMarkWithSide({ type: 'text', text: readString(sc) });
+        this.addMarkWithSide({ type: 'text', text: readString(sc) }, true);
         break;
       case 'grace':
       case 'acc':

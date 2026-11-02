@@ -107,7 +107,7 @@ export interface Voice {
 }
 
 export type Placement = 'above' | 'below';
-/** Dynamics and hairpins can also sit `between` their staff and its neighbour (below the upper one, above the lower one), centred in the gap: for piano parts, where one dynamic serves both hands. */
+/** Dynamics, hairpins and text can also sit `between` their staff and its neighbour (below the upper one, above the lower one), centred in the gap: for piano parts, where one dynamic serves both hands. */
 export type MarkPlacement = Placement | 'between';
 export type MarkBody =
   | { type: 'dynamic'; text: string; placement?: MarkPlacement }
@@ -120,7 +120,7 @@ export type MarkBody =
   | { type: 'stop'; of: 'hairpin'; id: number }
   | { type: 'clef'; clef: Clef }
   | { type: 'tempo'; unit: BaseDur; dots: number; bpm: number; text?: string }
-  | { type: 'text'; text: string; placement?: Placement };
+  | { type: 'text'; text: string; placement?: MarkPlacement };
 /** A mark with a position, as in MusicXML or on a text-format mark line; `anchorMarks` hangs it on an event. */
 export type TimedMark = MarkBody & { tick: number };
 /**

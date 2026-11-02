@@ -2,7 +2,7 @@
 title "Tango"
 composer "Philipp Naumann (2025)"
 rights "© Philipp Naumann, licensed under CC BY-SA 4.0"
-page 210.1x296.9 margin=10 space=1.4
+page 210.1x296.9 margin=10 space=1.55
 staff s1 clef=G2 name="Piano"
 staff s2 clef=F4 name="Piano"
 brace s1 s2
@@ -102,7 +102,7 @@ m24
   s1.1: [\<= <fbb4 bb4 fbb5>:8-> 3:2{\8va (eb7:16 bb6 eb6}] 6:4{bb6 fbb6 bb5 <eb5 eb6>-> bb5 eb5} 6:4{\! \8off \ff= \>= <bb4 bb5> eb5 bb4 eb5 bb4 eb4} 6:4{<bb3 bb4> eb4 bb3 \clef F4 eb4 bb3 eb3)} \!
   s2.1: [\ped <f1 b1 f2>:8-> 3:2{(e#4:16 a##3 e#3}] 6:4{a##3 e#3 a##2 <e#2 e#3>-> a##2 e#2} 6:4{\8vb <a##1 a##2> e#2 a##1 e#2 a##1 e#1} 6:4{<a##0 a##1> e#1 a##1 e#2 a##2 e#3)} \unped \8off
 m25
-  s1.1: \p= \text "una corda"_ bb2:4 r:8 \clef G2 <d6 a6>-. <bb5 f6>-. r <g5 d6>-. r
+  s1.1: \p= \text "una corda"= bb2:4 r:8 \clef G2 <d6 a6>-. <bb5 f6>-. r <g5 d6>-. r
   s2.1: \clef G2 b3:4 r:8 <bb4 f5>-. <d5 a5>-. r <f5 c6>-. r
 m26
   s1.1: b3:4 r:8 \clef G2 <c#6 a6>-. <a5 f6>-. [(<f#5 d6>-. <c#6 a6>-. <b5 g6>-.]

@@ -171,12 +171,13 @@ const isDynamicsMark = (p: Prim) => (p.k === 'dyn' || p.k === 'hairpin') && p.a 
 function horizontalSpan(p: Prim): [number, number] {
   if (p.t === 'glyph') return [p.x, p.x + sm.adv(p.name)];
   if (p.t === 'line') return [Math.min(p.x1, p.x2), Math.max(p.x1, p.x2)];
+  if (p.t === 'text') return [p.x, p.x + p.s.length * p.size * 0.5];
   return [0, 0];
 }
 
 function moveMarks(marks: Prim[], dy: number): void {
   for (const p of marks) {
-    if (p.t === 'glyph') p.y += dy;
+    if (p.t === 'glyph' || p.t === 'text') p.y += dy;
     else if (p.t === 'line') {
       p.y1 += dy;
       p.y2 += dy;
@@ -190,7 +191,14 @@ function lowestRiseAboveUpperStaff(ctx: SysCtx, s: number, marks: Prim[]): numbe
   let dyMin = Number.NEGATIVE_INFINITY;
   for (const p of marks) {
     const [x0, x1] = horizontalSpan(p);
-    const top = p.t === 'glyph' ? p.y - sm.bbox(p.name).y1 : p.t === 'line' ? Math.min(p.y1, p.y2) - 0.3 : 0;
+    const top =
+      p.t === 'glyph'
+        ? p.y - sm.bbox(p.name).y1
+        : p.t === 'line'
+          ? Math.min(p.y1, p.y2) - 0.3
+          : p.t === 'text'
+            ? p.y - 1.5
+            : 0;
     for (const b of ctx.sky[s].boxes)
       if (!b.spanner && b.x1 > x0 - 0.3 && b.x0 < x1 + 0.3)
         dyMin = Math.max(dyMin, ctx.staffY[s] - ctx.staffY[s + 1] + b.y1 + 0.3 - top);
@@ -212,6 +220,7 @@ function overlapHorizontally(rowA: Prim[], rowB: Prim[]): boolean {
 function verticalSpan(p: Prim): [number, number] {
   if (p.t === 'glyph') return [p.y - sm.bbox(p.name).y1, p.y - sm.bbox(p.name).y0];
   if (p.t === 'line') return [Math.min(p.y1, p.y2) - p.w / 2, Math.max(p.y1, p.y2) + p.w / 2];
+  if (p.t === 'text') return [p.y - 1.5, p.y + 0.5];
   return [0, 0];
 }
 

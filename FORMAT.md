@@ -82,7 +82,7 @@ beam covers the whole group; `bracket`/`nobracket` override that. The importer w
 | Octave shift | `\8va` (written an octave lower, line above), `\8vb` (line below), `\8off` ends it. May span measures |
 | Clef change | `\clef G2`, `\clef F4`, ... (a change at the first note of a system becomes the system's clef) |
 | Tempo | `\tempo 4=115`, `\tempo 4.=60` |
-| Text | `\text "dolce"`, `^`/`_` for above/below |
+| Text | `\text "dolce"`, `^`/`_` for above/below, `=` between the staves (on the baseline of the dynamics there) |
 
 A mark hangs on the event it is written before, in that event's voice (several voices may carry marks); a mark at the end of a line
 hangs on the end of the voice's measure (the stop of a span that runs up to the barline). Deleting or replacing the event
