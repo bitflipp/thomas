@@ -102,15 +102,42 @@ function primBox(p: Prim): Box | undefined {
   }
 }
 
-/** The numbers of a path's data (x y pairs), moved by the path's offset. */
+/** The coordinates of a path's data as x y pairs (absolute commands; H and V are expanded), moved by the path's offset. */
 function pathNumbers(p: Extract<Prim, { t: 'path' }>): number[] {
-  const n = p.d.match(/-?\d*\.?\d+/g)?.map(Number) ?? [];
-  if (p.dx || p.dy)
-    for (let i = 0; i + 1 < n.length; i += 2) {
-      n[i] += p.dx ?? 0;
-      n[i + 1] += p.dy ?? 0;
+  const out: number[] = [];
+  let cx = 0;
+  let cy = 0;
+  for (const seg of p.d.match(/[A-Za-z][^A-Za-z]*/g) ?? []) {
+    const cmd = seg[0];
+    const n =
+      seg
+        .slice(1)
+        .match(/-?\d*\.?\d+/g)
+        ?.map(Number) ?? [];
+    if (cmd === 'H') {
+      for (const x of n) {
+        cx = x;
+        out.push(cx, cy);
+      }
+    } else if (cmd === 'V') {
+      for (const y of n) {
+        cy = y;
+        out.push(cx, cy);
+      }
+    } else {
+      for (let i = 0; i + 1 < n.length; i += 2) {
+        cx = n[i];
+        cy = n[i + 1];
+        out.push(cx, cy);
+      }
     }
-  return n;
+  }
+  if (p.dx || p.dy)
+    for (let i = 0; i + 1 < out.length; i += 2) {
+      out[i] += p.dx ?? 0;
+      out[i + 1] += p.dy ?? 0;
+    }
+  return out;
 }
 
 /** Points along the first (upper) curve of a crescent path "M x y C ... " */

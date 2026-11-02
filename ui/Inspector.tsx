@@ -873,11 +873,7 @@ function LineSection() {
               ['solid', 'solid'],
               ['dashed', 'dashed'],
             ]}
-            onChange={(v) =>
-              run((x) => {
-                for (const g of group) C.setLineDashed(x, g, g.id, v === 'dashed');
-              })
-            }
+            onChange={(v) => run((x) => group.reduce((acc, g) => C.setLineDashed(acc, g, g.id, v === 'dashed'), x))}
           />
         </Row>
       </Group>
@@ -908,11 +904,7 @@ function SlurSection() {
               ['above', 'above'],
               ['below', 'below'],
             ]}
-            onChange={(v) =>
-              run((x) => {
-                for (const g of group) C.setSlurSide(x, g, g.id, v);
-              })
-            }
+            onChange={(v) => run((x) => group.reduce((acc, g) => C.setSlurSide(acc, g, g.id, v), x))}
           />
         </Row>
       </Group>
@@ -936,9 +928,7 @@ function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
   const group = selection.value.filter((x): x is Extract<Ref, { t: 'tuplet' }> => x.t === 'tuplet');
   const gs = group.flatMap((x) => tupletOf(score.value, x) ?? []);
   const upd = (p: Parameters<typeof C.updateTuplet>[2]) =>
-    run((x) => {
-      for (const t of group) C.updateTuplet(x, t, p);
-    });
+    run((x) => group.reduce((acc, t) => C.updateTuplet(acc, t, p), x));
   return (
     <section>
       <Group title="Properties">
