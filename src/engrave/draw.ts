@@ -437,135 +437,142 @@ function drawStem(ctx: SysCtx, e: EvL, g: Geom, s: number, flag: boolean, noSky 
   if (!noSky) pushBox(ctx, s, g.stemX - STEM_T / 2, g.stemX + STEM_T / 2, lo, hi);
 }
 
-function drawNoteBasics(ctx: SysCtx, e: EvL, s: number): void {
+/** The head and accidental of head `hi`, tagged with the head index; the accidental also gets a skyline box. */
+function drawHeadWithAccidental(ctx: SysCtx, e: EvL, s: number, hi: number): void {
   const prims = ctx.prims[s];
-  const base = e.te.ev.dur.base;
-  const hw = headWidth(base);
-  const gl = headGlyph(base);
+  const h = e.heads[hi];
+  const y = posToY(h.pos);
+  prims.push({ t: 'glyph', name: headGlyph(e.te.ev.dur.base), x: e.x + h.dx, y, sx: HEAD_SCALE, sy: 1 });
+  tagFrom(prims, prims.length - 1, 'head', e, h.sharers);
+  prims[prims.length - 1].n = hi;
+  const accStart = prims.length;
+  if (h.acc) {
+    const ax = e.x + must(h.accX);
+    const glyph = h.acc.glyph;
+    if (h.acc.cautionary) {
+      const parenWidth = sm.adv('accidentalParensLeft');
+      prims.push({ t: 'glyph', name: 'accidentalParensLeft', x: ax, y });
+      prims.push({ t: 'glyph', name: glyph, x: ax + parenWidth, y });
+      prims.push({ t: 'glyph', name: 'accidentalParensRight', x: ax + parenWidth + sm.adv(glyph), y });
+      const box = sm.bbox(glyph);
+      pushBox(ctx, s, ax, ax + parenWidth * 2 + sm.adv(glyph), y - box.y1 - 0.1, y - box.y0 + 0.1, true);
+    } else {
+      prims.push({ t: 'glyph', name: glyph, x: ax, y });
+      const box = sm.bbox(glyph);
+      pushBox(ctx, s, ax + box.x0, ax + box.x1, y - box.y1 - 0.1, y - box.y0 + 0.1, true);
+    }
+  }
+  tagFrom(prims, accStart, 'acc', e);
+  for (let i = accStart; i < prims.length; i++) prims[i].n = hi;
+}
+
+/**
+ * Ledger lines, one per staff line crossed. A line is needed where a head sits on it or beyond it (not
+ * for the space just outside the staff) and extends over those heads only (not over displaced heads of
+ * the rest of the chord); `trimLedgers` later shortens neighbouring ones so that they do not run together.
+ */
+function drawLedgerLines(ctx: SysCtx, e: EvL, s: number): void {
+  const own = e.heads.filter((h) => !h.shared);
+  if (!own.length) return;
+  const ledgerExt = D.legerLineExtension as number;
+  const hw = headWidth(e.te.ev.dur.base);
+  const posMin = Math.min(...own.map((h) => h.pos));
+  const posMax = Math.max(...own.map((h) => h.pos));
+  const ledger = (p: number, reach: typeof own) => {
+    const d0 = Math.min(...reach.map((h) => h.dx));
+    const d1 = Math.max(...reach.map((h) => h.dx));
+    const lx0 = e.x + d0 - ledgerExt;
+    const lx1 = e.x + d1 + hw + ledgerExt;
+    const prim: Prim = { t: 'line', x1: lx0, x2: lx1, y1: posToY(p), y2: posToY(p), w: D.legerLineThickness as number };
+    prim.k = 'ledger';
+    prim.o = oid(e);
+    prim.r = e.ev;
+    ctx.prims[s].push(prim);
+    ledgerSegs.push({ prim, s, y: posToY(p), x0: lx0, x1: lx1, hx0: e.x + d0, hx1: e.x + d1 + hw });
+  };
+  for (let p = -2; p >= posMin; p -= 2)
+    ledger(
+      p,
+      own.filter((h) => h.pos <= p + 1),
+    );
+  for (let p = 10; p <= posMax; p += 2)
+    ledger(
+      p,
+      own.filter((h) => h.pos >= p - 1),
+    );
+}
+
+/** Dots: to the right of the heads, in the space above when the head sits on a line, one set per staff position (a chord with two heads sharing a position gets one set). */
+function drawDots(ctx: SysCtx, e: EvL, s: number): void {
+  const dots = e.te.ev.dur.dots;
+  const start = ctx.prims[s].length;
+  if (dots) {
+    const x = e.x + Math.max(...e.heads.map((h) => h.dx)) + headWidth(e.te.ev.dur.base) + 0.4;
+    const seen = new Set<number>();
+    for (const h of e.heads) {
+      if (h.shared && h.skipDots) continue;
+      const p = h.pos % 2 === 0 ? h.pos + 1 : h.pos; // dots go in the space above a line
+      if (seen.has(p)) continue;
+      seen.add(p);
+      for (let k = 0; k < dots; k++)
+        ctx.prims[s].push({ t: 'glyph', name: 'augmentationDot', x: x + k * DOT_STEP, y: posToY(p) });
+    }
+  }
+  tagFrom(ctx.prims[s], start, 'dot', e);
+}
+
+/** Arpeggio: a vertical wiggle left of the chord's accidentals, spanning from the lowest to the highest head. */
+function drawArpeggio(ctx: SysCtx, e: EvL, s: number, yTop: number, yBot: number): void {
+  const prims = ctx.prims[s];
+  const minDx = Math.min(...e.heads.map((h) => h.dx));
+  const accMin = Math.min(0, ...e.heads.map((h) => h.accX ?? 0), minDx);
+  const right = e.x + accMin - 0.3;
+  const seg = sm.bbox('wiggleArpeggiatoUp');
+  const step = sm.adv('wiggleArpeggiatoUp');
+  const top = yTop - 0.4;
+  const bot = yBot + 0.4;
+  const n = Math.max(1, Math.ceil((bot - top) / step));
+  const w = seg.y1 - seg.y0;
+  // The SMuFL glyph is a short horizontal wiggle: rotate it 90 degrees and stack as many
+  // copies as needed upwards from the bottom note.
+  const start = prims.length;
+  for (let k = 0; k < n; k++)
+    prims.push({ t: 'glyph', name: 'wiggleArpeggiatoUp', x: right, y: bot - k * step + seg.x0, rot: -90 });
+  tagFrom(prims, start, 'arpeggio', e);
+  pushBox(ctx, s, right - w, right, top - 0.2, bot + 0.2);
+}
+
+/** Heads, accidentals, ledger lines, dots and arpeggio of a note; records its geometry (`geomOf`) for the later phases. */
+function drawNoteBasics(ctx: SysCtx, e: EvL, s: number): void {
+  const hw = headWidth(e.te.ev.dur.base);
   const ys = e.heads.map((h) => posToY(h.pos));
   const yTop = Math.min(...ys);
   const yBot = Math.max(...ys);
   const minDx = Math.min(...e.heads.map((h) => h.dx));
   const maxDx = Math.max(...e.heads.map((h) => h.dx));
-  for (const [hi, h] of e.heads.entries()) {
-    if (h.shared) continue;
-    prims.push({ t: 'glyph', name: gl, x: e.x + h.dx, y: posToY(h.pos), sx: HEAD_SCALE, sy: 1 });
-    tagFrom(prims, prims.length - 1, 'head', e, h.sharers);
-    prims[prims.length - 1].n = hi;
-    const nAcc = prims.length;
-    if (h.acc) {
-      const ax = e.x + must(h.accX);
-      const ay = posToY(h.pos);
-      if (h.acc.cautionary) {
-        const pw = sm.adv('accidentalParensLeft');
-        prims.push({ t: 'glyph', name: 'accidentalParensLeft', x: ax, y: ay });
-        prims.push({ t: 'glyph', name: h.acc.glyph, x: ax + pw, y: ay });
-        prims.push({ t: 'glyph', name: 'accidentalParensRight', x: ax + pw + sm.adv(h.acc.glyph), y: ay });
-        const cb = sm.bbox(h.acc.glyph);
-        pushBox(ctx, s, ax, ax + pw * 2 + sm.adv(h.acc.glyph), ay - cb.y1 - 0.1, ay - cb.y0 + 0.1, true);
-      } else {
-        prims.push({ t: 'glyph', name: h.acc.glyph, x: ax, y: ay });
-        const ab = sm.bbox(h.acc.glyph);
-        pushBox(ctx, s, ax + ab.x0, ax + ab.x1, ay - ab.y1 - 0.1, ay - ab.y0 + 0.1, true);
-      }
-    }
-    tagFrom(prims, nAcc, 'acc', e);
-    for (let i = nAcc; i < prims.length; i++) prims[i].n = hi;
-  }
-  // Ledger lines, one per staff line crossed. They extend over the heads that need them only
-  // (not over displaced heads of the rest of the chord), and `trimLedgers` later shortens
-  // neighbouring ones so that they do not run together.
-  const ledgerExt = D.legerLineExtension as number;
-  const own = e.heads.filter((h) => !h.shared);
-  if (own.length) {
-    const posMin = Math.min(...own.map((h) => h.pos));
-    const posMax = Math.max(...own.map((h) => h.pos));
-    // a ledger line is needed where a head sits on it or beyond it (not for the space just outside the staff);
-    // it extends over those heads only (not over the displaced heads of the rest of the chord)
-    const ledger = (p: number, reach: typeof own) => {
-      const d0 = Math.min(...reach.map((h) => h.dx));
-      const d1 = Math.max(...reach.map((h) => h.dx));
-      const lx0 = e.x + d0 - ledgerExt;
-      const lx1 = e.x + d1 + hw + ledgerExt;
-      const prim: Prim = {
-        t: 'line',
-        x1: lx0,
-        x2: lx1,
-        y1: posToY(p),
-        y2: posToY(p),
-        w: D.legerLineThickness as number,
-      };
-      prim.k = 'ledger';
-      prim.o = oid(e);
-      prim.r = e.ev;
-      prims.push(prim);
-      ledgerSegs.push({ prim, s, y: posToY(p), x0: lx0, x1: lx1, hx0: e.x + d0, hx1: e.x + d1 + hw });
-    };
-    for (let p = -2; p >= posMin; p -= 2)
-      ledger(
-        p,
-        own.filter((h) => h.pos <= p + 1),
-      );
-    for (let p = 10; p <= posMax; p += 2)
-      ledger(
-        p,
-        own.filter((h) => h.pos >= p - 1),
-      );
-  }
-  // Dots: to the right of the heads, in the space above when the head sits on a line, one set per
-  // staff position (a chord with two heads sharing a position gets one set).
-  const dots = e.te.ev.dur.dots;
-  const nDots = prims.length;
-  if (dots) {
-    const seen = new Set<number>();
-    for (const h of e.heads) {
-      if (h.shared && h.skipDots) continue;
-      let p = h.pos;
-      if (p % 2 === 0) p += 1; // dots go in the space above a line
-      if (seen.has(p)) continue;
-      seen.add(p);
-      for (let k = 0; k < dots; k++)
-        prims.push({ t: 'glyph', name: 'augmentationDot', x: e.x + maxDx + hw + 0.4 + k * DOT_STEP, y: posToY(p) });
-    }
-  }
-  tagFrom(prims, nDots, 'dot', e);
-  // Record the geometry for the later phases, with stem anchors at the head edge (an up-stem leaves
-  // the right side of the head, a down-stem the left side).
-  const stemX = e.stem === 'up' ? e.x + e.shiftDx + hw - STEM_T / 2 : e.x + e.shiftDx + STEM_T / 2;
+  e.heads.forEach((h, hi) => {
+    if (!h.shared) drawHeadWithAccidental(ctx, e, s, hi);
+  });
+  drawLedgerLines(ctx, e, s);
+  drawDots(ctx, e, s);
+  // Stem anchors at the head edge (an up-stem leaves the right side of the head, a down-stem the left side).
   const g: Geom = {
     shift: e.shiftDx,
     x: e.x,
     hw,
-    yTop: yTop,
-    yBot: yBot,
-    stemX,
+    yTop,
+    yBot,
+    stemX: e.stem === 'up' ? e.x + e.shiftDx + hw - STEM_T / 2 : e.x + e.shiftDx + STEM_T / 2,
     stemTip: 0,
     stemBase: e.stem === 'up' ? yBot - 0.168 * HEAD_SCALE : yTop + 0.168 * HEAD_SCALE,
     headL: e.x + minDx,
     headR: e.x + maxDx + hw,
   };
   geomOf.set(e, g);
+  const dots = e.te.ev.dur.dots;
   pushBox(ctx, s, g.headL, g.headR + (dots ? 0.4 + DOT_STEP * dots : 0), yTop - 0.5, yBot + 0.5);
   if (e.stem === null) g.stemTip = g.stemBase;
-  // Arpeggio: a vertical wiggle left of the chord's accidentals, spanning from the lowest to
-  // the highest head.
-  if (e.ev.kind === 'note' && e.ev.arpeggio) {
-    const accMin = Math.min(0, ...e.heads.map((h) => h.accX ?? 0), minDx);
-    const right = e.x + accMin - 0.3;
-    const seg = sm.bbox('wiggleArpeggiatoUp');
-    const step = sm.adv('wiggleArpeggiatoUp');
-    const top = yTop - 0.4;
-    const bot = yBot + 0.4;
-    const n = Math.max(1, Math.ceil((bot - top) / step));
-    const w = seg.y1 - seg.y0;
-    // The SMuFL glyph is a short horizontal wiggle: rotate it 90 degrees and stack as many
-    // copies as needed upwards from the bottom note.
-    const nArp = prims.length;
-    for (let k = 0; k < n; k++)
-      prims.push({ t: 'glyph', name: 'wiggleArpeggiatoUp', x: right, y: bot - k * step + seg.x0, rot: -90 });
-    tagFrom(prims, nArp, 'arpeggio', e);
-    pushBox(ctx, s, right - w, right, top - 0.2, bot + 0.2);
-  }
+  if (e.ev.kind === 'note' && e.ev.arpeggio) drawArpeggio(ctx, e, s, yTop, yBot);
 }
 
 /** Grace notes: small heads with their own up-stems, a flag or beams, and a slash for an acciaccatura. */
