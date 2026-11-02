@@ -292,8 +292,15 @@ function drawTupletsOfStaff(ctx: SysCtx, mi: number, s: number): void {
         seen.add(t);
         const members = v.evs.filter((x) => x.tupletKeys.includes(t));
         // Over a beam between two staves the bracket cannot avoid the stems in the gap, so it goes
-        // above the upper staff's notes (the bracket is drawn in `at`'s coordinates).
-        const at = members.some((x) => x.beam?.cross) ? Math.min(...members.map((x) => x.staff)) : s;
+        // above the upper staff's notes. A tuplet whose notes all sit on another staff is drawn there:
+        // on the voice's staff its bracket would lie in the gap, and the gap would grow with it
+        // (the bracket is drawn in `at`'s coordinates).
+        const staves = new Set(members.map((x) => x.staff));
+        const at = members.some((x) => x.beam?.cross)
+          ? Math.min(...staves)
+          : staves.size === 1
+            ? Math.min(...staves)
+            : s;
         if (at !== s || members.some((x) => x.staff !== s))
           withHomeGeometry(ctx, members, at, () => drawTuplet(ctx, t, members, at));
         else drawTuplet(ctx, t, members, s);

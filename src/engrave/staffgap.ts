@@ -31,9 +31,11 @@ export function staffGap(ctx: SysCtx, s: number): number {
 }
 
 function hasCrossStaffNotes(ctx: SysCtx): boolean {
-  return (
-    ctx.gapNeed.some((g) => g > 0) || ctx.prep.allEvs.some((e) => e.mi >= ctx.a && e.mi <= ctx.b && e.staff !== e.home)
-  );
+  if (ctx.gapNeed.some((g) => g > 0)) return true;
+  for (let mi = ctx.a; mi <= ctx.b; mi++)
+    for (const sm of ctx.prep.measures[mi])
+      for (const v of sm.voices) if (v.evs.some((e) => e.staff !== e.home)) return true;
+  return false;
 }
 
 /**

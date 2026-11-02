@@ -5,7 +5,7 @@ import { loadSmufl } from '../smufl.ts';
 import type { SysCtx } from './draw.ts';
 import { D } from './draw.ts';
 import type { Prim } from './scene.ts';
-import { oid, shiftPrim, tagFrom } from './scene.ts';
+import { oid, tagFrom } from './scene.ts';
 import { clefGlyph, drawMidSystemChanges, drawSystemStart } from './signatures.ts';
 import { placeStaves, STAFF_HEIGHT } from './staffgap.ts';
 
@@ -13,9 +13,14 @@ const sm = loadSmufl();
 
 export type MeasureNumbering = 'system' | 'all' | 'none';
 
-/** A finished system: its primitives and how far it reaches above its first staff and below its last. */
+/**
+ * A finished system: its primitives and how far it reaches above its first staff and below its last.
+ * `staffPrims` are the notes of each staff, still in staff-local y and to be moved down by `dy`; leaving
+ * that to pagination, which moves every primitive anyway, saves a copy of each one.
+ */
 export interface FinalizedSystem {
   prims: Prim[];
+  staffPrims: { dy: number; prims: Prim[] }[];
   top: number;
   bottom: number;
 }
@@ -33,12 +38,13 @@ export function finalizeSystem(ctx: SysCtx, numbering: MeasureNumbering): Finali
   const bottom = ctx.staffY[nStaves - 1] + STAFF_HEIGHT;
   return {
     prims: P,
+    staffPrims: ctx.prims.map((prims, s) => ({ dy: ctx.staffY[s], prims })),
     top: Math.min(0, ...extents.map((e, s) => ctx.staffY[s] + e.top)),
     bottom: Math.max(bottom, ...extents.map((e, s) => ctx.staffY[s] + e.bottom)),
   };
 }
 
-/** The five lines of a staff, the notes drawn earlier (shifted down to the staff's y), then clef, key and time signature. */
+/** The five lines of a staff, then clef, key and time signature (its notes are added by pagination, see `FinalizedSystem`). */
 function drawStaff(P: Prim[], ctx: SysCtx, s: number): void {
   const y0 = ctx.staffY[s];
   for (let l = 0; l < 5; l++)
@@ -51,7 +57,6 @@ function drawStaff(P: Prim[], ctx: SysCtx, s: number): void {
       w: D.staffLineThickness as number,
       k: 'staff',
     });
-  for (const p of ctx.prims[s]) P.push(shiftPrim(p, 0, y0));
   drawSystemStart(P, ctx, s, y0);
   drawMidSystemChanges(P, ctx, s, y0);
 }

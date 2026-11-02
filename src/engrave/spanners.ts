@@ -121,7 +121,11 @@ export function drawSpanners(systems: SysCtx[]): void {
     const voiceEvs = new Map<number, EvL[]>();
     const timeOrder: EvL[] = [];
     for (const measure of prep.measures) {
-      for (const v of measure[s].voices) voiceEvs.set(v.id, [...(voiceEvs.get(v.id) ?? []), ...v.evs]);
+      for (const v of measure[s].voices) {
+        const list = voiceEvs.get(v.id);
+        if (list) for (const e of v.evs) list.push(e);
+        else voiceEvs.set(v.id, [...v.evs]);
+      }
       // Slurs belong to the voice, wherever its (cross-staff) notes are drawn; `timeOrder` is the staff's
       // events by time so that stops can be matched to starts.
       timeOrder.push(...measure[s].voices.flatMap((v) => v.evs).sort((p, q) => p.start - q.start || p.voice - q.voice));

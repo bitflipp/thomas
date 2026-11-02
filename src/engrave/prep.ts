@@ -113,7 +113,6 @@ export interface Prepared {
   measures: StaffMeasureL[][]; // [measure][staff]
   clefAt: (staff: number, mi: number, tick: number) => Clef;
   measureLen: number[];
-  allEvs: EvL[];
 }
 
 const ACC_GLYPH: Record<number, string> = {
@@ -391,7 +390,6 @@ export function prepare(score: Score): Prepared {
   };
   const measureLen = score.measures.map((_, mi) => measureTicks(timeAt(score, mi)));
   const measures: StaffMeasureL[][] = [];
-  const allEvs: EvL[] = [];
   score.measures.forEach((m, mi) => {
     const voicesOf = layoutVoices(env, mi);
     assignAccidentals(env, voicesOf, keyAt(score, mi));
@@ -399,7 +397,6 @@ export function prepare(score: Score): Prepared {
     const row: StaffMeasureL[] = score.staves.map((staff, si) => {
       const sm = m.staves[staff.id] ?? { voices: [] };
       prepareStaffVoices(voicesOf[si], sm, beatTicks(timeAt(score, mi)));
-      for (const v of voicesOf[si]) allEvs.push(...v.evs);
       return { evs: [], voices: voicesOf[si], marks: marksOf(sm) };
     });
     // `evs` lists what is drawn on a staff, which for cross-staff notes is not the voice's staff.
@@ -407,7 +404,7 @@ export function prepare(score: Score): Prepared {
     for (const r of row) r.evs.sort((a, b) => a.start - b.start || a.voice - b.voice);
     measures.push(row);
   });
-  return { score, measures, clefAt, measureLen, allEvs };
+  return { score, measures, clefAt, measureLen };
 }
 
 function decideDir(notes: EvL[], rank: number, nVoices: number): 'up' | 'down' {

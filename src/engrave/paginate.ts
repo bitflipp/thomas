@@ -206,7 +206,11 @@ export function paginate(
   const x0 = frame.margin + opts.braceRoom;
   const pages = place.pageSystems.map((list, pi) => {
     const page = pi === 0 ? firstPage : { width: frame.width, height: frame.height, prims: [] };
-    for (const si of list) for (const p of done[si].prims) page.prims.push(shiftPrim(p, x0, place.placeY[si]));
+    for (const si of list) {
+      const y = place.placeY[si];
+      for (const p of done[si].prims) page.prims.push(shiftPrim(p, x0, y));
+      for (const sp of done[si].staffPrims) for (const p of sp.prims) page.prims.push(shiftPrim(p, x0, y + sp.dy));
+    }
     for (const si of list) recordLayout(layout, systems[si], pi, x0, place.placeY[si]);
     drawFooter(page, score, frame, pi);
     return page;
