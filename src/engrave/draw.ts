@@ -826,123 +826,142 @@ function drawRestPrims(ctx: SysCtx, e: EvL, s: number): void {
 }
 
 // ------------------------------------------------------------------ beams
-/** Draws one beam group on staff `s` (stems, beam polygons, hooks for lone short notes) and records its skyline. */
-function drawBeamGroup(ctx: SysCtx, notes: EvL[], s: number, levelsFor: (e: EvL) => number): void {
-  const dir = must(notes[0].beam).dir;
-  const up = dir === 'up';
-  const maxLv = Math.max(...notes.map(levelsFor));
-  const L = stemLength(maxLv);
-  const gs = notes.map((n) => must(geomOf.get(n)));
-  // Every note's stem uses the beam's direction, anchored at the proper side of its chord
-  // (right of the heads for up-stems, left for down-stems).
-  notes.forEach((_n, i) => {
-    const g = gs[i];
-    g.stemX = up ? g.x + g.shift + g.hw - STEM_T / 2 : g.x + g.shift + STEM_T / 2;
-    g.stemBase = up ? g.yBot - 0.168 : g.yTop + 0.168;
-  });
+/** The beam line y = a + m (x - x0) of a group, before it is moved clear of other things. */
+interface BeamLine {
+  a: number;
+  m: number;
+  x0: number;
+  x1: number;
+}
+
+const BEAM_MAX_TILT = 1.25;
+
+/** Height of the stack of all beam levels of a group (from the primary beam's outer edge to the last level's). */
+const beamStackHeight = (maxLevel: number) =>
+  (maxLevel - 1) * ((D.beamThickness as number) + (D.beamSpacing as number)) + (D.beamThickness as number);
+
+/** The beam line through the stem tips, tilted like the tips but at most half as much and by `BEAM_MAX_TILT`, moved out to the farthest tip. */
+function beamLineThroughTips(gs: Geom[], up: boolean, stemLen: number): BeamLine {
   const x0 = gs[0].stemX;
   const x1 = gs[gs.length - 1].stemX;
-  const tips = gs.map((g) => (up ? g.yTop - L : g.yBot + L));
-  const span = Math.max(0.001, x1 - x0);
+  const tips = gs.map((g) => (up ? g.yTop - stemLen : g.yBot + stemLen));
   const rise = tips[tips.length - 1] - tips[0];
-  const maxTilt = 1.25;
-  const m = (Math.sign(rise) * Math.min(Math.abs(rise) * 0.5, maxTilt)) / span;
+  const m = (Math.sign(rise) * Math.min(Math.abs(rise) * 0.5, BEAM_MAX_TILT)) / Math.max(0.001, x1 - x0);
   let a = up ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
   gs.forEach((g, i) => {
     const v = tips[i] - m * (g.stemX - x0);
     a = up ? Math.min(a, v) : Math.max(a, v);
   });
-  // keep beam out of the staff middle region for stems that would end inside the staff, nothing more
-  // keep clear of the noteheads of other voices underneath/above the beam
-  {
-    const inner0 =
-      (maxLv - 1) * ((D.beamThickness as number) + (D.beamSpacing as number)) + (D.beamThickness as number);
-    for (const o of ctx.prep.measures[notes[0].mi][s].evs) {
-      if (o.ev.kind !== 'note' || notes.includes(o)) continue;
-      const go = geomOf.get(o);
-      if (!go || go.headR < x0 - 0.5 || go.headL > x1 + 0.5) continue;
-      const xc = (go.headL + go.headR) / 2;
-      const v = up ? go.yTop - 0.9 - inner0 - m * (xc - x0) : go.yBot + 0.9 + inner0 - m * (xc - x0);
-      a = up ? Math.min(a, v) : Math.max(a, v);
-    }
-    // Accidentals (of any note, including the group's own) must not touch the beam either:
-    // raise or lower the beam line until the nearest accidental is `0.4` clear of the outer beam.
-    for (const o of ctx.prep.measures[notes[0].mi][s].evs) {
-      if (o.ev.kind !== 'note') continue;
-      for (const h of o.heads) {
-        if (!h.acc || h.shared) continue;
-        const ab = sm.bbox(h.acc.glyph);
-        const ax0 = o.x + must(h.accX) + ab.x0;
-        const ax1 = o.x + must(h.accX) + ab.x1;
-        if (ax1 < x0 - 0.3 || ax0 > x1 + 0.3) continue;
-        const xc = (ax0 + ax1) / 2;
-        const yc = posToY(h.pos);
-        const v = up ? yc - ab.y1 - 0.4 - inner0 - m * (xc - x0) : yc - ab.y0 + 0.4 + inner0 - m * (xc - x0);
-        a = up ? Math.min(a, v) : Math.max(a, v);
-      }
+  return { a, m, x0, x1 };
+}
+
+/**
+ * Moves the beam line away from the staff until it clears: the noteheads of other voices underneath
+ * (or above) the beam, accidentals of any note (including the group's own) which must stay 0.4 clear
+ * of the outer beam, and the middle line (stems pointing at the staff reach at least position 2,
+ * which keeps beams off the ledger lines of notes far above or below the staff).
+ */
+function clearBeamLine(ctx: SysCtx, notes: EvL[], s: number, gs: Geom[], line: BeamLine, up: boolean, maxLv: number) {
+  const { m, x0, x1 } = line;
+  let a = line.a;
+  const pull = (v: number) => {
+    a = up ? Math.min(a, v) : Math.max(a, v);
+  };
+  const inner = beamStackHeight(maxLv);
+  const evs = ctx.prep.measures[notes[0].mi][s].evs;
+  for (const o of evs) {
+    if (o.ev.kind !== 'note' || notes.includes(o)) continue;
+    const go = geomOf.get(o);
+    if (!go || go.headR < x0 - 0.5 || go.headL > x1 + 0.5) continue;
+    const xc = (go.headL + go.headR) / 2;
+    pull(up ? go.yTop - 0.9 - inner - m * (xc - x0) : go.yBot + 0.9 + inner - m * (xc - x0));
+  }
+  for (const o of evs) {
+    if (o.ev.kind !== 'note') continue;
+    for (const h of o.heads) {
+      if (!h.acc || h.shared) continue;
+      const box = sm.bbox(h.acc.glyph);
+      const ax0 = o.x + must(h.accX) + box.x0;
+      const ax1 = o.x + must(h.accX) + box.x1;
+      if (ax1 < x0 - 0.3 || ax0 > x1 + 0.3) continue;
+      const xc = (ax0 + ax1) / 2;
+      const yc = posToY(h.pos);
+      pull(up ? yc - box.y1 - 0.4 - inner - m * (xc - x0) : yc - box.y0 + 0.4 + inner - m * (xc - x0));
     }
   }
-  // Stems pointing at the staff reach at least the middle line (position 2 in staff-local y):
-  // this keeps beams off the ledger lines of notes far above or below the staff.
-  gs.forEach((g) => {
-    const v = 2 - m * (g.stemX - x0);
-    a = up ? Math.min(a, v) : Math.max(a, v);
-  });
-  const lineY = (x: number) => a + m * (x - x0);
-  const bt = D.beamThickness as number;
-  const bs = D.beamSpacing as number;
+  for (const g of gs) pull(2 - m * (g.stemX - x0));
+  return { ...line, a };
+}
+
+/** Does the lone note `i` of a beam get its hook (the short stub of a level only it has) to the right? Towards the neighbour it is rhythmically closer to; after a dotted note, towards the left. */
+function hookPointsRight(notes: EvL[], i: number): boolean {
+  if (i === 0) return true;
+  if (i === notes.length - 1) return false;
+  if (notes[i + 1].start - notes[i].start < notes[i].start - notes[i - 1].start) return true;
+  return !(notes[i - 1].te.ev.dur.dots > 0);
+}
+
+/** Draws one beam group on staff `s` (stems, beam polygons, hooks for lone short notes) and records its skyline. */
+function drawBeamGroup(ctx: SysCtx, notes: EvL[], s: number, levelsFor: (e: EvL) => number): void {
+  const up = must(notes[0].beam).dir === 'up';
+  const maxLv = Math.max(...notes.map(levelsFor));
+  const gs = notes.map((n) => must(geomOf.get(n)));
+  // Every note's stem uses the beam's direction, anchored at the proper side of its chord
+  // (right of the heads for up-stems, left for down-stems).
+  for (const g of gs) {
+    g.stemX = up ? g.x + g.shift + g.hw - STEM_T / 2 : g.x + g.shift + STEM_T / 2;
+    g.stemBase = up ? g.yBot - 0.168 : g.yTop + 0.168;
+  }
+  const line = clearBeamLine(ctx, notes, s, gs, beamLineThroughTips(gs, up, stemLength(maxLv)), up, maxLv);
+  const lineY = (x: number) => line.a + line.m * (x - line.x0);
+  const thickness = D.beamThickness as number;
+  const spacing = D.beamSpacing as number;
   const inward = up ? 1 : -1;
   notes.forEach((n, i) => {
-    const g = gs[i];
-    g.stemTip = lineY(g.stemX);
-    drawStem(ctx, n, g, s, false);
+    gs[i].stemTip = lineY(gs[i].stemX);
+    drawStem(ctx, n, gs[i], s, false);
   });
   // Beam polygons: one parallelogram per beam level and run of notes that has that level, offset
   // from the primary beam by `beamSpacing`; the shorter levels may end in a hook.
   const poly = (xa: number, xb: number, off: number) => {
     const ya = lineY(xa) + inward * off;
     const yb = lineY(xb) + inward * off;
-    return `M${xa.toFixed(3)} ${ya.toFixed(3)}L${xb.toFixed(3)} ${yb.toFixed(3)}L${xb.toFixed(3)} ${(yb + inward * bt).toFixed(3)}L${xa.toFixed(3)} ${(ya + inward * bt).toFixed(3)}Z`;
+    return `M${xa.toFixed(3)} ${ya.toFixed(3)}L${xb.toFixed(3)} ${yb.toFixed(3)}L${xb.toFixed(3)} ${(yb + inward * thickness).toFixed(3)}L${xa.toFixed(3)} ${(ya + inward * thickness).toFixed(3)}Z`;
   };
-  const nBeam0 = ctx.prims[s].length;
-  for (let lv = 1; lv <= maxLv; lv++) {
-    const off = (lv - 1) * (bt + bs);
+  const firstBeamPrim = ctx.prims[s].length;
+  const hookLength = 1.1;
+  for (let level = 1; level <= maxLv; level++) {
+    const off = (level - 1) * (thickness + spacing);
     let i = 0;
     while (i < notes.length) {
-      if (levelsFor(notes[i]) < lv) {
+      if (levelsFor(notes[i]) < level) {
         i++;
         continue;
       }
       let j = i;
       while (
         j + 1 < notes.length &&
-        levelsFor(notes[j + 1]) >= lv &&
-        !restBetween(notes[j], notes[j + 1], must(notes[0].beam).evs, lv)
+        levelsFor(notes[j + 1]) >= level &&
+        !restBetween(notes[j], notes[j + 1], must(notes[0].beam).evs, level)
       )
         j++;
       if (j > i) ctx.prims[s].push({ t: 'path', d: poly(gs[i].stemX - STEM_T / 2, gs[j].stemX + STEM_T / 2, off) });
       else {
-        // Hook: a short stub for a lone note at this level, towards the neighbour it is rhythmically
-        // closer to (after a dotted note, towards the left).
-        const hookLen = 1.1;
-        const prevDotted = i > 0 && notes[i - 1].te.ev.dur.dots > 0;
-        let toRight = i === 0 ? true : i === notes.length - 1 ? false : !prevDotted;
-        if (i > 0 && i < notes.length - 1 && notes[i + 1].start - notes[i].start < notes[i].start - notes[i - 1].start)
-          toRight = true;
-        const xa = toRight ? gs[i].stemX - STEM_T / 2 : gs[i].stemX - hookLen;
-        const xb = toRight ? gs[i].stemX + hookLen : gs[i].stemX + STEM_T / 2;
+        const toRight = hookPointsRight(notes, i);
+        const xa = toRight ? gs[i].stemX - STEM_T / 2 : gs[i].stemX - hookLength;
+        const xb = toRight ? gs[i].stemX + hookLength : gs[i].stemX + STEM_T / 2;
         ctx.prims[s].push({ t: 'path', d: poly(xa, xb, off) });
       }
       i = j + 1;
     }
   }
-  tagFrom(ctx.prims[s], nBeam0, 'beam', notes[0].beam);
+  tagFrom(ctx.prims[s], firstBeamPrim, 'beam', notes[0].beam);
   // Skyline: the beam's extent per pair of stems, since a slanted beam occupies a trapezoid, not
   // a box; one box per pair keeps the over-approximation small.
+  const inner = beamStackHeight(maxLv);
   for (let i = 0; i + 1 < gs.length; i++) {
     const ya = lineY(gs[i].stemX);
     const yb = lineY(gs[i + 1].stemX);
-    const inner = (maxLv - 1) * (bt + bs) + bt;
     pushBox(
       ctx,
       s,
