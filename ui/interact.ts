@@ -337,6 +337,11 @@ function setHover(t: Target | null): void {
   hover.value = t;
 }
 
+/** A line attaches to noteheads only: other parts of a note (stem, flag) are not hovered for it. */
+function lineHeadOnly(t: string, tg: Target | undefined): Target | undefined {
+  return t === 'line' && tg && tg.k !== 'head' ? undefined : tg;
+}
+
 function asSelected(t: Target | undefined): Target | undefined {
   if (
     t &&
@@ -374,7 +379,9 @@ export function onPointerMove(e: PointerEvent): void {
         ? asSelected(hitTest(h, w.page, w.x, w.y))
         : MARK_TOOLS.has(t)
           ? (eventHover(w) ?? undefined)
-          : undefined;
+          : SPAN_TOOLS.has(t)
+            ? lineHeadOnly(t, asSelected(hitTest(h, w.page, w.x, w.y)))
+            : undefined;
   if (drag.k !== 'mark') setHover(ht ?? null);
   if (drag.k === 'none') {
     if (t === 'note' || t === 'rest') ghost.value = ghostFor(w, e.altKey);
@@ -441,9 +448,10 @@ function continueDrag(d: Drag, e: PointerEvent, w: Where, h: HitIndex): void {
     const ok =
       tg?.ref.t === 'ev' &&
       (d.tool === 'line'
-        ? sameSystem(h, d.from, tg.ref) && eventOf(score.peek(), tg.ref)?.kind === 'note'
+        ? tg.k === 'head' && sameSystem(h, d.from, tg.ref) && eventOf(score.peek(), tg.ref)?.kind === 'note'
         : tg.ref.staff === d.from.staff);
     ghost.value = { kind: 'span', from: d.start, to: w, bad: !ok };
+    setHover(ok && tg ? asSelected(tg) : null);
   } else if (d.k === 'mark') {
     if (!(d.moved || pastThreshold(d, e))) return;
     d.moved = true;
@@ -479,6 +487,7 @@ function finishHeadDrag(d: Extract<Drag, { k: 'head' }>, w: Where, h: HitIndex):
 function finishSpan(d: Extract<Drag, { k: 'span' }>, w: Where, h: HitIndex): void {
   const tg = hitTest(h, w.page, w.x, w.y);
   if (tg?.ref.t !== 'ev') return;
+  if (d.tool === 'line' && tg.k !== 'head') return;
   const to = tg.ref;
   const from = d.from;
   const kind = d.tool;
