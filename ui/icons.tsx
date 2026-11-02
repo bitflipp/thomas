@@ -227,11 +227,4 @@ export const Ui = {
   staccato: () => S(<circle cx="12" cy="12" r="2.6" />, true),
   tie: () => S(<path d="M4 10c3 8 13 8 16 0" />),
   arpeggio: () => S(<path d="M12 3q3 2 0 4t0 4 0 4 0 4 0 4" />),
-  noBeam: () =>
-    S(
-      <>
-        <path d="M7 7v11M17 7v11M7 7h10" stroke-width="3" />
-        <path d="M3 21L21 3" />
-      </>,
-    ),
 };

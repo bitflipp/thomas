@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { beamLinks, beamModes, beatTicks } from '../src/beams.ts';
 import { indexScore } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import { dependentNotes } from '../src/editor/hit.ts';
@@ -173,7 +174,8 @@ test('beam groups and tremolos', () => {
   s = ok(C.ungroup(s, { ...loc, idx: 1 }));
   assert.doesNotMatch(show(s), /\[/);
   s = ok(C.makeBeam(s, loc, 0, 3));
-  assert.throws(() => C.makeTremolo(s, loc, 0, 1, 2), /longer beam/);
+  s = ok(C.makeTremolo(s, loc, 0, 1, 2)); // dissolves the longer beam group around the pair
+  assert.doesNotMatch(show(s), /\[/);
   s = ok(C.ungroup(s, { ...loc, idx: 1 }));
   s = ok(C.makeBeam(s, loc, 0, 1));
   s = ok(C.makeTremolo(s, loc, 0, 1, 2)); // replaces the two-note beam
@@ -309,4 +311,50 @@ test('halving the rest of an empty bar gives ordinary half rests, not a whole-ba
       ['rest', 'normal', 2],
     ],
   );
+});
+
+test('beam modes per note', () => {
+  let s = load();
+  for (let i = 0; i < 4; i++) s = C.enterNote(s, loc, (i * 3360) / 2, { base: 8, dots: 0 }, c4);
+  const at = (idx: number) => ({ ...loc, idx });
+  const modes = () => beamModes(s.measures[0].staves.rh.voices[0], beatTicks({ beats: 2, beatType: 4 }));
+  assert.deepEqual(modes(), ['auto', 'auto', 'auto', 'auto']);
+  s = ok(C.setBeamMode(s, [at(2)], 'join')); // across the beat
+  assert.match(show(s), /\[c4:8 c4 c4 c4\]/);
+  assert.deepEqual(modes(), ['auto', 'auto', 'join', 'auto']);
+  s = ok(C.setBeamMode(s, [at(2)], 'auto'));
+  assert.doesNotMatch(show(s), /\[|nobeam/);
+  s = ok(C.setBeamMode(s, [at(1)], 'none'));
+  assert.match(show(s), /c4:8 \\nobeam c4 c4 c4$/);
+  assert.deepEqual(modes(), ['auto', 'none', 'auto', 'auto']);
+  s = ok(C.setBeamMode(s, [at(1)], 'auto'));
+  assert.doesNotMatch(show(s), /nobeam/);
+  s = ok(C.setBeamMode(s, [at(2)], 'none'));
+  s = ok(C.setBeamMode(s, [at(2)], 'break')); // flag gone, the note starts a beam with its successor
+  assert.doesNotMatch(show(s), /nobeam|\[/);
+  s = ok(C.setBeamMode(s, [at(1)], 'break')); // alone, so is its partner in the beat: one flag does both
+  assert.deepEqual(beamLinks(s.measures[0].staves.rh.voices[0], 3360), [false, false, false, true]);
+  assert.deepEqual(modes(), ['auto', 'none', 'auto', 'auto']);
+  s = ok(C.setBeamMode(s, [at(1)], 'auto'));
+  s = ok(C.setBeamMode(s, [at(1)], 'none'));
+  s = ok(C.setBeamMode(s, [at(2)], 'join')); // joining takes the flag of the previous note away
+  assert.deepEqual(modes(), ['auto', 'auto', 'join', 'auto']);
+  assert.throws(() => C.setBeamMode(s, [at(0)], 'join'), /previous measure/);
+  s = ok(C.setBeamMode(s, [at(1), at(3)], 'break')); // cuts two of the three links of the beam over four notes
+  assert.deepEqual(beamLinks(s.measures[0].staves.rh.voices[0], 3360), [false, false, true, false]);
+  s = ok(C.setBeamMode(s, [at(1), at(3)], 'auto')); // back to the beam over four notes
+  assert.match(show(s), /\[c4:8 c4 c4 c4\]/);
+  s = ok(C.setBeamMode(s, [at(2)], 'auto'));
+  assert.doesNotMatch(show(s), /\[|nobeam/);
+});
+
+test('breaking a sixteenth beam in the middle', () => {
+  let s = load();
+  for (let i = 0; i < 4; i++) s = C.enterNote(s, loc, i * 840, { base: 16, dots: 0 }, c4);
+  s = ok(C.setBeamMode(s, [{ ...loc, idx: 2 }], 'break'));
+  assert.match(show(s), /\[c4:16 c4\] \[c4 c4\]/);
+  s = ok(C.setBeamMode(s, [{ ...loc, idx: 2 }], 'join'));
+  assert.doesNotMatch(show(s), /\[/);
+  s = C.enterNote(s, loc, 4 * 840, { base: 4, dots: 0 }, c4);
+  assert.throws(() => C.setBeamMode(s, [{ ...loc, idx: 4 }], 'join'), /eighth/);
 });

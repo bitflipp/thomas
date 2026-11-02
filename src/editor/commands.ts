@@ -7,6 +7,8 @@
 // `EvAddr` (see addr.ts), never by object, because the draft replaces objects.
 import type { Draft } from 'immer';
 import { produce } from 'immer';
+import type { BeamMode, BeamPlan } from '../beams.ts';
+import { beamGroups, beamLinks, beatTicks, planBeams } from '../beams.ts';
 import type {
   Articulation,
   Clef,
@@ -1226,6 +1228,128 @@ function wrapRange(d: Draft<Score>, loc: Loc, a: number, b: number, make: (items
 export function makeBeam(score: Score, loc: Loc, from: number, to: number): Score {
   return edit(score, (d) => wrapRange(d, loc, from, to, (items) => ({ kind: 'beam', items })));
 }
+/** The first and last event below an item. */
+const edgeEvents = (it: Item): [Event, Event] => {
+  const flat = flattenVoice({ id: 0, items: [it] });
+  return [flat[0].ev, flat[flat.length - 1].ev];
+};
+
+/** Wraps the events from `ea` to `eb` in a beam group, at the innermost level where both are siblings (or whole children of siblings). */
+function wrapEvents(items: Draft<Item>[], ea: Event, eb: Event): boolean {
+  const holds = (it: Draft<Item>, e: Event) =>
+    (it as unknown) === (e as unknown) ||
+    (!isEvent(it as Item) &&
+      flattenVoice({ id: 0, items: (it as Draft<TupletGroup>).items as Item[] }).some(
+        (t) => (t.ev as unknown) === (e as unknown),
+      ));
+  const ia = items.findIndex((it) => holds(it, ea));
+  const ib = items.findIndex((it) => holds(it, eb));
+  if (ia < 0 || ib < 0) return false;
+  if (ia === ib) {
+    const g = items[ia] as Draft<TupletGroup>;
+    if (isEvent(g as unknown as Item)) return false;
+    if (isTremolo(g as unknown as Item)) throw new EditError('The notes of a tremolo are not beamed');
+    return wrapEvents(g.items as Draft<Item>[], ea, eb);
+  }
+  if (
+    (edgeEvents(items[ia] as Item)[0] as unknown) !== (ea as unknown) ||
+    (edgeEvents(items[ib] as Item)[1] as unknown) !== (eb as unknown)
+  )
+    throw new EditError('A beam cannot start or end in the middle of a tuplet');
+  items.splice(ia, ib - ia + 1, { kind: 'beam', items: items.slice(ia, ib + 1) as Item[] } as Draft<Item>);
+  return true;
+}
+
+/**
+ * Rewrites the explicit beam groups and `noBeam` flags of a voice so that it is beamed as `plan` says:
+ * all groups are dissolved, then a group is written for every wanted beam that the automatic rules
+ * would not produce, and a flag for every note that is wanted alone but would be beamed to a neighbour.
+ */
+function realiseBeams(v: Draft<Voice>, beatLen: number, plan: BeamPlan, preferred: Set<number>): void {
+  const dissolve = (items: Draft<Item>[]) => {
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i] as Item;
+      if (isEvent(it)) continue;
+      dissolve((it as Draft<TupletGroup>).items);
+      if (isBeam(it)) {
+        const kids = it.items as unknown as Draft<Item>[];
+        items.splice(i, 1, ...kids);
+        i += kids.length - 1;
+      }
+    }
+  };
+  dissolve(v.items as Draft<Item>[]);
+  const flat = flattenVoice(v as Voice);
+  const at = new Map(flat.map((t) => [t.ev, t.index]));
+  flat.forEach((t, i) => {
+    const e = t.ev as Draft<Event>;
+    if (e.kind !== 'note') return;
+    if (plan.flags[i]) e.noBeam = true;
+    else if (e.noBeam) delete e.noBeam;
+  });
+  const auto = new Set(beamGroups(v as Voice, beatLen).map((g) => g.map((e) => at.get(e)).join(',')));
+  const wanted = new Set<number>();
+  for (let i = 0; i < flat.length; ) {
+    let j = i;
+    while (j + 1 < flat.length && plan.links[j + 1]) j++;
+    let a = i;
+    let b = j;
+    while (a <= b && flat[a].ev.kind === 'rest') a++;
+    while (b >= a && flat[b].ev.kind === 'rest') b--;
+    if (flat.slice(a, b + 1).filter((t) => t.ev.kind === 'note').length >= 2) {
+      for (let k = a; k <= b; k++) wanted.add(k);
+      const key = flat
+        .slice(a, b + 1)
+        .map((t) => t.index)
+        .join(',');
+      if (!(auto.has(key) || wrapEvents(v.items as Draft<Item>[], flat[a].ev, flat[b].ev)))
+        throw new EditError('These notes cannot be beamed together');
+    }
+    i = j + 1;
+  }
+  // Notes that should stand alone but that the automatic rules would join to a neighbour now get a
+  // flag, one at a time (the flag of one often frees its partner), the notes the user chose first.
+  for (;;) {
+    const joined = beamGroups(v as Voice, beatLen)
+      .flat()
+      .filter((e) => e.kind === 'note' && !wanted.has(must(at.get(e))));
+    if (!joined.length) break;
+    const pick = joined.find((e) => preferred.has(must(at.get(e)))) ?? joined[0];
+    (pick as Draft<Event> & { noBeam?: boolean }).noBeam = true;
+  }
+  const got = beamLinks(v as Voice, beatLen);
+  flat.forEach((t, i) => {
+    if (i > 0 && t.ev.kind === 'note' && flat[i - 1].ev.kind === 'note' && got[i] !== plan.links[i])
+      throw new EditError('These notes cannot be beamed that way');
+  });
+}
+
+/**
+ * The beam mode of each addressed note (see beams.ts): `auto` leaves the choice to the rules, `none`
+ * keeps the note out of any beam, `break` starts a new beam at it and `join` continues the beam of the
+ * previous note. A beam stays within one measure.
+ */
+export function setBeamMode(score: Score, addrs: EvAddr[], mode: BeamMode): Score {
+  return edit(score, (d) => {
+    const byVoice = new Map<string, EvAddr[]>();
+    for (const a of addrs) {
+      const k = `${a.mi}|${a.staff}|${a.voice}`;
+      byVoice.set(k, [...(byVoice.get(k) ?? []), a]);
+    }
+    for (const list of byVoice.values()) {
+      const v = voiceIn(d, list[0]);
+      const beatLen = beatTicks(timeAt(d as Score, list[0].mi));
+      const plan = planBeams(v as Voice, beatLen, new Map(list.map((a) => [a.idx, mode])));
+      if (typeof plan === 'string') throw new EditError(plan);
+      const links = beamLinks(v as Voice, beatLen);
+      const same =
+        plan.links.every((l, i) => l === links[i]) &&
+        flattenVoice(v as Voice).every((t, i) => plan.flags[i] === (t.ev.kind === 'note' && !!t.ev.noBeam));
+      if (!same) realiseBeams(v, beatLen, plan, new Set(list.map((a) => a.idx)));
+    }
+  });
+}
+
 /** Two-note tremolo with `beams` beams between exactly two notes. */
 export function makeTremolo(score: Score, loc: Loc, from: number, to: number, beams = 2): Score {
   if (to - from !== 1) throw new EditError('A tremolo joins exactly two notes');
@@ -1253,7 +1377,7 @@ export function makeTremolo(score: Score, loc: Loc, from: number, to: number, be
     };
     if (again(v.items as Draft<Item>[])) return;
     // A tremolo does not go inside a beam group: it replaces a beam group over exactly these two
-    // notes, and anything longer is refused (the user must ungroup first).
+    // notes; a longer group is dissolved (its other notes go back to automatic beaming).
     const inBeam = (items: Draft<Item>[]): boolean => {
       for (let i = 0; i < items.length; i++) {
         const it = items[i] as Item;
@@ -1261,8 +1385,10 @@ export function makeTremolo(score: Score, loc: Loc, from: number, to: number, be
         if (isBeam(it)) {
           const evs = flattenVoice({ id: 0, items: it.items }).map((t) => t.ev as unknown);
           if (!(evs.includes(ea as unknown) || evs.includes(eb as unknown))) continue;
-          if (evs.length !== 2 || !evs.includes(ea as unknown) || !evs.includes(eb as unknown))
-            throw new EditError('Notes in a longer beam group cannot become a tremolo: ungroup them first');
+          if (evs.length !== 2 || !evs.includes(ea as unknown) || !evs.includes(eb as unknown)) {
+            items.splice(i, 1, ...(it.items as unknown as Draft<Item>[]));
+            return false;
+          }
           items[i] = { kind: 'tremolo', beams, items: it.items } as Draft<Item>;
           return true;
         }

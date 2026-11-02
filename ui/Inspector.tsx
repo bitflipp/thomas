@@ -4,11 +4,13 @@
 
 import { signal } from '@preact/signals';
 import { useState } from 'preact/hooks';
+import type { BeamMode } from '../src/beams.ts';
+import { beamModes, beatTicks, canJoin } from '../src/beams.ts';
 import type { Ref } from '../src/editor/addr.ts';
-import { eventOf, markOf, tupletOf } from '../src/editor/addr.ts';
+import { eventOf, markOf, tupletOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import type { Event, MarkBody, NoteEvent, Score } from '../src/model.ts';
-import { keyAt, timeAt } from '../src/model.ts';
+import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import {
   chooseDots,
   chooseDuration,
@@ -457,6 +459,39 @@ function Tog({
   );
 }
 
+const BEAM_MODES: [BeamMode, string, string][] = [
+  ['auto', 'Auto', 'The automatic rules decide whether this note is beamed to the previous one'],
+  ['none', 'None', 'Not beamed to either neighbour'],
+  ['break', 'Start', 'Start a new beam at this note'],
+  ['join', 'Join', 'Continue the beam of the previous note (also across a beat)'],
+];
+
+/** The beam mode shared by the selected notes (`mixed` if they differ), the refs it applies to, why they cannot be joined to the previous note, and a selected tremolo note. */
+function beamState(sc: Score, refs: Ref[]) {
+  const notes = refs.flatMap((r) => {
+    if (r.t !== 'ev') return [];
+    const v = voiceOf(sc, r);
+    return v && eventOf(sc, r)?.kind === 'note' ? [{ r, v }] : [];
+  });
+  if (!notes.length) return undefined;
+  const cache = new Map<unknown, BeamMode[]>();
+  const modes = notes.map(({ r, v }) => {
+    let m = cache.get(v);
+    if (!m) {
+      m = beamModes(v, beatTicks(timeAt(sc, r.mi)));
+      cache.set(v, m);
+    }
+    return m[r.idx];
+  });
+  const inTremolo = notes.find(({ r, v }) => flattenVoice(v)[r.idx]?.tremolo)?.r;
+  return {
+    refs: notes.map(({ r }) => r),
+    mode: same(modes),
+    cannotJoin: notes.map(({ r, v }) => canJoin(flattenVoice(v), r.idx)).find((w) => w),
+    inTremolo,
+  };
+}
+
 function eventTitle(sc: Score, refs: Ref[]): string {
   const evs = refs.map((r) => eventOf(sc, r)).filter((e): e is Event => !!e);
   if (evs.length !== 1) return `${evs.length} events`;
@@ -476,11 +511,12 @@ function EventSection() {
   const staffName = sc.staves.find((s) => s.id === r0.staff);
   const sorted = [...refs].sort((p, q) => p.idx - q.idx);
   const upd = (f: (n: NoteEvent) => void) => run((x) => C.updateNotes(x, refs, f));
-  const flag = (k: 'arpeggio' | 'noBeam', all: boolean) =>
+  const flag = (k: 'arpeggio') =>
     upd((n) => {
-      if (all ? notes.every((q) => q[k]) : notes.some((q) => q[k])) delete n[k];
+      if (notes.every((q) => q[k])) delete n[k];
       else n[k] = true;
     });
+  const beam = beamState(sc, refs);
   return (
     <section>
       <Group title="Info">
@@ -625,15 +661,8 @@ function EventSection() {
               >
                 <Ui.tie />
               </Tog>
-              <Tog
-                on={notes.every((n) => n.arpeggio)}
-                title="Arpeggio (wavy line)"
-                onClick={() => flag('arpeggio', true)}
-              >
+              <Tog on={notes.every((n) => n.arpeggio)} title="Arpeggio (wavy line)" onClick={() => flag('arpeggio')}>
                 <Ui.arpeggio />
-              </Tog>
-              <Tog on={notes.some((n) => n.noBeam)} title="Do not beam" onClick={() => flag('noBeam', false)}>
-                <Ui.noBeam />
               </Tog>
             </div>
             <Row label="Stem">
@@ -652,6 +681,26 @@ function EventSection() {
                 }
               />
             </Row>
+            {beam && (
+              <Row label="Beam">
+                <div class="seg fill">
+                  {BEAM_MODES.map(([mode, label, title]) => {
+                    const why = mode === 'join' ? beam.cannotJoin : undefined;
+                    return (
+                      <button
+                        type="button"
+                        aria-pressed={beam.mode === mode}
+                        disabled={!!why}
+                        title={why ?? title}
+                        onClick={() => run((x) => C.setBeamMode(x, beam.refs, mode))}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Row>
+            )}
             {notes.some((n) => n.art?.length) && (
               <Row label="Articulation">
                 <Pick
@@ -680,15 +729,6 @@ function EventSection() {
               Slur (S)
             </button>
           )}
-          {refs.length >= 2 && (
-            <button
-              type="button"
-              title="Beam the selected notes together"
-              onClick={() => run((x) => C.makeBeam(x, sorted[0], sorted[0].idx, sorted[sorted.length - 1].idx))}
-            >
-              Beam
-            </button>
-          )}
           {refs.length === 2 &&
             [1, 2, 3].map((b) => (
               <button
@@ -699,23 +739,11 @@ function EventSection() {
                 Trem {b}
               </button>
             ))}
-          <button
-            type="button"
-            title="Dissolve the beam group or tremolo"
-            onClick={() =>
-              run((x) =>
-                refs.reduce((s2, r) => {
-                  try {
-                    return C.ungroup(s2, r);
-                  } catch {
-                    return s2;
-                  }
-                }, x),
-              )
-            }
-          >
-            Ungroup
-          </button>
+          {beam?.inTremolo && (
+            <button type="button" title="Remove the tremolo" onClick={() => run((x) => C.ungroup(x, beam.inTremolo))}>
+              Remove tremolo
+            </button>
+          )}
           <button type="button" onClick={flipStem}>
             Flip stem (X)
           </button>

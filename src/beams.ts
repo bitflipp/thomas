@@ -3,6 +3,7 @@
 // that the automatic rules would produce anyway.
 import type { Event, Item, TimeSig, TupletGroup, Voice } from './model.ts';
 import { flattenVoice, isBeam, isEvent, isTuplet, PPQ } from './model.ts';
+import { must } from './util.ts';
 
 /** Length of one beaming unit: the beat, except that compound meters (6/8, 9/8, ...) beam in dotted quarters. */
 export function beatTicks(ts: TimeSig): number {
@@ -30,10 +31,23 @@ export function beamGroups(v: Voice, beatLen: number): Event[][] {
     }
   };
   walk(v.items);
-  // Automatic grouping of everything not in an explicit group. A run is a sequence of consecutive
-  // notes of eighth length or shorter; it is cut (flush) at a rest or non-beamable event, at a beat
-  // boundary, and where the tuplet nesting changes without one note sequence containing the other
-  // (so a tuplet never shares a beam with the notes next to it). Runs of one note are not groups.
+  out.push(...autoGroups(flat, beatLen, grouped, (e) => !!e.noBeam));
+  return out;
+}
+
+/**
+ * Automatic grouping of the events in `flat` that are not in `skip`. A run is a sequence of consecutive
+ * notes of eighth length or shorter; it is cut (flush) at a rest or non-beamable event, at a beat
+ * boundary, and where the tuplet nesting changes without one note sequence containing the other
+ * (so a tuplet never shares a beam with the notes next to it). Runs of one note are not groups.
+ */
+function autoGroups(
+  flat: ReturnType<typeof flattenVoice>,
+  beatLen: number,
+  skip: Set<Event>,
+  isFlagged: (e: Event) => boolean,
+): Event[][] {
+  const out: Event[][] = [];
   let run: Event[] = [];
   const flush = () => {
     if (run.length >= 2) out.push(run);
@@ -42,7 +56,7 @@ export function beamGroups(v: Voice, beatLen: number): Event[][] {
   let prev: (typeof flat)[number] | undefined;
   for (const te of flat) {
     const e = te.ev;
-    if (grouped.has(e) || e.kind !== 'note' || e.dur.base < 8 || e.noBeam) {
+    if (skip.has(e) || e.kind !== 'note' || e.dur.base < 8 || isFlagged(e)) {
       flush();
       prev = undefined;
       continue;
@@ -66,6 +80,108 @@ export function beamGroups(v: Voice, beatLen: number): Event[][] {
   }
   flush();
   return out;
+}
+
+// ------------------------------------------------------------------ per-note beam modes
+//
+// The model states beaming as explicit groups plus `noBeam` flags (see above). The editor offers the
+// MuseScore view instead: every note has a mode, which is derived from the model and turned back into
+// groups and flags by `planBeams` (+ `setBeamMode` in editor/commands.ts).
+//   auto   the automatic rules decide whether the note is beamed to the previous one
+//   none   the note is beamed to neither neighbour
+//   break  the note starts a new beam (not beamed to the previous note)
+//   join   the note continues the beam of the previous note
+
+export type BeamMode = 'auto' | 'none' | 'break' | 'join';
+
+/** Which events are beamed to their predecessor (`links[i]`: events i-1 and i are in one group). */
+export function beamLinks(v: Voice, beatLen: number): boolean[] {
+  const flat = flattenVoice(v);
+  const at = new Map(flat.map((t) => [t.ev, t.index]));
+  const links = flat.map(() => false);
+  for (const g of beamGroups(v, beatLen)) for (let k = 1; k < g.length; k++) links[must(at.get(g[k]))] = true;
+  return links;
+}
+
+/** The same for the automatic rules alone, with explicit groups ignored and `flags[i]` standing for `noBeam` of event i. */
+export function autoLinks(v: Voice, beatLen: number, flags: boolean[]): boolean[] {
+  const flat = flattenVoice(v);
+  const at = new Map(flat.map((t) => [t.ev, t.index]));
+  const links = flat.map(() => false);
+  for (const g of autoGroups(flat, beatLen, new Set(), (e) => flags[must(at.get(e))]))
+    for (let k = 1; k < g.length; k++) links[must(at.get(g[k]))] = true;
+  return links;
+}
+
+const noBeamFlags = (v: Voice): boolean[] => flattenVoice(v).map((t) => t.ev.kind === 'note' && !!t.ev.noBeam);
+
+/** Can event `i` be beamed to its predecessor at all? Both must be notes of eighth length or shorter, outside a tremolo. */
+export function canJoin(flat: ReturnType<typeof flattenVoice>, i: number): string | undefined {
+  const a = flat[i - 1];
+  const b = flat[i];
+  if (!a) return 'The first note of a measure cannot be beamed to the previous measure (beams stay within a measure)';
+  if (a.ev.kind !== 'note' || b.ev.kind !== 'note') return 'A rest breaks a beam';
+  if (a.ev.dur.base < 8 || b.ev.dur.base < 8) return 'Only eighth notes and shorter can be beamed';
+  if (a.tremolo || b.tremolo) return 'The notes of a tremolo are not beamed';
+  return undefined;
+}
+
+/** The mode of every event of a voice (rests count as `auto`). */
+export function beamModes(v: Voice, beatLen: number): BeamMode[] {
+  const flags = noBeamFlags(v);
+  const eff = beamLinks(v, beatLen);
+  const auto = autoLinks(v, beatLen, flags);
+  return flags.map((f, i) => (f ? 'none' : eff[i] === auto[i] ? 'auto' : eff[i] ? 'join' : 'break'));
+}
+
+/** What the beaming of a voice should look like: `links[i]` event i is beamed to event i-1, `flags[i]` event i carries `noBeam`. */
+export interface BeamPlan {
+  links: boolean[];
+  flags: boolean[];
+}
+
+/**
+ * Applies per-note modes (`changes`: event index -> mode) to the current beaming of a voice. A string (a
+ * message for the user) says why a note cannot be joined. The result is realised by `setBeamMode`.
+ */
+export function planBeams(v: Voice, beatLen: number, changes: Map<number, BeamMode>): BeamPlan | string {
+  const flat = flattenVoice(v);
+  const links = beamLinks(v, beatLen);
+  const flags = noBeamFlags(v);
+  const cleared = new Set<number>();
+  const clear = (i: number) => {
+    if (flags[i]) {
+      flags[i] = false;
+      cleared.add(i);
+    }
+  };
+  for (const [i, mode] of changes) {
+    if (flat[i].ev.kind !== 'note') continue;
+    if (mode === 'none') flags[i] = true;
+    else {
+      clear(i);
+      if (mode === 'join') {
+        const why = canJoin(flat, i);
+        if (why) return why;
+        clear(i - 1);
+      }
+    }
+  }
+  // A note that lost its flag was cut off from both neighbours by it: they go back to the automatic choice.
+  const auto = autoLinks(v, beatLen, flags);
+  for (const i of cleared) {
+    links[i] = auto[i];
+    if (i + 1 < links.length) links[i + 1] = auto[i + 1];
+  }
+  for (const [i, mode] of changes) {
+    if (flat[i].ev.kind !== 'note') continue;
+    if (mode === 'none') {
+      links[i] = false;
+      if (i + 1 < links.length) links[i + 1] = false;
+    } else if (mode === 'auto') links[i] = auto[i];
+    else links[i] = mode === 'join';
+  }
+  return { links, flags };
 }
 
 /** A canonical string for "which events are beamed together" (flat event indices), to compare two beamings. */
