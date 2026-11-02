@@ -191,7 +191,9 @@ function addTremolo(
   const from = measureOffset + p0.start;
   const to = measureOffset + p1.start + p1.ticks;
   const stroke = (PPQ * 4) / 2 ** (trem.beams + 2);
-  const count = Math.max(2, Math.round((to - from) / stroke));
+  // A tuplet wrapping the pair with a displayed number (`label=6`) says how many strokes it holds.
+  const wrap = p0.tuplets.findLast((t) => p1.tuplets.includes(t) && t.label && t.label >= 2);
+  const count = wrap?.label ?? Math.max(2, Math.round((to - from) / stroke));
   const len = (to - from) / count;
   const vel = sp.velAt(from);
   for (let k = 0; k < count; k++) {
