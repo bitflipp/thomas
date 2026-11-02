@@ -358,3 +358,20 @@ test('breaking a sixteenth beam in the middle', () => {
   s = C.enterNote(s, loc, 4 * 840, { base: 4, dots: 0 }, c4);
   assert.throws(() => C.setBeamMode(s, [{ ...loc, idx: 4 }], 'join'), /eighth/);
 });
+
+test('select similar finds equal marks across the score, and one edit changes them all', async () => {
+  const { similarTo } = await import('../src/editor/similar.ts');
+  let s = load();
+  for (const t of [0, PPQ4, PPQ4 * 2 + 0]) if (t < PPQ4 * 2) s = C.enterNote(s, loc, t, { base: 4, dots: 0 }, c4);
+  s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'p' }));
+  s = ok(C.addMark(s, { ...loc, idx: 1 }, { type: 'dynamic', text: 'f' }));
+  s = ok(C.addMark(s, { ...loc, mi: 1, idx: 0 }, { type: 'dynamic', text: 'p' }));
+  const first = marksOf(s.measures[0].staves.rh).find((m) => m.type === 'dynamic' && m.text === 'p')!;
+  const refs = similarTo(s, { t: 'mark', ...loc, idx: first.idx, k: first.k });
+  assert.equal(refs.length, 3); // all dynamics, not just the p's
+  s = ok(C.updateMarks(s, refs as never, { text: 'mp' } as never));
+  const texts = [0, 1].flatMap((mi) =>
+    marksOf(s.measures[mi].staves.rh).flatMap((m) => (m.type === 'dynamic' ? [m.text] : [])),
+  );
+  assert.deepEqual(texts.sort(), ['mp', 'mp', 'mp']);
+});

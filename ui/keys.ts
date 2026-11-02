@@ -7,7 +7,7 @@ import * as C from '../src/editor/commands.ts';
 import type { Event } from '../src/model.ts';
 import { flattenVoice } from '../src/model.ts';
 import { chooseDots, chooseDuration, flipStem, nudge, slurSelection, stepSelection, tieSelection } from './actions.ts';
-import { cancelDrag, deleteSelection, evRefs, menu, zoomBy } from './interact.ts';
+import { cancelDrag, deleteSelection, evRefs, menu, selectSimilar, zoomBy } from './interact.ts';
 import { rewind, toggle } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
@@ -83,6 +83,7 @@ function onEditShortcut(e: KeyboardEvent): boolean {
       return true;
     case 'a':
       e.preventDefault();
+      if (e.shiftKey) selectSimilar();
       return true;
     default:
       return false;

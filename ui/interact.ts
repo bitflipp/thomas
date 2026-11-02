@@ -12,6 +12,7 @@ import * as C from '../src/editor/commands.ts';
 import { pitchAtPos } from '../src/editor/context.ts';
 import type { Box, HitIndex, Target } from '../src/editor/hit.ts';
 import { eventAtX, hitTest, marquee, measureAt, measureAtStaff, posAtY, snapTick } from '../src/editor/hit.ts';
+import { similarTo } from '../src/editor/similar.ts';
 import { eventAtTick } from '../src/editor/voice.ts';
 import type { MeasureGeom } from '../src/engrave/system.ts';
 import type { Event, MarkBody, Score } from '../src/model.ts';
@@ -601,6 +602,7 @@ export function onContextMenu(e: MouseEvent): void {
     if (!selection.value.some((s) => refKey(s) === refKey(tg.ref))) select([tg.ref]);
     const r = tg.ref;
     if (r.t === 'ev') {
+      items.push({ label: 'Select similar', run: selectSimilar });
       items.push({ label: 'Delete', run: () => deleteSelection(), danger: true });
       items.push({ label: 'Tie', run: () => run((s) => C.toggleTie(s, evRefs())) });
       items.push({
@@ -630,8 +632,10 @@ export function onContextMenu(e: MouseEvent): void {
             }),
           ),
       });
-    } else if (r.t === 'mark') items.push({ label: 'Delete', run: () => deleteSelection(), danger: true });
-    else if (r.t === 'slur') items.push({ label: 'Delete slur', run: () => deleteSelection(), danger: true });
+    } else if (r.t === 'mark') {
+      items.push({ label: 'Select similar', run: selectSimilar });
+      items.push({ label: 'Delete', run: () => deleteSelection(), danger: true });
+    } else if (r.t === 'slur') items.push({ label: 'Delete slur', run: () => deleteSelection(), danger: true });
     else if (r.t === 'tuplet') {
       items.push({ label: 'Remove tuplet', run: () => deleteSelection(), danger: true });
     }
@@ -656,6 +660,19 @@ export function onContextMenu(e: MouseEvent): void {
 }
 
 // ---------------------------------------------------------------- commands shared with the keyboard and inspector
+
+/** Select everything in the score that is like the (first) selected element: any dynamic, same hairpin kind, same duration ... */
+export function selectSimilar(): void {
+  const first = selection.peek()[0];
+  if (!first) return;
+  const all = similarTo(score.peek(), first);
+  if (!all.length) {
+    say('Nothing similar to select', true);
+    return;
+  }
+  selection.value = all;
+  say(`Selected ${all.length} similar`);
+}
 
 export function deleteSelection(): void {
   const sel = selection.value;

@@ -22,6 +22,7 @@ const ROWS: [string, string][] = [
   ['Alt + click (select)', 'Put the playhead there'],
   ['Ctrl Z / Ctrl Shift Z', 'Undo / redo'],
   ['Ctrl C / X / V', 'Copy / cut / paste notes (paste starts at the selected note)'],
+  ['Ctrl Shift A', 'Select all similar to the selection (all dynamics, hairpins of a kind, equal durations ...)'],
   ['Ctrl + / −  (wheel)', 'Zoom'],
   ['Ctrl E', 'Show the score as text, editable'],
   ['Ctrl I', 'Properties panel'],

@@ -14,7 +14,7 @@ import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import { chooseDots, flipStem, nudge, slurSelection, tieSelection } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
-import { deleteSelection, evRefs, menu } from './interact.ts';
+import { deleteSelection, evRefs, menu, selectSimilar } from './interact.ts';
 import { DYNAMICS } from './Palette.tsx';
 import { run, score, selection, space } from './state.ts';
 
@@ -679,6 +679,9 @@ function EventSection() {
       )}
       <Group title="Actions">
         <div class="btns">
+          <button type="button" onClick={selectSimilar}>
+            Select similar (Ctrl+Shift+A)
+          </button>
           {refs.length >= 2 && (
             <button type="button" onClick={slurSelection}>
               Slur (S)
@@ -724,15 +727,22 @@ function markLabel(m: { type: string; of?: string; dir?: string }): string {
 function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
   const m = markOf(score.value, r);
   if (!m) return null;
-  const upd = (patch: Partial<MarkBody>) => run((x) => C.updateMark(x, r, patch));
-  const place = (m as { placement?: 'above' | 'below' | 'between' }).placement;
+  // Every selected mark of the same type is edited along with the first.
+  const group = selection.value.filter(
+    (x): x is Extract<Ref, { t: 'mark' }> => x.t === 'mark' && markOf(score.value, x)?.type === m.type,
+  );
+  const upd = (patch: Partial<MarkBody>) => run((x) => C.updateMarks(x, group, patch));
+  // A property that differs between the selected marks shows as mixed.
+  const marks = group.flatMap((x) => markOf(score.value, x) ?? []);
+  const shared = (get: (k: MarkBody) => unknown) => same(marks.map(get) as never[]) as never;
+  const place = shared((k) => (k as { placement?: string }).placement) as MarkPlacement | undefined | 'mixed';
   return (
     <section>
       <Group title="Properties">
         {m.type === 'dynamic' && (
           <Row label="Dynamic">
             <Dropdown
-              value={m.text}
+              value={shared((k) => (k as { text?: string }).text)}
               opts={DYNAMICS.map((d) => ({ value: d, label: d }))}
               onChange={(d) => upd({ text: d } as never)}
             />
@@ -740,7 +750,11 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
         )}
         {m.type === 'text' && (
           <Row label="Text">
-            <Txt value={m.text} onChange={(v) => upd({ text: v } as never)} />
+            <Txt
+              value={shared((k) => (k as { text?: string }).text) === 'mixed' ? '' : m.text}
+              placeholder={shared((k) => (k as { text?: string }).text) === 'mixed' ? 'mixed' : undefined}
+              onChange={(v) => upd({ text: v } as never)}
+            />
           </Row>
         )}
         {m.type === 'tempo' && (
@@ -774,7 +788,7 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
         {m.type === 'hairpin' && (
           <Row label="Shape">
             <Pick
-              value={m.kind}
+              value={shared((k) => (k as { kind?: string }).kind)}
               opts={[
                 ['cresc', 'cresc.'],
                 ['dim', 'dim.'],
@@ -808,10 +822,15 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
             />
           </Row>
         )}
-        <Row label="Position">{`measure ${r.mi + 1}, ${(m.tick / 3360).toFixed(2).replace(/\.?0+$/, '')} quarters`}</Row>
+        {group.length === 1 && (
+          <Row label="Position">{`measure ${r.mi + 1}, ${(m.tick / 3360).toFixed(2).replace(/\.?0+$/, '')} quarters`}</Row>
+        )}
       </Group>
       <Group title="Actions">
         <div class="btns">
+          <button type="button" onClick={selectSimilar}>
+            Select similar (Ctrl+Shift+A)
+          </button>
           <button type="button" class="danger" onClick={() => deleteSelection()}>
             Delete
           </button>

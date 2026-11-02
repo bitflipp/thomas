@@ -632,13 +632,24 @@ export function updateMark(
   a: MarkAddr,
   patch: Partial<MarkBody> | ((m: Draft<MarkBody>) => void),
 ): Score {
+  return updateMarks(score, [a], patch);
+}
+
+/** Apply one change to several marks at once (a single edit, so a single undo step). */
+export function updateMarks(
+  score: Score,
+  addrs: MarkAddr[],
+  patch: Partial<MarkBody> | ((m: Draft<MarkBody>) => void),
+): Score {
   return edit(score, (d) => {
-    const m = markList(d, a)?.[a.k];
-    if (!m) throw new EditError('No such mark');
-    if (typeof patch === 'function') patch(m);
-    else Object.assign(m, patch);
-    for (const k of Object.keys(m))
-      if ((m as Record<string, unknown>)[k] === undefined) delete (m as Record<string, unknown>)[k];
+    for (const a of addrs) {
+      const m = markList(d, a)?.[a.k];
+      if (!m) throw new EditError('No such mark');
+      if (typeof patch === 'function') patch(m);
+      else Object.assign(m, patch);
+      for (const k of Object.keys(m))
+        if ((m as Record<string, unknown>)[k] === undefined) delete (m as Record<string, unknown>)[k];
+    }
   });
 }
 
