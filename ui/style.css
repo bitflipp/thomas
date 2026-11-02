@@ -469,44 +469,12 @@ button.mini {
 .toast.err {
   background: #8f2a25;
 }
-.ctxmenu {
-  position: fixed;
-  z-index: 40;
-  list-style: none;
-  margin: 0;
-  padding: 4px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
-  min-width: 200px;
-}
-.ctxmenu button {
-  display: block;
-  height: auto;
-  width: 100%;
-  text-align: left;
-  border: 0;
-  background: none;
-  padding: 5px 10px;
-  border-radius: 4px;
-}
-.ctxmenu button:hover {
-  background: var(--hover);
-}
-.ctxmenu li.sep {
-  height: 1px;
-  background: var(--line);
-  margin: 4px 2px;
-}
-
 @media print {
   .toolbar,
   .palette,
   .inspector,
   .textpane,
   .toast,
-  .ctxmenu,
   .overlay {
     display: none !important;
   }
@@ -676,6 +644,11 @@ kbd {
 }
 .staves .btns button {
   margin: 0;
+}
+.staves .btns.staffacts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  margin: 2px 0 6px;
 }
 
 /* The dropdown (ui/Dropdown.tsx): a button with a chevron, used for every choice from a list */

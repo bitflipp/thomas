@@ -22,7 +22,10 @@ const ROWS: [string, string][] = [
   ['Alt + click (select)', 'Put the playhead there'],
   ['Ctrl Z / Ctrl Shift Z', 'Undo / redo'],
   ['Ctrl C / X / V', 'Copy / cut / paste notes (paste starts at the selected note)'],
-  ['Ctrl Shift A', 'Select all similar to the selection (all dynamics, hairpins of a kind, equal durations ...)'],
+  [
+    'Ctrl Shift A',
+    'Select everything the Inspector would edit together with the selection (marks of one type, all notes (or all rests), all slurs, ties or tuplets)',
+  ],
   ['Ctrl + / −  (wheel)', 'Zoom'],
   ['Ctrl E', 'Show the score as text, editable'],
   ['Ctrl I', 'Properties panel'],

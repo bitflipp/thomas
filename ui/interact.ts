@@ -72,13 +72,6 @@ export const ghost = signal<Ghost | null>(null);
 /** The element the pointer is over (select tool), shown in light blue as the next thing a click selects. */
 export const hover = signal<Target | null>(null);
 
-export interface Menu {
-  x: number;
-  y: number;
-  items: { label: string; run: () => void; danger?: boolean; sep?: boolean }[];
-}
-export const menu = signal<Menu | null>(null);
-
 // ---------------------------------------------------------------- page geometry
 
 export const pageEls: (HTMLElement | null)[] = [];
@@ -287,7 +280,6 @@ function pressWithSelectTool(e: PointerEvent, w: Where, h: HitIndex, target: Tar
 
 export function onPointerDown(e: PointerEvent): void {
   if (e.button !== 0) return;
-  menu.value = null;
   const w = locate(e.clientX, e.clientY);
   const h = hit.peek();
   if (!(w && h)) return;

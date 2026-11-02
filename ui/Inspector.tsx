@@ -14,7 +14,7 @@ import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import { chooseDots, flipStem, nudge, slurSelection, tieSelection } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
-import { deleteSelection, evRefs, menu, select, selectSimilar, tupletsAround } from './interact.ts';
+import { deleteSelection, evRefs, select, selectSimilar, tupletsAround } from './interact.ts';
 import { DYNAMICS } from './Palette.tsx';
 import { run, score, selection, space } from './state.ts';
 
@@ -165,6 +165,7 @@ function StavesSection() {
   const s = score.value;
   const conn = C.connections(s);
   const [editing, setEditing] = useState<string | undefined>();
+  const [acts, setActs] = useState<string | undefined>();
   const [drag, setDrag] = useState<string | undefined>();
   const [over, setOver] = useState<number | undefined>();
   const [inst, setInst] = useState('piano');
@@ -179,26 +180,6 @@ function StavesSection() {
       }}
     />
   );
-  const openMenu = (x: number, y: number, st: Score['staves'][number], i: number) => {
-    menu.value = {
-      x,
-      y,
-      items: [
-        { label: 'Insert above', run: () => run((c) => C.addInstrument(c, inst, i)) },
-        { label: 'Insert below', run: () => run((c) => C.addInstrument(c, inst, i + 1)) },
-        { label: 'Duplicate', run: () => run((c) => C.duplicateStaff(c, st.id)) },
-        { label: 'Rename', run: () => setEditing(st.id) },
-        { sep: true, label: '', run: () => undefined },
-        {
-          label: 'Remove staff',
-          danger: true,
-          run: () => {
-            if (s.staves.length > 1) run((c) => C.removeStaff(c, st.id));
-          },
-        },
-      ],
-    };
-  };
   return (
     <Group title="Staves">
       <div class="staves">
@@ -206,10 +187,6 @@ function StavesSection() {
           <>
             <div
               class={`staffrow${drag === st.id ? ' dragging' : ''}${over === i && drag && drag !== st.id ? ' dropto' : ''}`}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                openMenu(e.clientX, e.clientY, st, i);
-              }}
               onDragOver={(e) => {
                 if (drag) {
                   e.preventDefault();
@@ -269,15 +246,37 @@ function StavesSection() {
               <button
                 type="button"
                 class="mini"
-                title="Staff actions (or right-click the row)"
-                onClick={(e) => {
-                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                  openMenu(r.left, r.bottom + 2, st, i);
-                }}
+                title="Staff actions"
+                aria-expanded={acts === st.id}
+                onClick={() => setActs(acts === st.id ? undefined : st.id)}
               >
                 ⋯
               </button>
             </div>
+            {acts === st.id && (
+              <div class="btns staffacts">
+                <button type="button" onClick={() => run((c) => C.addInstrument(c, inst, i))}>
+                  Insert above
+                </button>
+                <button type="button" onClick={() => run((c) => C.addInstrument(c, inst, i + 1))}>
+                  Insert below
+                </button>
+                <button type="button" onClick={() => run((c) => C.duplicateStaff(c, st.id))}>
+                  Duplicate
+                </button>
+                <button type="button" onClick={() => setEditing(st.id)}>
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  class="danger"
+                  disabled={s.staves.length < 2}
+                  onClick={() => run((c) => C.removeStaff(c, st.id))}
+                >
+                  Remove staff
+                </button>
+              </div>
+            )}
             {i < s.staves.length - 1 && (
               <div class="joinrow">
                 <span>joined by</span>
@@ -403,6 +402,14 @@ function MeasureSection({ mi }: { mi: number }) {
 }
 
 /** A titled group of controls. */
+function SimilarButton() {
+  return (
+    <button type="button" title="Select similar (Ctrl+Shift+A)" onClick={selectSimilar}>
+      Sel. similar
+    </button>
+  );
+}
+
 function Group({ title, children }: { id?: string; title: string; children: preact.ComponentChildren }) {
   return (
     <div class="sec">
@@ -679,9 +686,7 @@ function EventSection() {
       )}
       <Group title="Actions">
         <div class="btns">
-          <button type="button" onClick={selectSimilar}>
-            Select similar (Ctrl+Shift+A)
-          </button>
+          <SimilarButton />
           {refs.length >= 2 && (
             <button type="button" onClick={slurSelection}>
               Slur (S)
@@ -833,9 +838,7 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
       </Group>
       <Group title="Actions">
         <div class="btns">
-          <button type="button" onClick={selectSimilar}>
-            Select similar (Ctrl+Shift+A)
-          </button>
+          <SimilarButton />
           <button type="button" class="danger" onClick={() => deleteSelection()}>
             Delete
           </button>
@@ -845,28 +848,34 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
   );
 }
 
-function SlurSection({ r }: { r: Extract<Ref, { t: 'slur' }> }) {
-  const e = eventOf(score.value, r);
-  const sl = e?.slurStart?.find((s) => s.id === r.id);
+function SlurSection() {
+  // Every selected slur is edited along with the first.
+  const group = selection.value.filter((x): x is Extract<Ref, { t: 'slur' }> => x.t === 'slur');
+  const side = same(group.map((g) => eventOf(score.value, g)?.slurStart?.find((s) => s.id === g.id)?.side));
   return (
     <section>
       <Group title="Properties">
         <Row label="Side">
           <Pick
-            value={sl?.side}
+            value={side}
             opts={[
               [undefined, 'auto'],
               ['above', 'above'],
               ['below', 'below'],
             ]}
-            onChange={(v) => run((x) => C.setSlurSide(x, r, r.id, v))}
+            onChange={(v) =>
+              run((x) => {
+                for (const g of group) C.setSlurSide(x, g, g.id, v);
+              })
+            }
           />
         </Row>
       </Group>
       <Group title="Actions">
         <div class="btns">
+          <SimilarButton />
           <button type="button" class="danger" onClick={() => deleteSelection()}>
-            Delete slur
+            Delete
           </button>
         </div>
       </Group>
@@ -878,13 +887,19 @@ function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
   const g = tupletOf(score.value, r);
   const [lab, setLab] = useState('');
   if (!g) return null;
-  const upd = (p: Parameters<typeof C.updateTuplet>[2]) => run((x) => C.updateTuplet(x, r, p));
+  // Every selected tuplet is edited along with the first; differing properties show as mixed.
+  const group = selection.value.filter((x): x is Extract<Ref, { t: 'tuplet' }> => x.t === 'tuplet');
+  const gs = group.flatMap((x) => tupletOf(score.value, x) ?? []);
+  const upd = (p: Parameters<typeof C.updateTuplet>[2]) =>
+    run((x) => {
+      for (const t of group) C.updateTuplet(x, t, p);
+    });
   return (
     <section>
       <Group title="Properties">
         <Row label="Bracket">
           <Pick
-            value={g.bracket}
+            value={same(gs.map((t) => t.bracket))}
             opts={[
               [undefined, 'auto'],
               [true, 'yes'],
@@ -895,7 +910,7 @@ function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
         </Row>
         <Row label="Number">
           <Pick
-            value={g.number ?? 'actual'}
+            value={same(gs.map((t) => t.number ?? 'actual'))}
             opts={[
               ['actual', 'shown'],
               ['none', 'hidden'],
@@ -916,7 +931,7 @@ function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
         </Row>
         <Row label="Placed">
           <Pick
-            value={g.placement}
+            value={same(gs.map((t) => t.placement))}
             opts={[
               [undefined, 'auto'],
               ['above', 'above'],
@@ -928,8 +943,9 @@ function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
       </Group>
       <Group title="Actions">
         <div class="btns">
+          <SimilarButton />
           <button type="button" class="danger" onClick={() => deleteSelection()}>
-            Remove tuplet
+            Delete
           </button>
         </div>
       </Group>
@@ -940,7 +956,11 @@ function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
 
 /** Whether the selection mixes kinds of elements (notes, marks of different types, slurs, ...). */
 function isMixed(sc: Score, sel: Ref[]): boolean {
-  const kinds = new Set(sel.map((r) => (r.t === 'mark' ? `mark:${markOf(sc, r)?.type}` : r.t)));
+  const kinds = new Set(
+    sel.map((r) =>
+      r.t === 'mark' ? `mark:${markOf(sc, r)?.type}` : r.t === 'ev' ? `ev:${eventOf(sc, r)?.kind}` : r.t,
+    ),
+  );
   return kinds.size > 1;
 }
 
@@ -1005,14 +1025,15 @@ export function Inspector() {
           <>
             {sel.some((r) => r.t === 'ev') && <EventSection />}
             {first?.t === 'mark' && <MarkSection r={first} />}
-            {first?.t === 'slur' && <SlurSection r={first} />}
+            {first?.t === 'slur' && <SlurSection />}
             {first?.t === 'tuplet' && <TupletSection r={first} />}
             {first?.t === 'tie' && (
               <section>
                 <Group title="Actions">
                   <div class="btns">
+                    <SimilarButton />
                     <button type="button" class="danger" onClick={() => deleteSelection()}>
-                      Remove tie
+                      Delete
                     </button>
                   </div>
                 </Group>

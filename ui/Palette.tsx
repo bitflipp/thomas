@@ -225,8 +225,7 @@ export function Palette() {
 }
 
 const HINTS: Record<Tool, string> = {
-  select:
-    'Click to select, drag a note up or down to change its pitch, drag a box to select several. Right-click for more.',
+  select: 'Click to select, drag a note up or down to change its pitch, drag a box to select several.',
   note: 'Click on a staff: the note lands where the ghost shows. Click an existing note to add or remove a chord tone. Alt replaces tuplets.',
   rest: 'Click on a staff to put a rest of the chosen duration.',
   slur: 'Drag from the first note to the last.',

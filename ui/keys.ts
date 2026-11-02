@@ -7,7 +7,7 @@ import * as C from '../src/editor/commands.ts';
 import type { Event } from '../src/model.ts';
 import { flattenVoice } from '../src/model.ts';
 import { chooseDots, chooseDuration, flipStem, nudge, slurSelection, stepSelection, tieSelection } from './actions.ts';
-import { cancelDrag, deleteSelection, evRefs, menu, selectSimilar, zoomBy } from './interact.ts';
+import { cancelDrag, deleteSelection, evRefs, selectSimilar, zoomBy } from './interact.ts';
 import { rewind, toggle } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
@@ -118,7 +118,6 @@ function onViewShortcut(e: KeyboardEvent): boolean {
 
 function onEscape(): void {
   showHelp.value = false;
-  menu.value = null;
   cancelDrag();
   if (tool.value !== 'select') tool.value = 'select';
   else selection.value = [];
