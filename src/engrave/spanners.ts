@@ -11,6 +11,8 @@ import { DOT_STEP } from './spacing.ts';
 
 const sm = loadSmufl();
 
+type Side = 'above' | 'below';
+
 /** Filled crescent from (x0,y0) to (x1,y1) bulging `h` away from the chord; `thick` at the middle, `tip` at the ends. */
 function crescent(
   x0: number,
@@ -38,93 +40,100 @@ function crescent(
   return `M${x0.toFixed(3)} ${y0.toFixed(3)}C${cx(a, k)} ${cx(1 - a, k)} ${x1.toFixed(3)} ${y1.toFixed(3)}L${x1.toFixed(3)} ${iy1.toFixed(3)}C${cx(1 - a, k2)} ${cx(a, k2)} ${x0.toFixed(3)} ${iy0.toFixed(3)}Z`;
 }
 
+/** The tied head of `e` connects to the same pitch in the next event of the voice, unless a rest stands in between. */
+function findTieTarget(evs: EvL[], i: number, head: EvL['heads'][number]): { next?: EvL; nh: number } {
+  for (let k = i + 1; k < evs.length && k <= i + 2; k++) {
+    const candidate = evs[k];
+    if (candidate.ev.kind !== 'note') {
+      if (candidate.ev.kind === 'rest' && candidate.ev.style !== 'hidden') break;
+      continue;
+    }
+    const nh = candidate.heads.findIndex(
+      (x) => pitchStep(x.pitch) === pitchStep(head.pitch) && x.pitch.alter === head.pitch.alter,
+    );
+    return nh >= 0 ? { next: candidate, nh } : { nh };
+  }
+  return { nh: -1 };
+}
+
+/**
+ * Ties of one voice. The tie of a note whose successor is in another system is drawn in two halves.
+ * Nested ties of a chord are drawn from the inside out: the arc nearest the chord first, the outer
+ * ones around it, so each can clear the previous one through the skyline.
+ */
+function drawVoiceTies(systems: SysCtx[], evs: EvL[]): void {
+  evs.forEach((e, i) => {
+    if (e.ev.kind !== 'note') return;
+    const order = e.heads
+      .map((_, hi) => hi)
+      .sort((p, q) => {
+        const pa = tieAbove(e, p);
+        const qa = tieAbove(e, q);
+        if (pa !== qa) return pa ? -1 : 1;
+        return pa ? e.heads[p].pos - e.heads[q].pos : e.heads[q].pos - e.heads[p].pos;
+      });
+    for (const hi of order) {
+      if (!e.heads[hi].tie) continue;
+      const { next, nh } = findTieTarget(evs, i, e.heads[hi]);
+      drawTie(systems, e, hi, next, nh);
+    }
+  });
+}
+
+/** Slurs of one staff, matched start to stop by voice and id; each is returned as a drawing function, tagged with whether it crosses staves. */
+function matchSlurs(
+  systems: SysCtx[],
+  sysOf: number[],
+  timeOrder: EvL[],
+  voiceEvs: Map<number, EvL[]>,
+): { draw: () => void; cross: boolean }[] {
+  const out: { draw: () => void; cross: boolean }[] = [];
+  const open = new Map<string, { ev: EvL; side?: Side; id: number }>();
+  for (const e of timeOrder) {
+    for (const id of e.ev.slurStop ?? []) {
+      const key = `${e.voice}|${id}`;
+      const start = open.get(key);
+      if (!start) continue;
+      const voice = must(voiceEvs.get(e.voice));
+      out.push({
+        draw: () => drawSlur(systems, sysOf, start.ev, e, start.side, voice, start.id),
+        cross: start.ev.staff !== start.ev.home || e.staff !== start.ev.home,
+      });
+      open.delete(key);
+    }
+    for (const ss of e.ev.slurStart ?? []) open.set(`${e.voice}|${ss.id}`, { ev: e, side: ss.side, id: ss.id });
+  }
+  return out;
+}
+
 export function drawSpanners(systems: SysCtx[]): void {
   if (!systems.length) return;
   const prep = systems[0].prep;
-  const nS = prep.score.staves.length;
+  const nStaves = prep.score.staves.length;
   const sysOf: number[] = [];
   systems.forEach((s, i) => {
     for (let m = s.a; m <= s.b; m++) sysOf[m] = i;
   });
-
-  const slurs: (() => void)[] = [];
-  const crossSlurs: (() => void)[] = [];
-  // ---- Per staff: gather each voice's events over the whole piece (ties and slurs run across
-  // measures and systems), then draw this staff's ties and queue its slurs.
-  for (let s = 0; s < nS; s++) {
+  const slurs: { draw: () => void; cross: boolean }[] = [];
+  // Per staff: gather each voice's events over the whole piece (ties and slurs run across measures
+  // and systems), then draw this staff's ties and queue its slurs.
+  for (let s = 0; s < nStaves; s++) {
     const voiceEvs = new Map<number, EvL[]>();
     const timeOrder: EvL[] = [];
     for (const measure of prep.measures) {
-      for (const v of measure[s].voices) {
-        if (!voiceEvs.has(v.id)) voiceEvs.set(v.id, []);
-        must(voiceEvs.get(v.id)).push(...v.evs);
-      }
+      for (const v of measure[s].voices) voiceEvs.set(v.id, [...(voiceEvs.get(v.id) ?? []), ...v.evs]);
       // Slurs belong to the voice, wherever its (cross-staff) notes are drawn; `timeOrder` is the staff's
       // events by time so that stops can be matched to starts.
       timeOrder.push(...measure[s].voices.flatMap((v) => v.evs).sort((p, q) => p.start - q.start || p.voice - q.voice));
     }
-    // ---- Ties: each tied head connects to the same pitch in the next event of the voice. The
-    // tie of a note whose successor is in another system is drawn in two halves.
-    for (const [, evs] of voiceEvs) {
-      evs.forEach((e, i) => {
-        if (e.ev.kind !== 'note') return;
-        // Nested ties of a chord are drawn from the inside out: the arc nearest the chord first,
-        // the outer ones around it, so each can clear the previous one through the skyline.
-        const order = e.heads
-          .map((_, hi) => hi)
-          .sort((p, q) => {
-            const pa = tieAbove(e, p);
-            const qa = tieAbove(e, q);
-            if (pa !== qa) return pa ? -1 : 1;
-            return pa ? e.heads[p].pos - e.heads[q].pos : e.heads[q].pos - e.heads[p].pos;
-          });
-        order.forEach((hi) => {
-          const h = e.heads[hi];
-          if (!h.tie) return;
-          let next: EvL | undefined;
-          let nh = -1;
-          for (let k = i + 1; k < evs.length && k <= i + 2; k++) {
-            if (evs[k].ev.kind !== 'note') {
-              if (evs[k].ev.kind === 'rest' && (evs[k].ev as { style?: string }).style !== 'hidden') break;
-              continue;
-            }
-            nh = evs[k].heads.findIndex(
-              (x) => pitchStep(x.pitch) === pitchStep(h.pitch) && x.pitch.alter === h.pitch.alter,
-            );
-            if (nh >= 0) {
-              next = evs[k];
-            }
-            break;
-          }
-          drawTie(systems, e, hi, next, nh);
-        });
-      });
-    }
-    // ---- Slurs, matched start to stop by voice and id. They are collected rather than drawn at once:
-    // those between staves go first so that the others nest around them.
-    const open = new Map<string, { ev: EvL; side?: 'above' | 'below'; id: number }>();
-    for (const e of timeOrder) {
-      for (const id of e.ev.slurStop ?? []) {
-        const k = `${e.voice}|${id}`;
-        const st = open.get(k);
-        if (st) {
-          const ve = must(voiceEvs.get(e.voice));
-          const a0 = st.ev;
-          const sd = st.side;
-          const sid = st.id;
-          (a0.staff !== a0.home || e.staff !== a0.home ? crossSlurs : slurs).push(() =>
-            drawSlur(systems, sysOf, a0, e, sd, ve, sid),
-          );
-          open.delete(k);
-        }
-      }
-      for (const ss of e.ev.slurStart ?? []) open.set(`${e.voice}|${ss.id}`, { ev: e, side: ss.side, id: ss.id });
-    }
+    for (const evs of voiceEvs.values()) drawVoiceTies(systems, evs);
+    slurs.push(...matchSlurs(systems, sysOf, timeOrder, voiceEvs));
   }
-  for (const f of [...crossSlurs, ...slurs]) f();
-  // ---- Marks: dynamics, hairpins, pedal, ottava, tempo and text. They come last so that they
-  // see the skylines of the slurs and ties and are stacked outside them.
-  for (let s = 0; s < nS; s++) drawMarks(systems, sysOf, s);
+  // Slurs between staves go first so that the others nest around them.
+  for (const sl of slurs.filter((q) => q.cross)) sl.draw();
+  for (const sl of slurs.filter((q) => !q.cross)) sl.draw();
+  // Marks come last so that they see the skylines of the slurs and ties and are stacked outside them.
+  for (let s = 0; s < nStaves; s++) drawMarks(systems, sysOf, s);
 }
 
 /** The point where a slur on `side` attaches to `e`: at the stem tip when the stem is on that side, else beyond the outermost head; beyond any articulations on that side. */
@@ -280,6 +289,186 @@ function sysOfIndex(systems: SysCtx[], mi: number): number {
   return 0;
 }
 
+/** The side of a slur: an explicit side wins; otherwise by voice when there are several (the first above, the others below); otherwise by the stems of the notes under the slur. */
+function slurSide(a: EvL, b: EvL, explicit: Side | undefined, voice: EvL[]): Side {
+  if (explicit) return explicit;
+  if (a.nVoices > 1) return a.voiceRank === 0 ? 'above' : 'below';
+  const span = voice.slice(voice.indexOf(a), voice.indexOf(b) + 1).filter((x) => x.ev.kind === 'note');
+  const ups = span.filter((x) => x.stem === 'up').length;
+  const downs = span.filter((x) => x.stem === 'down').length;
+  return ups > 0 && downs === 0 ? 'below' : 'above';
+}
+
+/** The side a tie of `e` arches to, if it has one. */
+function tieSideOf(e: EvL): Side | null {
+  if (!e.heads.some((h) => h.tie)) return null;
+  if (e.nVoices > 1) return e.voiceRank === 0 ? 'above' : 'below';
+  return e.stem === 'down' ? 'above' : 'below';
+}
+
+/** The skyline a slur on `staff` must clear. A slur between staves must clear the content of both: they are merged, with the other staff's boxes shifted into the voice's coordinates. */
+function slurSkyline(ctx: SysCtx, staff: number, a: EvL, b: EvL): Skyline {
+  const others = [...new Set([a.staff, b.staff])].filter((q) => q !== staff);
+  if (!others.length) return ctx.sky[staff];
+  const sky = new Skyline();
+  sky.boxes = [...ctx.sky[staff].boxes];
+  for (const q of others) {
+    const d = staffOffset(ctx, staff, q);
+    for (const bx of ctx.sky[q].boxes) sky.boxes.push({ ...bx, y0: bx.y0 + d, y1: bx.y1 + d });
+  }
+  return sky;
+}
+
+/** How a slur piece is laid out: which side, its skyline and the ends that are open (at a system break). */
+interface SlurFrame {
+  above: boolean;
+  sky: Skyline;
+  openL: boolean;
+  openR: boolean;
+}
+
+/** The skyline edge over a window of the span: the nearest obstacle on the slur's side. */
+const slurReach = (f: SlurFrame, a: number, b: number) => (f.above ? f.sky.top(a, b, 99) : f.sky.bottom(a, b, -99));
+
+/**
+ * Where the two ends start. An open (system-break) end has no note to attach to: it starts clear of
+ * whatever stands within `edge` spaces of the system edge, but at most 3 spaces off the original y. An
+ * attached end sits just beyond whatever stands next to its note (neighbouring notes, beams, dots,
+ * articulations - not other slurs), never more than a couple of spaces off the note itself.
+ */
+function slurEndHeights(f: SlurFrame, x0: number, y0: number, x1: number, y1: number): [number, number] {
+  const { above, sky, openL, openR } = f;
+  const edge = 7;
+  const near = 3.5;
+  const maxUp = 2.0;
+  const openY = (y: number, o: number): number =>
+    above ? Math.max(y - 3, Math.min(y, o - 0.9)) : Math.min(y + 3, Math.max(y, o + 0.9));
+  const attach = (y: number, xa: number, xb: number): number => {
+    const o = above ? sky.top(xa, xb, 99, true) : sky.bottom(xa, xb, -99, true);
+    if (Math.abs(o) > 90) return y;
+    return above ? Math.max(y - maxUp, Math.min(y, o - 0.45)) : Math.min(y + maxUp, Math.max(y, o + 0.45));
+  };
+  if (openL) {
+    const o = slurReach(f, x0, x0 + edge);
+    if (Math.abs(o) < 90) y0 = openY(y0, o);
+  } else y0 = attach(y0, x0 - 0.3, x0 + near);
+  if (openR) {
+    const o = slurReach(f, x1 - edge, x1);
+    if (Math.abs(o) < 90) y1 = openY(y1, o);
+  } else y1 = attach(y1, x1 - near, x1 + 0.3);
+  return [y0, y1];
+}
+
+/**
+ * The obstacle profile under the arc, sampled once: `o` is the skyline edge at each sampled `t` (0..1
+ * along the span). Sampling once keeps the search for the end points cheap.
+ */
+function sampleObstacles(f: SlurFrame, x0: number, x1: number): { t: number; o: number }[] {
+  const L = x1 - x0;
+  const window = 0.7;
+  const samples: { t: number; o: number }[] = [];
+  for (let x = x0 + 0.3; x <= x1 - 0.3; x += 0.25) {
+    if ((!f.openL && x < x0 + 0.45) || (!f.openR && x > x1 - 0.45)) continue; // attached ends: the note itself is there
+    const o = slurReach(f, x - window / 2, x + window / 2);
+    if (Math.abs(o) < 90) samples.push({ t: (x - x0) / L, o });
+  }
+  return samples;
+}
+
+/**
+ * The end points may move away from their notes (each on its own, so the slope can change) when that
+ * makes a flatter arc possible; moving costs, and so does a tall arc, so the cheapest wins. `need` is
+ * the height the arc needs, with end points at the given y, to clear everything underneath; the arc is
+ * modelled as a parabola 4t(1-t) of its height over the chord, slightly flattened (0.95).
+ */
+function cheapestEndLift(
+  f: SlurFrame,
+  samples: { t: number; o: number }[],
+  y0: number,
+  y1: number,
+  L: number,
+): { d0: number; d1: number; h: number } {
+  const dir = f.above ? -1 : 1; // direction away from the notes
+  const hPref = Math.max(0.7, Math.min(3.0, 0.09 * L + 0.6));
+  const need = (ya: number, yb: number): number => {
+    let h = hPref;
+    for (const { t, o } of samples) {
+      const chord = ya + (yb - ya) * t;
+      const gap = f.above ? chord - (o - 0.4) : o + 0.4 - chord; // positive: the chord is beyond the obstacle edge, the arc must bulge
+      if (gap > 0) h = Math.max(h, gap / (4 * t * (1 - t) * 0.95));
+    }
+    return h;
+  };
+  const hLimit = Math.max(3.5, 0.07 * L); // long slurs may arch higher before the end points are lifted instead
+  let best = { cost: Number.POSITIVE_INFINITY, d0: 0, d1: 0, h: hPref };
+  for (let d0 = 0; d0 <= 8; d0 += 0.5) {
+    for (let d1 = 0; d1 <= 8; d1 += 0.5) {
+      const h = need(y0 + dir * d0, y1 + dir * d1);
+      const cost =
+        2.5 * (d0 + d1) +
+        0.25 * (h - hPref) +
+        (h > hLimit ? 6 * (h - hLimit) : 0) +
+        0.04 * Math.abs(y1 + dir * d1 - y0 - dir * d0);
+      if (cost < best.cost - 1e-9) best = { cost, d0, d1, h };
+    }
+  }
+  return best;
+}
+
+/** A slur piece laid out but not yet drawn: its natural height, and a function drawing it at a (possibly shared) height. */
+interface SlurPiece {
+  h: number;
+  L: number;
+  draw: (h: number) => void;
+}
+
+/** What a slur piece needs to draw itself. */
+interface SlurStyle {
+  above: boolean;
+  thick: number;
+  id: number;
+  slurId: number;
+  from: EvL;
+}
+
+function planSlurPiece(
+  ctx: SysCtx,
+  st: SlurStyle,
+  b: EvL,
+  [x0, y0In, x1, y1In]: [number, number, number, number],
+  staff: number,
+  openL: boolean,
+  openR: boolean,
+): SlurPiece | undefined {
+  const L = x1 - x0;
+  if (L < 0.5) return undefined;
+  const frame: SlurFrame = { above: st.above, sky: slurSkyline(ctx, staff, st.from, b), openL, openR };
+  const [y0Start, y1Start] = slurEndHeights(frame, x0, y0In, x1, y1In);
+  const lift = cheapestEndLift(frame, sampleObstacles(frame, x0, x1), y0Start, y1Start, L);
+  const dir = st.above ? -1 : 1;
+  const y0 = y0Start + dir * lift.d0;
+  const y1 = y1Start + dir * lift.d1;
+  return {
+    h: Math.min(lift.h, Math.max(7, 0.12 * L)),
+    L,
+    draw: (h) => {
+      ctx.prims[staff].push({
+        t: 'path',
+        d: crescent(x0, y0, x1, y1, h, st.thick, st.above, 0.1, 0.2),
+        k: 'slur',
+        o: st.slurId,
+        r: st.from.ev,
+        n: st.id,
+      });
+      const ym = Math.min(y0, y1);
+      const yM = Math.max(y0, y1);
+      // A slur between staves reaches into the other staff: it is not recorded there, or it would
+      // push the staves apart for good.
+      frame.sky.add(x0, x1, st.above ? ym - h : ym, st.above ? yM : yM + h, true);
+    },
+  };
+}
+
 /**
  * Draws the slur from note `a` to note `b` (in the same voice, `voice` being all its events). The side comes
  * from `explicit`, else the voice, else the stems of the notes spanned. Each end attaches to its note; the arc
@@ -290,171 +479,38 @@ function drawSlur(
   sysOf: number[],
   a: EvL,
   b: EvL,
-  explicit: 'above' | 'below' | undefined,
+  explicit: Side | undefined,
   voice: EvL[],
   id: number,
 ): void {
   if (a.ev.kind !== 'note' || b.ev.kind !== 'note') return;
-  // Side: an explicit side wins; otherwise by voice when there are several (the first above,
-  // the others below); otherwise by the stems of the notes under the slur (see below).
-  let side: 'above' | 'below';
-  if (explicit) side = explicit;
-  else if (a.nVoices > 1) side = a.voiceRank === 0 ? 'above' : 'below';
-  else {
-    const ia = voice.indexOf(a);
-    const ib = voice.indexOf(b);
-    const span = voice.slice(ia, ib + 1).filter((x) => x.ev.kind === 'note');
-    const ups = span.filter((x) => x.stem === 'up').length;
-    const downs = span.filter((x) => x.stem === 'down').length;
-    side = ups > 0 && downs === 0 ? 'below' : 'above';
-  }
+  const side = slurSide(a, b, explicit, voice);
   const above = side === 'above';
   const pa = headPoint(a, side, 0.65);
   const pb = headPoint(b, side, 0.65);
   // A tie starting on the same side as the slur: start the slur beyond the tie, so the slur
   // does not begin inside the tie's arc.
-  const tieSide = (e: EvL): 'above' | 'below' | null =>
-    e.heads.some((h) => h.tie)
-      ? e.nVoices > 1
-        ? e.voiceRank === 0
-          ? 'above'
-          : 'below'
-        : e.stem === 'down'
-          ? 'above'
-          : 'below'
-      : null;
-  if (tieSide(a) === side && !pa.stemSide) pa.y += above ? -0.7 : 0.7;
-  const slurId = oid({});
+  if (tieSideOf(a) === side && !pa.stemSide) pa.y += above ? -0.7 : 0.7;
   const sa = systems[sysOf[a.mi]];
   const sb = systems[sysOf[b.mi]];
   // A slur belongs to the voice's staff; an end on another staff is converted to the voice's coordinates
   // (a stem end that is already in those coordinates is not).
   if (a.staff !== a.home && !(pa.stemSide && pa.homed)) pa.y += staffOffset(sa, a.home, a.staff);
   if (b.staff !== a.home && !(pb.stemSide && pb.homed)) pb.y += staffOffset(sb, a.home, b.staff);
-  const thick = D.slurMidpointThickness as number;
-  const piece = (
-    ctx: SysCtx,
-    x0: number,
-    y0: number,
-    x1: number,
-    y1: number,
-    staff: number,
-    openL = false,
-    openR = false,
-  ): { h: number; L: number; draw: (h: number) => void } | undefined => {
-    const L = x1 - x0;
-    if (L < 0.5) return undefined;
-    // A slur between staves must clear the content of both. Merge their skylines into one, with
-    // the other staff's boxes shifted into the voice's coordinates.
-    const others = [...new Set([a.staff, b.staff])].filter((q) => q !== staff);
-    let sky = ctx.sky[staff];
-    if (others.length) {
-      sky = new Skyline();
-      sky.boxes = [...ctx.sky[staff].boxes];
-      for (const q of others) {
-        const d = staffOffset(ctx, staff, q);
-        for (const bx of ctx.sky[q].boxes) sky.boxes.push({ ...bx, y0: bx.y0 + d, y1: bx.y1 + d });
-      }
-    }
-    const dir = above ? -1 : 1; // direction away from the notes
-    const win = 0.7;
-    const reach = (a: number, b: number) => (above ? sky.top(a, b, 99) : sky.bottom(a, b, -99));
-    // An open (system-break) end has no note to attach to: start it clear of whatever stands within
-    // `edge` spaces of the system edge, but at most 3 spaces off the original y.
-    const edge = 7;
-    const openY = (y: number, o: number): number =>
-      above ? Math.max(y - 3, Math.min(y, o - 0.9)) : Math.min(y + 3, Math.max(y, o + 0.9));
-    if (openL) {
-      const o = reach(x0, x0 + edge);
-      if (Math.abs(o) < 90) y0 = openY(y0, o);
-    }
-    if (openR) {
-      const o = reach(x1 - edge, x1);
-      if (Math.abs(o) < 90) y1 = openY(y1, o);
-    }
-    // An attached end sits just beyond whatever stands next to its note (neighbouring notes, beams,
-    // dots, articulations - not other slurs), never more than a couple of spaces off the note itself.
-    const near = 3.5;
-    const maxUp = 2.0;
-    const attach = (y: number, xa: number, xb: number): number => {
-      const o = above ? sky.top(xa, xb, 99, true) : sky.bottom(xa, xb, -99, true);
-      if (Math.abs(o) > 90) return y;
-      return above ? Math.max(y - maxUp, Math.min(y, o - 0.45)) : Math.min(y + maxUp, Math.max(y, o + 0.45));
-    };
-    if (!openL) y0 = attach(y0, x0 - 0.3, x0 + near);
-    if (!openR) y1 = attach(y1, x1 - near, x1 + 0.3);
-    // Obstacle profile under the arc, sampled once: `o` is the skyline edge at each sampled
-    // `t` (0..1 along the span). Sampling once keeps the search for the end points below cheap.
-    const samples: { t: number; o: number }[] = [];
-    for (let x = x0 + 0.3; x <= x1 - 0.3; x += 0.25) {
-      if ((!openL && x < x0 + 0.45) || (!openR && x > x1 - 0.45)) continue; // attached ends: the note itself is there
-      const o = reach(x - win / 2, x + win / 2);
-      if (Math.abs(o) < 90) samples.push({ t: (x - x0) / L, o });
-    }
-    const hPref = Math.max(0.7, Math.min(3.0, 0.09 * L + 0.6));
-    // Height needed for the arc, with end points at y0/y1, to clear everything underneath. The arc is
-    // modelled as a parabola 4t(1-t) of its height over the chord, slightly flattened (0.95).
-    const need = (ya: number, yb: number): number => {
-      let h = hPref;
-      for (const { t, o } of samples) {
-        const chord = ya + (yb - ya) * t;
-        const gap = above ? chord - (o - 0.4) : o + 0.4 - chord; // positive: the chord is beyond the obstacle edge, the arc must bulge
-        if (gap > 0) h = Math.max(h, gap / (4 * t * (1 - t) * 0.95));
-      }
-      return h;
-    };
-    // The end points may move away from their notes (each on its own, so the slope can change) when
-    // that makes a flatter arc possible; moving costs, and so does a tall arc, so the cheapest wins.
-    const hLimit = Math.max(3.5, 0.07 * L); // long slurs may arch higher before the end points are lifted instead
-    let best = { cost: Number.POSITIVE_INFINITY, d0: 0, d1: 0, h: hPref };
-    for (let d0 = 0; d0 <= 8; d0 += 0.5) {
-      for (let d1 = 0; d1 <= 8; d1 += 0.5) {
-        const hh = need(y0 + dir * d0, y1 + dir * d1);
-        const cost =
-          2.5 * (d0 + d1) +
-          0.25 * (hh - hPref) +
-          (hh > hLimit ? 6 * (hh - hLimit) : 0) +
-          0.04 * Math.abs(y1 + dir * d1 - y0 - dir * d0);
-        if (cost < best.cost - 1e-9) best = { cost, d0, d1, h: hh };
-      }
-    }
-    y0 += dir * best.d0;
-    y1 += dir * best.d1;
-    let h = best.h;
-    h = Math.min(h, Math.max(7, 0.12 * L));
-    return {
-      h,
-      L,
-      draw: (hh: number) => {
-        ctx.prims[staff].push({
-          t: 'path',
-          d: crescent(x0, y0, x1, y1, hh, thick, above, 0.1, 0.2),
-          k: 'slur',
-          o: slurId,
-          r: a.ev,
-          n: id,
-        });
-        const ym = Math.min(y0, y1);
-        const yM = Math.max(y0, y1);
-        // A slur between staves reaches into the other staff: it is not recorded there, or it would
-        // push the staves apart for good.
-        sky.add(x0, x1, above ? ym - hh : ym, above ? yM : yM + hh, true);
-      },
-    };
-  };
+  const style: SlurStyle = { above, thick: D.slurMidpointThickness as number, id, slurId: oid({}), from: a };
   if (sa === sb) {
-    const p = piece(sa, pa.x, pa.y, pb.x, pb.y, a.home);
+    const p = planSlurPiece(sa, style, b, [pa.x, pa.y, pb.x, pb.y], a.home, false, false);
     p?.draw(p.h);
-  } else {
-    // The two halves of a slur broken across systems get the same arch height so that they
-    // read as one slur: the higher of the two is used for both...
-    const p1 = piece(sa, pa.x, pa.y, sa.width - 0.2, pa.y, a.home, false, true);
-    const p2 = piece(sb, Math.max(sb.prefix - 0.3, 0.5), pb.y, pb.x, pb.y, a.home, true, false);
-    const hh = Math.max(p1?.h ?? 0, p2?.h ?? 0);
-    // ... but a short half must not become a bowl just because the other one is long. `cap`
-    // limits a half's height to a multiple of its own length (or its own natural height).
-    const cap = (p: typeof p1) => (p ? Math.min(hh, Math.max(0.12 * p.L + 0.35, Math.min(p.h, 0.7))) : hh);
-    p1?.draw(cap(p1));
-    p2?.draw(cap(p2));
+    return;
   }
+  // The two halves of a slur broken across systems get the same arch height so that they
+  // read as one slur: the higher of the two is used for both...
+  const p1 = planSlurPiece(sa, style, b, [pa.x, pa.y, sa.width - 0.2, pa.y], a.home, false, true);
+  const p2 = planSlurPiece(sb, style, b, [Math.max(sb.prefix - 0.3, 0.5), pb.y, pb.x, pb.y], a.home, true, false);
+  const hh = Math.max(p1?.h ?? 0, p2?.h ?? 0);
+  // ... but a short half must not become a bowl just because the other one is long. `cap`
+  // limits a half's height to a multiple of its own length (or its own natural height).
+  const cap = (p: SlurPiece | undefined) => (p ? Math.min(hh, Math.max(0.12 * p.L + 0.35, Math.min(p.h, 0.7))) : hh);
+  p1?.draw(cap(p1));
+  p2?.draw(cap(p2));
 }
