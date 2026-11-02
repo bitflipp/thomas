@@ -23,7 +23,17 @@ import type {
   TupletGroup,
   Voice,
 } from '../model.ts';
-import { baseTicks, collectMarks, flattenVoice, isBeam, isEvent, isTremolo, measureTicks, timeAt } from '../model.ts';
+import {
+  baseTicks,
+  collectMarks,
+  flattenVoice,
+  isBeam,
+  isEvent,
+  isTremolo,
+  marksOf,
+  measureTicks,
+  timeAt,
+} from '../model.ts';
 import { must } from '../util.ts';
 import type { EvAddr, MarkAddr } from './addr.ts';
 import { voiceOf } from './addr.ts';
@@ -50,12 +60,12 @@ function edit(score: Score, fn: (d: Draft<Score>) => void): Score {
   const only = new Set<number>();
   const n = Math.max(next.measures.length, score.measures.length);
   for (let i = 0; i < n; i++) if (next.measures[i] !== score.measures[i]) only.add(i);
-  if (next.measures.length !== score.measures.length)
-    return produce(next, (d) => {
-      tidy(d as Score);
-    });
+  const all = next.measures.length !== score.measures.length;
+  // Looking for something to fix on the plain score is much cheaper than a draft over all of it: Immer
+  // wraps every object that is read, and slurs and hairpins are checked across the whole piece.
+  if (!needsTidy(next, all ? undefined : only)) return next;
   return produce(next, (d) => {
-    tidy(d as Score, only);
+    tidy(d as Score, all ? undefined : only);
   });
 }
 
@@ -97,6 +107,72 @@ function tidy(d: Score, only?: Set<number>): void {
   const touched = dissolveBrokenGroups(d, only);
   dropDanglingSlurs(d, only ? touched.voices : undefined);
   for (const staff of touched.staves) dropUnpairedHairpins(d, staff);
+}
+
+/** Slur ids of a voice's events in time order (starts and stops of one event together), for events that have any. Voices are never changed in place, so this is kept per object. */
+const slurTokens = new WeakMap<Voice, { stops: number[]; starts: number[] }[]>();
+function slurTokensOf(v: Voice): { stops: number[]; starts: number[] }[] {
+  let t = slurTokens.get(v);
+  if (!t) {
+    t = [];
+    for (const te of flattenVoice(v)) {
+      const e = te.ev;
+      if (e.slurStop || e.slurStart) t.push({ stops: e.slurStop ?? [], starts: (e.slurStart ?? []).map((s) => s.id) });
+    }
+    slurTokens.set(v, t);
+  }
+  return t;
+}
+
+/** Does `tidy` have anything to do? The same checks as `tidy`, reading only. */
+function needsTidy(s: Score, only?: Set<number>): boolean {
+  const staves = new Set<string>();
+  const voices = new Set<string>();
+  s.measures.forEach((m, mi) => {
+    if (only && !only.has(mi)) return;
+    for (const [sid, sm] of Object.entries(m.staves))
+      for (const v of sm.voices) {
+        staves.add(sid);
+        voices.add(`${sid}|${v.id}`);
+      }
+  });
+  for (const key of voices) {
+    const [sid, vid] = [key.slice(0, key.lastIndexOf('|')), Number(key.slice(key.lastIndexOf('|') + 1))];
+    const open = new Set<number>();
+    for (const [mi, m] of s.measures.entries()) {
+      const v = m.staves[sid]?.voices.find((x) => x.id === vid);
+      if (!v) continue;
+      if ((!only || only.has(mi)) && withoutBrokenGroups(v.items)) return true;
+      for (const t of slurTokensOf(v)) {
+        for (const id of t.stops) {
+          if (!open.has(id)) return true; // a stop with no start
+          open.delete(id);
+        }
+        for (const id of t.starts) open.add(id);
+      }
+    }
+    if (open.size) return true; // a start never stopped
+  }
+  for (const sid of staves) if (hasUnpairedHairpins(s, sid)) return true;
+  return false;
+}
+
+/** Is a hairpin start without its stop, or a stop without its start, left on the staff? (matching is by id across measures) */
+function hasUnpairedHairpins(s: Score, staffId: string): boolean {
+  const open = new Set<number>();
+  for (const m of s.measures) {
+    const sm = m.staves[staffId];
+    if (!sm) continue;
+    for (const mk of marksOf(sm)) {
+      if (mk.type === 'hairpin') {
+        if (open.has(mk.id)) return true;
+        open.add(mk.id);
+      } else if (mk.type === 'stop' && mk.of === 'hairpin') {
+        if (!open.delete(mk.id)) return true;
+      }
+    }
+  }
+  return open.size > 0;
 }
 
 /**

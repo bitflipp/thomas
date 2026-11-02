@@ -166,18 +166,37 @@ function addToTarget(byKey: Map<string, Target>, page: number, p: Prim, ref: Ref
   if (p.k === 'rest') t.prio = 0;
 }
 
+/** The targets of a list of prims (all on one page): one per model object, curves and heads apart. */
+function targetsOf(index: ScoreIndex, page: number, prims: Prim[]): Target[] {
+  const byKey = new Map<string, Target>();
+  for (const p of prims) {
+    if (!p.k || p.k === 'beam') continue;
+    const ref = primRef(index, p);
+    const bb = ref && primBox(p);
+    if (ref && bb) addToTarget(byKey, page, p, ref, bb);
+  }
+  return [...byKey.values()];
+}
+
+/**
+ * The targets of each system, by the array of its primitives on the page. An engraving that reuses an
+ * unchanged system hands over the same array (see `Engraved.placed`), whose primitives still point at
+ * model objects that have not moved, so the targets made for it before are still right.
+ */
+const targetsOfSystem = new WeakMap<Prim[], { page: number; targets: Target[] }>();
+
 export function buildHitIndex(score: Score, res: Engraved): HitIndex {
   const index = indexScore(score);
-  const byKey = new Map<string, Target>();
-  res.pages.forEach((page, pi) => {
-    for (const p of page.prims) {
-      if (!p.k || p.k === 'beam') continue;
-      const ref = primRef(index, p);
-      const bb = ref && primBox(p);
-      if (ref && bb) addToTarget(byKey, pi, p, ref, bb);
+  const targets: Target[] = [];
+  // Everything model-related on a page belongs to a system, so the systems' arrays are all there is to look at.
+  for (const pl of res.placed) {
+    let c = targetsOfSystem.get(pl.prims);
+    if (!c || c.page !== pl.page) {
+      c = { page: pl.page, targets: targetsOf(index, pl.page, pl.prims) };
+      targetsOfSystem.set(pl.prims, c);
     }
-  });
-  const targets = [...byKey.values()];
+    for (const t of c.targets) targets.push(t);
+  }
   const byPage: Target[][] = res.pages.map(() => []);
   for (const t of targets) byPage[t.page].push(t);
   return { targets, byPage, layout: res.layout, index };

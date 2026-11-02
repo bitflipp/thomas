@@ -62,7 +62,7 @@ interface PedalEvent {
 }
 
 /** Absolute tick of each measure start, and the length of the piece. */
-function measureStarts(score: Score): { measureStart: number[]; total: number } {
+export function measureStarts(score: Score): { measureStart: number[]; total: number } {
   const measureStart: number[] = [];
   let total = 0;
   score.measures.forEach((_, mi) => {

@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import type { EvAddr } from '../src/editor/addr.ts';
-import { indexScore } from '../src/editor/addr.ts';
+import { indexScore, refKey } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
+import { buildHitIndex, hitTest } from '../src/editor/hit.ts';
 import type { Engraved } from '../src/engrave/system.ts';
 import { createEngraveCache, engrave } from '../src/engrave/system.ts';
 import type { Score } from '../src/model.ts';
@@ -25,7 +26,7 @@ function normalize(res: Engraved): unknown {
     ...p,
     prims: p.prims.map((q) => ({ ...q, o: q.o === undefined ? undefined : id(q.o), g: q.g?.map(id) })),
   }));
-  return { ...res, pages };
+  return { ...res, pages, placed: undefined }; // `placed` holds the same prims as `pages`
 }
 
 const opts = { respectBreaks: true, measureNumbers: 'system' as const };
@@ -35,6 +36,18 @@ function same(score: Score, cache: ReturnType<typeof createEngraveCache>, what: 
   const fresh = engrave(score, opts);
   assert.equal(inc.systems, fresh.systems, `${what}: system count`);
   assert.deepEqual(normalize(inc), normalize(fresh), what);
+  // The hit index built from the incremental result (per-system targets are kept between runs) answers like a fresh one.
+  const hInc = buildHitIndex(score, inc);
+  const hFresh = buildHitIndex(score, fresh);
+  for (const t of hFresh.targets) {
+    if (t.k !== 'head' && t.k !== 'rest') continue;
+    const b = t.boxes[0];
+    const x = (b.x0 + b.x1) / 2;
+    const y = (b.y0 + b.y1) / 2;
+    const want = hitTest(hFresh, t.page, x, y, 0.05);
+    const got = hitTest(hInc, t.page, x, y, 0.05);
+    assert.equal(got && refKey(got.ref), want && refKey(want.ref), `${what}: hit at ${x.toFixed(1)},${y.toFixed(1)}`);
+  }
 }
 
 /** A small deterministic generator, so a failure can be reproduced. */

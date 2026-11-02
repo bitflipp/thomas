@@ -18,11 +18,12 @@ import type {
   StaffDef,
   StaffMeasure,
   TimedEvent,
+  TimeSig,
   TremoloGroup,
   TupletGroup,
   Voice,
 } from '../model.ts';
-import { flattenVoice, keyAt, marksOf, measureTicks, pitchStep, STEPS, timeAt } from '../model.ts';
+import { flattenVoice, marksOf, measureTicks, pitchStep, STEPS } from '../model.ts';
 import { must } from '../util.ts';
 import type { MeasureSpacing } from './spacing.ts';
 
@@ -116,6 +117,9 @@ export interface Prepared {
   measures: StaffMeasureL[][]; // [measure][staff]
   clefAt: (staff: number, mi: number, tick: number) => Clef;
   measureLen: number[];
+  /** The key (fifths) and time signature in force at each measure: `keyAt` and `timeAt` of the score, found once. */
+  keyOf: number[];
+  timeOf: TimeSig[];
   /** The cache entry of every measure when `prepare` ran with a cache (see `PrepCache`). */
   entries?: MeasureEntry[];
 }
@@ -218,6 +222,8 @@ interface PrepEnv {
   staffIdx: Map<string, number>;
   clefAt: Prepared['clefAt'];
   ottavaAt: ReturnType<typeof ottavaTimeline>;
+  keyOf: number[];
+  timeOf: TimeSig[];
   /** Next event id. */
   nextId: number;
   /** Per display staff: voice|pitch keys of notes tied into the current measure. */
@@ -417,10 +423,15 @@ export function prepare(score: Score, cache?: PrepCache): Prepared {
     staffIdx: new Map(score.staves.map((s, i) => [s.id, i])),
     clefAt,
     ottavaAt: ottavaTimeline(score),
+    keyOf: [],
+    timeOf: [],
     nextId: cache?.nextId ?? 0,
     tiedFromPrev: score.staves.map(() => new Map()),
   };
-  const measureLen = score.measures.map((_, mi) => measureTicks(timeAt(score, mi)));
+  const { keyOf, timeOf } = signaturesOf(score);
+  env.keyOf = keyOf;
+  env.timeOf = timeOf;
+  const measureLen = timeOf.map((t) => measureTicks(t));
   const measures: StaffMeasureL[][] = [];
   const entries: MeasureEntry[] = [];
   score.measures.forEach((m, mi) => {
@@ -445,7 +456,22 @@ export function prepare(score: Score, cache?: PrepCache): Prepared {
     cache.entries = entries;
     cache.nextId = env.nextId;
   }
-  return { score, measures, clefAt, measureLen, entries: cache ? entries : undefined };
+  return { score, measures, clefAt, measureLen, keyOf, timeOf, entries: cache ? entries : undefined };
+}
+
+/** The key and time signature in force at every measure (what `keyAt` and `timeAt` return, without searching back each time). */
+function signaturesOf(score: Score): { keyOf: number[]; timeOf: TimeSig[] } {
+  const keyOf: number[] = [];
+  const timeOf: TimeSig[] = [];
+  let key = 0;
+  let time: TimeSig = { beats: 4, beatType: 4 };
+  for (const m of score.measures) {
+    if (m.key !== undefined) key = m.key;
+    if (m.time) time = m.time;
+    keyOf.push(key);
+    timeOf.push(time);
+  }
+  return { keyOf, timeOf };
 }
 
 /** The state carried into measure `mi` that its layout records depend on: clefs, octave lines, ties, key and time. */
@@ -454,9 +480,9 @@ function measureSignature(env: PrepEnv, mi: number): string {
   const staves = score.staves.map((_, si) => si);
   return JSON.stringify([
     mi,
-    keyAt(score, mi),
-    mi > 0 ? keyAt(score, mi - 1) : 0,
-    timeAt(score, mi),
+    env.keyOf[mi],
+    mi > 0 ? env.keyOf[mi - 1] : 0,
+    env.timeOf[mi],
     staves.map((si) => env.clefAt(si, mi, -1)),
     staves.map((si) => env.ottavaAt(si, mi, -1, false)),
     env.tiedFromPrev.map((t) => [...t.keys()].sort()),
@@ -467,11 +493,11 @@ function measureSignature(env: PrepEnv, mi: number): string {
 function prepareMeasure(env: PrepEnv, m: Measure, mi: number): StaffMeasureL[] {
   const { score } = env;
   const voicesOf = layoutVoices(env, mi);
-  assignAccidentals(env, voicesOf, keyAt(score, mi));
+  assignAccidentals(env, voicesOf, env.keyOf[mi]);
   carryTies(env, voicesOf);
   const row: StaffMeasureL[] = score.staves.map((staff, si) => {
     const sm = m.staves[staff.id] ?? { voices: [] };
-    prepareStaffVoices(voicesOf[si], sm, beatTicks(timeAt(score, mi)));
+    prepareStaffVoices(voicesOf[si], sm, beatTicks(env.timeOf[mi]));
     return { evs: [], voices: voicesOf[si], marks: marksOf(sm) };
   });
   // `evs` lists what is drawn on a staff, which for cross-staff notes is not the voice's staff.

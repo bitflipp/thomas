@@ -11,7 +11,7 @@ import { finalizeSystem } from './finalize.ts';
 import { justifySystem } from './justify.ts';
 import type { SysPlan } from './linebreak.ts';
 import { planSystems } from './linebreak.ts';
-import type { Layout } from './paginate.ts';
+import type { Layout, PlacedSystem } from './paginate.ts';
 import { paginate } from './paginate.ts';
 import type { MeasureEntry, PrepCache } from './prep.ts';
 import { prepare } from './prep.ts';
@@ -112,6 +112,8 @@ export interface Engraved {
   systems: number;
   staffSpace: number;
   layout: Layout;
+  /** The systems' primitives as placed on the pages (also found in `pages`), for caching work per system (see `buildHitIndex`). */
+  placed: PlacedSystem[];
 }
 
 /** Width of the brace area left of the systems, with and without a braced staff group. */
@@ -197,10 +199,10 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       entries: entries.slice(ctx.a, ctx.b + 1),
     }));
   }
-  const { pages, layout } = paginate(score, systems, done, {
+  const { pages, layout, placed } = paginate(score, systems, done, {
     respectBreaks,
     justifyVertical: opts.justifyVertical ?? true,
     braceRoom,
   });
-  return { pages, systems: systems.length, staffSpace: S, layout };
+  return { pages, systems: systems.length, staffSpace: S, layout, placed };
 }

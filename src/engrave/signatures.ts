@@ -71,8 +71,8 @@ export function prefixWidth(prep: Prepared, mi: number, first: boolean): number 
     cw = Math.max(cw, sm.adv(clefGlyph(prep.clefAt(si, mi, 0)).name));
   });
   let w = CLEF_X + cw + 1.0;
-  w += keyWidth(keyAt(score, mi));
-  if (first) w += timeWidth(timeAt(score, mi));
+  w += keyWidth(prep.keyOf[mi]);
+  if (first) w += timeWidth(prep.timeOf[mi]);
   return w;
 }
 

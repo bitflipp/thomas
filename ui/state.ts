@@ -9,7 +9,7 @@ import { EditError } from '../src/editor/commands.ts';
 import type { HitIndex } from '../src/editor/hit.ts';
 import { buildHitIndex } from '../src/editor/hit.ts';
 import type { Engraved } from '../src/engrave/system.ts';
-import { engrave } from '../src/engrave/system.ts';
+import { createEngraveCache, engrave } from '../src/engrave/system.ts';
 import type { BaseDur, Clef, Score } from '../src/model.ts';
 import { validate } from '../src/model.ts';
 import { parseText, writeText, writeTextMap } from '../src/textformat.ts';
@@ -161,15 +161,30 @@ export const engraved = signal<Engraved | null>(null);
 export const hit = signal<HitIndex | null>(null);
 export const engraveError = signal('');
 
+/** Kept from one edit to the next, so that only what an edit touched is engraved again. */
+const engraveCache = createEngraveCache();
+/** The page setup with the staff space of the zoom setting: the same object as long as neither changes (the cache compares it). */
+let spacedPage: { from: Score['page']; sp: number; page: Score['page'] } | undefined;
+function pageWithSpace(page: Score['page'], sp: number): Score['page'] {
+  if (!(spacedPage && spacedPage.from === page && spacedPage.sp === sp))
+    spacedPage = { from: page, sp, page: { ...page, staffSpace: sp } };
+  return spacedPage.page;
+}
+
 effect(() => {
   const s0 = score.value;
   const sp = space.value;
   const nums = score.value.page.measureNumbers ?? 'system';
   if (!ready.value) return;
-  const s = sp ? { ...s0, page: { ...s0.page, staffSpace: sp } } : s0;
+  const s = sp ? { ...s0, page: pageWithSpace(s0.page, sp) } : s0;
   const t0 = performance.now();
   try {
-    const opts = { respectBreaks: true, measureNumbers: nums, warn: (m: string) => console.warn(m) };
+    const opts = {
+      respectBreaks: true,
+      measureNumbers: nums,
+      warn: (m: string) => console.warn(m),
+      cache: engraveCache,
+    };
     let res = engrave(s, opts);
     if (res.systems === 1) res = engrave(s, { ...opts, fillLast: true }); // a score of one short line: spread it out, there is room to work in
     const h = buildHitIndex(s0, res);

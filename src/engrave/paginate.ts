@@ -190,6 +190,12 @@ function drawFooter(page: Page, score: Score, frame: PageFrame, pageIdx: number)
     });
 }
 
+/** The primitives of one system on its page: the same array again when an unchanged system lands at the same place. */
+export interface PlacedSystem {
+  page: number;
+  prims: Prim[];
+}
+
 const placedCache = new WeakMap<FinalizedSystem, { x0: number; y: number; prims: Prim[] }>();
 
 /** The primitives of a finished system moved to its place on the page; remembered, since an unchanged system often lands at the same place again. */
@@ -209,20 +215,25 @@ export function paginate(
   systems: SysCtx[],
   done: FinalizedSystem[],
   opts: PaginateOptions,
-): { pages: Page[]; layout: Layout } {
+): { pages: Page[]; layout: Layout; placed: PlacedSystem[] } {
   const frame = pageFrame(score);
   const firstPage: Page = { width: frame.width, height: frame.height, prims: [] };
   const firstPageTop = drawHeader(firstPage, score, frame);
   const place = placeSystems(score, systems, done, frame, firstPageTop, opts.respectBreaks);
   if (opts.justifyVertical) justifyPagesVertically(place, done, frame.usableBottom);
   const layout: Layout = { systems: [], measures: [] };
+  const placed: PlacedSystem[] = [];
   const x0 = frame.margin + opts.braceRoom;
   const pages = place.pageSystems.map((list, pi) => {
     const page = pi === 0 ? firstPage : { width: frame.width, height: frame.height, prims: [] };
-    for (const si of list) for (const p of placedPrims(done[si], x0, place.placeY[si])) page.prims.push(p);
+    for (const si of list) {
+      const prims = placedPrims(done[si], x0, place.placeY[si]);
+      for (const p of prims) page.prims.push(p);
+      placed.push({ page: pi, prims });
+    }
     for (const si of list) recordLayout(layout, systems[si], pi, x0, place.placeY[si]);
     drawFooter(page, score, frame, pi);
     return page;
   });
-  return { pages, layout };
+  return { pages, layout, placed };
 }

@@ -6,7 +6,8 @@
 // sound comes from whichever Web MIDI output the user picked.
 import { computed, effect, signal } from '@preact/signals';
 import { xOfTick } from '../src/editor/hit.ts';
-import { buildSequence } from '../src/playback/sequence.ts';
+import type { Score } from '../src/model.ts';
+import { buildSequence, measureStarts } from '../src/playback/sequence.ts';
 import { must } from '../src/util.ts';
 import { docId, engraved, say, score } from './state.ts';
 
@@ -20,7 +21,27 @@ const LOOKAHEAD = 0.12;
 const LEAD_IN = 0.06;
 const POLL_MS = 25;
 let access: MIDIAccess | null = null;
-let seq = buildSequence(score.peek());
+/** The sequence of `seqOf`, built when first needed: an edit that is not heard needs none (and a long piece takes a while to build). */
+let seqCache: ReturnType<typeof buildSequence> | undefined;
+let seqOf: Score | undefined;
+function currentSeq(): ReturnType<typeof buildSequence> {
+  const s = score.peek();
+  if (!seqCache || seqOf !== s) {
+    seqCache = buildSequence(s);
+    seqOf = s;
+  }
+  return seqCache;
+}
+/** Where the measures of the score start, and its length, in ticks (cheap, unlike the sequence). */
+let startsFor: Score | undefined;
+let startsValue: ReturnType<typeof measureStarts> | undefined;
+function startsOf(s: Score): ReturnType<typeof measureStarts> {
+  if (!startsValue || startsFor !== s) {
+    startsValue = measureStarts(s);
+    startsFor = s;
+  }
+  return startsValue;
+}
 let timer: ReturnType<typeof setInterval> | undefined;
 let raf = 0;
 /** Wall clock (ms) at which score time `sec0` (seconds) is heard; `next` is the index of the next message to send. */
@@ -80,7 +101,7 @@ const nowSec = (): number => sec0 + (performance.now() - wall0) / 1000;
 function silence(): void {
   const out = outPort();
   if (!(out && sounding)) return;
-  for (const ch of seq.channels) {
+  for (const ch of currentSeq().channels) {
     out.send([0xb0 | ch, 64, 0]);
     out.send([0xb0 | ch, 123, 0]);
   }
@@ -95,8 +116,8 @@ function pump(): void {
     return;
   }
   const horizon = nowSec() + LOOKAHEAD;
-  while (next < seq.msgs.length && seq.msgs[next].sec < horizon) {
-    const m = seq.msgs[next++];
+  while (next < currentSeq().msgs.length && currentSeq().msgs[next].sec < horizon) {
+    const m = currentSeq().msgs[next++];
     out.send(m.bytes, wall0 + (m.sec - sec0) * 1000);
     sounding = true;
   }
@@ -105,10 +126,10 @@ function pump(): void {
 /** Index of the first message at or after `sec` (binary search; the messages are sorted by time). */
 function firstMsgAt(sec: number): number {
   let lo = 0;
-  let hi = seq.msgs.length;
+  let hi = currentSeq().msgs.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (seq.msgs[mid].sec < sec) lo = mid + 1;
+    if (currentSeq().msgs[mid].sec < sec) lo = mid + 1;
     else hi = mid;
   }
   return lo;
@@ -118,7 +139,7 @@ function firstMsgAt(sec: number): number {
 function frame(): void {
   if (!playing.peek()) return;
   const sec = nowSec();
-  const last = seq.msgs.length ? seq.msgs[seq.msgs.length - 1].sec : 0;
+  const last = currentSeq().msgs.length ? currentSeq().msgs[currentSeq().msgs.length - 1].sec : 0;
   if (sec > last + 0.25) {
     // Played to the end: the next start is from the top (`stop` would otherwise keep the position
     // at the last note and playing would end immediately again).
@@ -126,13 +147,13 @@ function frame(): void {
     playTick.value = 0;
     return;
   }
-  playTick.value = Math.min(seq.totalTicks, Math.max(0, seq.secToTick(sec)));
+  playTick.value = Math.min(currentSeq().totalTicks, Math.max(0, currentSeq().secToTick(sec)));
   raf = requestAnimationFrame(frame);
 }
 
 /** Start sounding from `playTick` (fresh sequence; also used to carry on after an edit). */
 function begin(): void {
-  sec0 = seq.tickToSec(playTick.peek());
+  sec0 = currentSeq().tickToSec(playTick.peek());
   wall0 = performance.now() + LEAD_IN * 1000;
   next = firstMsgAt(sec0 - 1e-9);
   playing.value = true;
@@ -146,14 +167,13 @@ function begin(): void {
 export async function play(): Promise<void> {
   if (playing.peek()) return;
   if (!(await connect())) return;
-  seq = buildSequence(score.peek());
-  if (playTick.peek() >= seq.totalTicks) playTick.value = 0;
+  if (playTick.peek() >= currentSeq().totalTicks) playTick.value = 0;
   begin();
 }
 
 export function stop(): void {
   if (!playing.peek()) return;
-  playTick.value = Math.min(seq.totalTicks, Math.max(0, seq.secToTick(nowSec())));
+  playTick.value = Math.min(currentSeq().totalTicks, Math.max(0, currentSeq().secToTick(nowSec())));
   clearInterval(timer);
   cancelAnimationFrame(raf);
   playing.value = false;
@@ -177,7 +197,7 @@ export function seek(tick: number): void {
     cancelAnimationFrame(raf);
     silence();
   }
-  playTick.value = Math.max(0, Math.min(seq.totalTicks, tick));
+  playTick.value = Math.max(0, Math.min(currentSeq().totalTicks, tick));
   if (was) begin();
 }
 export function chooseOutput(id: string): void {
@@ -190,16 +210,16 @@ export function chooseOutput(id: string): void {
 /** An edit while playing: rebuild the sequence and carry on from the same place; otherwise just keep the position valid. */
 effect(() => {
   const s = score.value;
-  const was = playing.peek();
-  const tick = was ? seq.secToTick(nowSec()) : playTick.peek();
-  if (was) {
-    clearInterval(timer);
-    cancelAnimationFrame(raf);
-    silence();
+  if (!playing.peek()) {
+    playTick.value = Math.max(0, Math.min(startsOf(s).total, playTick.peek()));
+    return;
   }
-  seq = buildSequence(s);
-  playTick.value = Math.max(0, Math.min(seq.totalTicks, tick));
-  if (was) begin();
+  const tick = (seqCache ?? currentSeq()).secToTick(nowSec()); // by the sequence being heard, which is the old score's
+  clearInterval(timer);
+  cancelAnimationFrame(raf);
+  silence();
+  playTick.value = Math.max(0, Math.min(currentSeq().totalTicks, tick));
+  begin();
 });
 
 /** A new document starts from the top. */
@@ -219,13 +239,13 @@ export const playhead = computed<Playhead | null>(() => {
   const res = engraved.value;
   const tick = playTick.value;
   if (!res || (!playing.value && tick === 0)) return null;
-  const starts = seq.measureStart;
+  const { measureStart: starts, total } = startsOf(score.value);
   let mi = starts.length - 1;
   while (mi > 0 && starts[mi] > tick) mi--;
   const g = res.layout.measures.find((m) => m.mi === mi && m.staff === 0);
   const sys = g && res.layout.systems.find((s) => s.sys === g.sys);
   if (!(g && sys)) return null;
-  const len = (starts[mi + 1] ?? seq.totalTicks) - starts[mi];
+  const len = (starts[mi + 1] ?? total) - starts[mi];
   return {
     page: g.page,
     x: xOfTick(g, len, Math.min(len, tick - starts[mi])),
@@ -234,4 +254,4 @@ export const playhead = computed<Playhead | null>(() => {
   };
 });
 /** Absolute tick at which measure `mi` starts. */
-export const measureTick = (mi: number): number => seq.measureStart[mi] ?? 0;
+export const measureTick = (mi: number): number => startsOf(score.peek()).measureStart[mi] ?? 0;
