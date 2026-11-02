@@ -125,7 +125,8 @@ export interface Page {
 
 /** Occupied regions, used to place marks without collisions (y down). */
 export class Skyline {
-  boxes: { x0: number; x1: number; y0: number; y1: number; spanner?: boolean; acc?: boolean }[] = [];
+  /** `btw`: a dynamic or hairpin placed between the staves, which is centred in the gap later (`centreBetweenMarks`). */
+  boxes: { x0: number; x1: number; y0: number; y1: number; spanner?: boolean; acc?: boolean; btw?: boolean }[] = [];
   /** `spanner`: a slur/tie box (a long rectangle over a curve), ignored when only the notation itself matters. `acc`: an accidental, which ties may cross. */
   add(x0: number, x1: number, y0: number, y1: number, spanner = false, acc = false): void {
     if (x1 < x0) [x0, x1] = [x1, x0];

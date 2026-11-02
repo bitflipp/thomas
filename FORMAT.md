@@ -76,7 +76,7 @@ beam covers the whole group; `bracket`/`nobracket` override that. The importer w
 
 | Mark | Syntax |
 |---|---|
-| Dynamics | `\pppp \ppp \pp \p \mp \mf \f \ff \fff \ffff \sf \sfz \fp \rfz ...`; `^`/`_` forces above/below |
+| Dynamics | `\pppp \ppp \pp \p \mp \mf \f \ff \fff \ffff \sf \sfz \fp \rfz ...`; `^`/`_` forces above/below, `=` puts it between the staves (centred in the gap; below the upper staff or above the lower one) |
 | Hairpin | `\<` crescendo, `\>` diminuendo, `\!` end. With a number to overlap: `\<2` ... `\!2`. Optional `^`/`_` |
 | Pedal | `\ped` press, `\unped` release (a change is `\unped \ped`) |
 | Octave shift | `\8va` (written an octave lower, line above), `\8vb` (line below), `\8off` ends it. May span measures |

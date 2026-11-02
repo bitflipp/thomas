@@ -3,7 +3,7 @@
 // Placed over the whole piece for one staff at a time: the marks are collected into `Item`s per
 // system (spans such as hairpins are split at system breaks), then stacked in rows above and below
 // the staff, each row clearing the skyline and the rows nearer the staff.
-import type { Mark } from '../model.ts';
+import type { Mark, MarkPlacement } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
 import type { SysCtx } from './draw.ts';
@@ -28,6 +28,8 @@ interface Item {
   draw: (ref: number) => Prim[];
   /** The model mark (the start mark of a span). */
   src?: Mark;
+  /** Placed between the staves: its `side` is the one facing the neighbouring staff. */
+  between?: boolean;
   /** Row and order within the stack on one side: lower rows are nearer the staff. */
   row: number;
   order: number;
@@ -98,17 +100,38 @@ function dynRun(text: string): { names: string[]; w: number; up: number; down: n
 }
 
 /** Centre of the notehead(s) sounding at `tick` (falls back to the column x plus half a head). */
-function xHeadCentre(evs: EvL[], tick: number, x: number): number {
-  const e = evs.find((q) => q.ev.kind === 'note' && q.start === tick);
-  const g = e && geomOf.get(e);
-  return g ? (g.headL + g.headR) / 2 : x + 0.6;
+function xHeadCentre(evs: EvL[], tick: number, x: number, other?: EvL[]): number {
+  for (const list of other ? [evs, other] : [evs]) {
+    const e = list.find((q) => q.ev.kind === 'note' && q.start === tick);
+    const g = e && geomOf.get(e);
+    if (g) return (g.headL + g.headR) / 2;
+  }
+  return x + 0.6;
+}
+
+/** The side of staff `s` that faces its neighbour: below, unless it is the last staff, and the staff there (none for a single staff). */
+function facing(sm0: StaffMarks): { side: Side; neighbour?: number } {
+  const n = sm0.systems[0].prep.score.staves.length;
+  if (sm0.staff + 1 < n) return { side: 'below', neighbour: sm0.staff + 1 };
+  return { side: 'above', neighbour: sm0.staff > 0 ? sm0.staff - 1 : undefined };
+}
+
+/** The side of a dynamic or hairpin; `between` goes to the side facing the neighbouring staff. */
+function markSide(sm0: StaffMarks, p: MarkPlacement | undefined): Side {
+  return p === 'between' ? facing(sm0).side : (p ?? 'below');
 }
 
 function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' }): Item {
   const sys = sm0.systems[sm0.sysOf[mi]];
   const run = dynRun(m.text);
   const x = xAtTick(sys, mi, m.tick);
-  const centre = xHeadCentre(sm0.prep.measures[mi][sm0.staff].evs, m.tick, x);
+  const nb = m.placement === 'between' ? facing(sm0).neighbour : undefined;
+  const centre = xHeadCentre(
+    sm0.prep.measures[mi][sm0.staff].evs,
+    m.tick,
+    x,
+    nb === undefined ? undefined : sm0.prep.measures[mi][nb].evs,
+  );
   let left = centre - (run.ink0 + run.ink1) / 2; // origin so that the visible ink is centred on the notehead
   // Never straddle a barline: slide the run beside it, to the left, except for a dynamic at the
   // start of a measure, which stays in that measure.
@@ -122,7 +145,8 @@ function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' })
     kind: 'dyn',
     x0: left + run.ink0,
     x1: left + run.ink1,
-    side: m.placement ?? 'below',
+    side: markSide(sm0, m.placement),
+    between: m.placement === 'between',
     up: run.up,
     down: run.down,
     row: 0,
@@ -325,7 +349,8 @@ function addHairpins(sm0: StaffMarks, spans: Span[], items: Item[][]): void {
         kind: 'hair',
         x0: p.x0,
         x1: p.x1,
-        side: m.placement ?? 'below',
+        side: markSide(sm0, m.placement),
+        between: m.placement === 'between',
         up: extent,
         down: extent,
         row: 0,
@@ -492,6 +517,7 @@ function placeGroup(ctx: SysCtx, s: number, group: Item[], side: Side): void {
       ctx.prims[s].push(p);
     }
     sky.add(it.x0, it.x1, y - it.up, y + it.down);
+    if (it.between) sky.boxes[sky.boxes.length - 1].btw = true;
   }
 }
 

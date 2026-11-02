@@ -107,9 +107,11 @@ export interface Voice {
 }
 
 export type Placement = 'above' | 'below';
+/** Dynamics and hairpins can also sit `between` their staff and its neighbour (below the upper one, above the lower one), centred in the gap: for piano parts, where one dynamic serves both hands. */
+export type MarkPlacement = Placement | 'between';
 export type MarkBody =
-  | { type: 'dynamic'; text: string; placement?: Placement }
-  | { type: 'hairpin'; kind: 'cresc' | 'dim'; id: number; placement?: Placement }
+  | { type: 'dynamic'; text: string; placement?: MarkPlacement }
+  | { type: 'hairpin'; kind: 'cresc' | 'dim'; id: number; placement?: MarkPlacement }
   /** Pedal press; a press while the pedal is down is a change (release and press again). */
   | { type: 'pedal' }
   /** `up` = 8va: written an octave lower than it sounds, line above the staff. */

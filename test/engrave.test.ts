@@ -6,6 +6,7 @@ import { HEAD_SCALE } from '../src/engrave/spacing.ts';
 import { engrave } from '../src/engrave/system.ts';
 import { flattenVoice, PPQ, validate } from '../src/model.ts';
 import { pageToSvg } from '../src/render.ts';
+import { loadSmufl } from '../src/smufl.ts';
 import { parseText, writeText } from '../src/textformat.ts';
 
 const HEAD = `title "T"
@@ -265,4 +266,26 @@ m1 time=4/4
   const res = engrave(s, { warn: (m) => warnings.push(m) });
   assert.deepEqual(warnings, []);
   assert.equal(res.pages[0].prims.length > 0, true);
+});
+
+test('a dynamic placed between the staves is centred in the gap, from either staff', () => {
+  const body = (rh: string, lh: string) => `${HEAD}
+m1 time=4/4 key=0
+  rh.1: ${rh}
+  lh.1: ${lh}
+`;
+  for (const src of [body('\\f= c5:1', 'c3:1'), body('c5:1', '\\f= c3:1')]) {
+    const score = parseText(src);
+    assert.deepEqual(parseText(writeText(score)), score);
+    const prims = engrave(score).pages[0].prims;
+    const lines = prims.filter((p) => p.k === 'staff' && p.t === 'line').map((p) => (p as { y1: number }).y1);
+    const dyn = prims.find((p) => p.k === 'dyn');
+    assert.ok(dyn && dyn.t === 'glyph');
+    const box = loadSmufl().bbox(dyn.name);
+    const centre = dyn.y - (box.y1 + box.y0) / 2;
+    assert.ok(
+      Math.abs(centre - (lines[4] + lines[5]) / 2) < 0.05,
+      `ink centre ${centre} vs gap ${lines[4]}..${lines[5]}`,
+    );
+  }
 });

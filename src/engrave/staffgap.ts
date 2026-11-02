@@ -161,9 +161,11 @@ export function placeStaves(ctx: SysCtx): void {
     ctx.staffY[s] = ctx.staffY[s - 1] + STAFF_HEIGHT + gap;
   }
   for (let s = 0; s + 1 < nStaves; s++) alignDynamicsBetween(ctx, s);
+  for (let s = 0; s + 1 < nStaves; s++) centreBetweenMarks(ctx, s);
 }
 
-const isDynamicsMark = (p: Prim) => (p.k === 'dyn' || p.k === 'hairpin') && p.a !== undefined;
+const isBetweenMark = (p: Prim) => (p.r as { placement?: string } | undefined)?.placement === 'between';
+const isDynamicsMark = (p: Prim) => (p.k === 'dyn' || p.k === 'hairpin') && p.a !== undefined && !isBetweenMark(p);
 
 /** Horizontal extent of a dynamic or hairpin primitive. */
 function horizontalSpan(p: Prim): [number, number] {
@@ -203,6 +205,67 @@ function overlapHorizontally(rowA: Prim[], rowB: Prim[]): boolean {
       const [b0, b1] = horizontalSpan(b);
       return a1 > b0 - 0.5 && a0 < b1 + 0.5;
     }),
+  );
+}
+
+/** Vertical extent of a primitive of a dynamic or hairpin. */
+function verticalSpan(p: Prim): [number, number] {
+  if (p.t === 'glyph') return [p.y - sm.bbox(p.name).y1, p.y - sm.bbox(p.name).y0];
+  if (p.t === 'line') return [Math.min(p.y1, p.y2) - p.w / 2, Math.max(p.y1, p.y2) + p.w / 2];
+  return [0, 0];
+}
+
+/**
+ * Dynamics and hairpins placed `between` the staves sit below the upper staff or above the lower one (`marks`, of staff
+ * `owner`) as far as the content there allows; this moves them to the vertical middle of the free space of the gap
+ * between staff s and s+1. Content in the way of the move (what hangs into the gap, other marks of the staves)
+ * limits it; a mark with content on both sides is left alone.
+ */
+function centreGroup(ctx: SysCtx, s: number, owner: number, marks: Prim[]): void {
+  if (!marks.length) return;
+  let x0 = Number.POSITIVE_INFINITY;
+  let x1 = Number.NEGATIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (const p of marks) {
+    const [a, b] = horizontalSpan(p);
+    const [t, u] = verticalSpan(p);
+    x0 = Math.min(x0, a);
+    x1 = Math.max(x1, b);
+    top = Math.min(top, ctx.staffY[owner] + t);
+    bottom = Math.max(bottom, ctx.staffY[owner] + u);
+  }
+  let lo = ctx.staffY[s] + STAFF_HEIGHT; // the free space of the gap: from the upper staff's bottom line to the lower staff's top line
+  let hi = ctx.staffY[s + 1];
+  for (const k of [s, s + 1])
+    for (const b of ctx.sky[k].boxes) {
+      if (b.btw || (b.spanner && k !== owner) || !(b.x1 > x0 - 0.3 && b.x0 < x1 + 0.3)) continue;
+      const by0 = ctx.staffY[k] + b.y0;
+      const by1 = ctx.staffY[k] + b.y1;
+      if (by1 <= top + 0.01) lo = Math.max(lo, by1);
+      else if (by0 >= bottom - 0.01) hi = Math.min(hi, by0);
+      else if (by1 > lo && by0 < hi) return; // overlaps the mark itself: leave it where it is
+    }
+  const clearance = 0.3;
+  const dyMin = lo + clearance - top;
+  const dyMax = hi - clearance - bottom;
+  if (dyMin > dyMax) return;
+  const dy = Math.min(dyMax, Math.max(dyMin, (lo + hi) / 2 - (top + bottom) / 2));
+  if (Math.abs(dy) > 0.001) moveMarks(marks, dy);
+}
+
+function centreBetweenMarks(ctx: SysCtx, s: number): void {
+  centreGroup(
+    ctx,
+    s,
+    s,
+    ctx.prims[s].filter((p) => isBetweenMark(p) && must(p.a) > STAFF_HEIGHT),
+  );
+  centreGroup(
+    ctx,
+    s,
+    s + 1,
+    ctx.prims[s + 1].filter((p) => isBetweenMark(p) && must(p.a) < 0),
   );
 }
 

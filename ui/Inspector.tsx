@@ -9,7 +9,7 @@ import { beamModes, beatTicks, canJoin } from '../src/beams.ts';
 import type { Ref } from '../src/editor/addr.ts';
 import { eventOf, markOf, tupletOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
-import type { Event, MarkBody, NoteEvent, Score } from '../src/model.ts';
+import type { Event, MarkBody, MarkPlacement, NoteEvent, Score } from '../src/model.ts';
 import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import {
   chooseDots,
@@ -770,7 +770,7 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
   const m = markOf(score.value, r);
   if (!m) return null;
   const upd = (patch: Partial<MarkBody>) => run((x) => C.updateMark(x, r, patch));
-  const place = (m as { placement?: 'above' | 'below' }).placement;
+  const place = (m as { placement?: 'above' | 'below' | 'between' }).placement;
   return (
     <section>
       <Group title="Properties">
@@ -832,11 +832,14 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
           <Row label="Placed">
             <Pick
               value={place}
-              opts={[
-                [undefined, 'auto'],
-                ['above', 'above'],
-                ['below', 'below'],
-              ]}
+              opts={
+                [
+                  [undefined, 'auto'],
+                  ['above', 'above'],
+                  ['below', 'below'],
+                  ['between', 'between'],
+                ].filter(([v]) => v !== 'between' || m.type !== 'text') as [MarkPlacement | undefined, string][]
+              }
               onChange={(p) => upd({ placement: p } as never)}
             />
           </Row>

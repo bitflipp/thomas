@@ -15,11 +15,11 @@ import type {
   Grace,
   Item,
   MarkBody,
+  MarkPlacement,
   Measure,
   NoteEvent,
   NotePitch,
   Pitch,
-  Placement,
   RestEvent,
   Score,
   StaffMeasure,
@@ -78,7 +78,7 @@ function quote(s: string): string {
   return JSON.stringify(s);
 }
 
-const sideStr = (p?: Placement) => (p === 'above' ? '^' : p === 'below' ? '_' : '');
+const sideStr = (p?: MarkPlacement) => (p === 'above' ? '^' : p === 'below' ? '_' : p === 'between' ? '=' : '');
 /** Slur and hairpin ids are written only when they are not 1: the common case of one span at a time needs no number. */
 const idStr = (n: number | undefined) => (n && n !== 1 ? String(n) : '');
 
@@ -568,8 +568,13 @@ class VoiceLineParser {
     else this.pending.push(body);
   }
 
-  private addMarkWithSide<T extends MarkBody>(body: T): void {
-    const side = this.placement();
+  /** `between` (`=`) is for dynamics and hairpins only. */
+  private addMarkWithSide<T extends MarkBody>(body: T, between = false): void {
+    let side: MarkPlacement | undefined;
+    if (between && this.sc.peek() === '=') {
+      this.sc.i++;
+      side = 'between';
+    } else side = this.placement();
     this.addMark(side ? ({ ...body, placement: side } as MarkBody) : body);
   }
 
@@ -625,9 +630,9 @@ class VoiceLineParser {
 
   /** Commands that are marks without further syntax: dynamics, hairpins, the simple table. Returns false for other commands. */
   private readMarkCommand(name: string): boolean {
-    if (DYNAMICS.has(name)) this.addMarkWithSide({ type: 'dynamic', text: name });
+    if (DYNAMICS.has(name)) this.addMarkWithSide({ type: 'dynamic', text: name }, true);
     else if (name === '<' || name === '>')
-      this.addMarkWithSide({ type: 'hairpin', kind: name === '<' ? 'cresc' : 'dim', id: this.num() });
+      this.addMarkWithSide({ type: 'hairpin', kind: name === '<' ? 'cresc' : 'dim', id: this.num() }, true);
     else if (name === '!') this.addMark({ type: 'stop', of: 'hairpin', id: this.num() });
     else if (Object.hasOwn(SIMPLE, name)) this.addMark(SIMPLE[name]);
     else return false;
