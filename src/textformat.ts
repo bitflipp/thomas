@@ -154,9 +154,8 @@ class VoiceWriter {
     this.tags = tags;
   }
 
-  eventStr(e: Event): string {
-    const idx = this.evIdx++;
-    const loc = { ...this.at, idx };
+  /** The tokens written before an event: its marks, staff switch, slur starts, stem and the note options. */
+  private prefixTokens(e: Event, loc: { mi: number; staff: string; voice: number; idx: number }): string[] {
     const pre: string[] = [];
     for (const [k, m] of (e.marks ?? []).entries())
       pre.push(tagged(this.tags, refKey({ t: 'mark', ...loc, k }), markStr(m)));
@@ -166,35 +165,48 @@ class VoiceWriter {
     }
     for (const s of e.slurStart ?? []) pre.push(`(${idStr(s.id)}${sideStr(s.side)}`);
     if (e.stem) pre.push(e.stem === 'up' ? '\\stemup' : '\\stemdown');
-    let core: string;
-    let tie = '';
-    let arts = '';
     if (e.kind === 'note') {
       if (e.graces?.length) pre.push(...graceStrs(e.graces));
       if (e.arpeggio) pre.push('\\arp');
       if (e.noBeam) pre.push('\\nobeam');
-      const ps = e.pitches.map(
-        (p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : ''),
-      );
-      // A single note's tie goes after the duration (`c4:8~`); in a chord every pitch is tied on
-      // its own, inside the <> (`<c4~ e4>`), because tied and untied pitches can be mixed.
-      if (e.pitches.length === 1) {
-        core = ps[0];
-        if (e.pitches[0].tie) tie = '~';
-      } else core = `<${ps.map((x, i) => x + (e.pitches[i].tie ? '~' : '')).join(' ')}>`;
+    }
+    return pre;
+  }
+
+  /**
+   * The pitches or rest of an event, and what follows the duration: a single note's tie goes after the
+   * duration (`c4:8~`); in a chord every pitch is tied on its own, inside the <> (`<c4~ e4>`), because
+   * tied and untied pitches can be mixed.
+   */
+  private coreAndTie(e: Event): { core: string; tie: string } {
+    if (e.kind === 'rest')
+      return {
+        core: e.style === 'hidden' ? 's' : e.style === 'measure' ? 'R' : e.display ? `r@${pitchStr(e.display)}` : 'r',
+        tie: '',
+      };
+    const ps = e.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : ''));
+    if (e.pitches.length === 1) return { core: ps[0], tie: e.pitches[0].tie ? '~' : '' };
+    return { core: `<${ps.map((x, i) => x + (e.pitches[i].tie ? '~' : '')).join(' ')}>`, tie: '' };
+  }
+
+  eventStr(e: Event): string {
+    const loc = { ...this.at, idx: this.evIdx++ };
+    const pre = this.prefixTokens(e, loc);
+    const { core, tie } = this.coreAndTie(e);
+    let arts = '';
+    if (e.kind === 'note') {
       for (const a of e.art ?? []) arts += a === 'accent' ? '->' : a === 'marcato' ? '-^' : '-.';
       if (e.art?.length && e.artSide) arts += sideStr(e.artSide);
-    } else
-      core = e.style === 'hidden' ? 's' : e.style === 'measure' ? 'R' : e.display ? `r@${pitchStr(e.display)}` : 'r';
+    }
     // Durations are sticky: the base value is written only when it differs from the previous event's.
     // Dots are never sticky (a dotted note would otherwise make everything after it dotted), so they
     // are always written, which also forces the base to be written.
     const d = e.dur.base !== this.lastBase || e.dur.dots ? `:${durStr(e.dur)}` : '';
     this.lastBase = e.dur.base;
     const slurEnd = (e.slurStop ?? []).map((i) => `)${idStr(i)}`).join('');
+    const toks = [...pre, tagged(this.tags, refKey({ t: 'ev', ...loc }), core + d + tie + arts + slurEnd)];
     // A slur start is glued to the token after it: `(f#2:16 ... d#2)`. Nothing that follows starts with
     // a digit, so an id like in `(2` cannot be mistaken for part of the next token.
-    const toks = [...pre, tagged(this.tags, refKey({ t: 'ev', ...loc }), core + d + tie + arts + slurEnd)];
     return toks.reduce(
       (acc, t, i) => (i > 0 && /^\(\d*[\^_]?$/.test(toks[i - 1]) ? acc + t : acc ? `${acc} ${t}` : t),
       '',
