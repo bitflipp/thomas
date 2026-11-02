@@ -14,7 +14,7 @@ import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import { chooseDots, flipStem, nudge, slurSelection, tieSelection } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
-import { deleteSelection, evRefs, menu, selectSimilar } from './interact.ts';
+import { deleteSelection, evRefs, menu, select, selectSimilar, tupletsAround } from './interact.ts';
 import { DYNAMICS } from './Palette.tsx';
 import { run, score, selection, space } from './state.ts';
 
@@ -702,6 +702,11 @@ function EventSection() {
               Remove tremolo
             </button>
           )}
+          {tupletsAround().map((t) => (
+            <button type="button" onClick={() => select([t.ref])}>
+              {t.label}
+            </button>
+          ))}
           <button type="button" onClick={flipStem}>
             Flip stem (X)
           </button>

@@ -21,7 +21,6 @@ import {
   cancelDrag,
   ghost,
   hover,
-  onContextMenu,
   onDoubleClick,
   onPointerDown,
   onPointerMove,
@@ -443,7 +442,7 @@ export function ScorePane() {
   const cssW = (pw: number) => (fit.value ? Math.max(200, (paneW || 800) - 48) * z : pw * res.staffSpace * MM_PX * z);
   const cursor = tool.value === 'select' ? 'default' : 'crosshair';
   return (
-    <div class="scroll" ref={box} onContextMenu={onContextMenu}>
+    <div class="scroll" ref={box} onContextMenu={(e) => e.preventDefault()}>
       {res.pages.map((p, i) => (
         <PageView key={i} i={i} res={res} h={h} sig={sigs[i] ?? ''} keys={keys} cssW={cssW(p.width)} cursor={cursor} />
       ))}

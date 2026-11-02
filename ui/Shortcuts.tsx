@@ -29,7 +29,6 @@ const ROWS: [string, string][] = [
   ['Ctrl S', 'Save'],
   ['Alt + click (note input)', 'Replace a tuplet as a whole instead of entering into it'],
   ['Shift / Ctrl + click', 'Add to the selection'],
-  ['Right-click', 'Context menu: measures, breaks, stems'],
   ['Double-click', 'Edit the text or tempo of a mark'],
 ];
 

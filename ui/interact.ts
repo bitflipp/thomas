@@ -589,74 +589,23 @@ export function onDoubleClick(e: MouseEvent): void {
   }
 }
 
-export function onContextMenu(e: MouseEvent): void {
-  e.preventDefault();
-  const w = locate(e.clientX, e.clientY);
-  const h = hit.peek();
-  if (!(w && h)) return;
-  const sc = score.peek();
-  const tg = hitTest(h, w.page, w.x, w.y);
-  const g = measureAt(h.layout, w.page, w.x, w.y);
-  const items: Menu['items'] = [];
-  if (tg) {
-    if (!selection.value.some((s) => refKey(s) === refKey(tg.ref))) select([tg.ref]);
-    const r = tg.ref;
-    if (r.t === 'ev') {
-      items.push({ label: 'Select similar', run: selectSimilar });
-      items.push({ label: 'Delete', run: () => deleteSelection(), danger: true });
-      items.push({ label: 'Tie', run: () => run((s) => C.toggleTie(s, evRefs())) });
-      items.push({
-        label: 'Stem up',
-        run: () =>
-          run((s) =>
-            C.updateEvents(s, evRefs(), (x) => {
-              x.stem = 'up';
-            }),
-          ),
-      });
-      items.push({
-        label: 'Stem down',
-        run: () =>
-          run((s) =>
-            C.updateEvents(s, evRefs(), (x) => {
-              x.stem = 'down';
-            }),
-          ),
-      });
-      items.push({
-        label: 'Stem automatic',
-        run: () =>
-          run((s) =>
-            C.updateEvents(s, evRefs(), (x) => {
-              delete x.stem;
-            }),
-          ),
-      });
-    } else if (r.t === 'mark') {
-      items.push({ label: 'Select similar', run: selectSimilar });
-      items.push({ label: 'Delete', run: () => deleteSelection(), danger: true });
-    } else if (r.t === 'slur') items.push({ label: 'Delete slur', run: () => deleteSelection(), danger: true });
-    else if (r.t === 'tuplet') {
-      items.push({ label: 'Remove tuplet', run: () => deleteSelection(), danger: true });
-    }
-  }
-  if (g) {
-    const mi = g.mi;
-    const m = sc.measures[mi];
-    if (items.length) items.push({ label: '', run: () => undefined, sep: true });
-    items.push({ label: `Insert measure before ${mi + 1}`, run: () => run((s) => C.insertMeasures(s, mi)) });
-    items.push({ label: `Insert measure after ${mi + 1}`, run: () => run((s) => C.insertMeasures(s, mi + 1)) });
-    items.push({ label: `Delete measure ${mi + 1}`, run: () => run((s) => C.deleteMeasures(s, mi, mi)), danger: true });
-    items.push({
-      label: m.breakBefore === 'system' ? 'Remove system break' : 'System break before',
-      run: () => run((s) => C.setBreak(s, mi, m.breakBefore === 'system' ? undefined : 'system')),
-    });
-    items.push({
-      label: m.breakBefore === 'page' ? 'Remove page break' : 'Page break before',
-      run: () => run((s) => C.setBreak(s, mi, m.breakBefore === 'page' ? undefined : 'page')),
+/** The tuplets around the first selected note, innermost first, as selectable refs (a tuplet is addressed by its first event). */
+export function tupletsAround(): { label: string; ref: Ref }[] {
+  const r = evRefs()[0];
+  const v = r && voiceOf(score.peek(), r);
+  if (!v) return [];
+  const flat = flattenVoice(v);
+  const nest = flat[r.idx]?.tuplets.length ?? 0;
+  const out: { label: string; ref: Ref }[] = [];
+  for (let depth = nest - 1; depth >= 0; depth--) {
+    const grp = flat[r.idx].tuplets[depth];
+    const idx = flat.findIndex((te) => te.tuplets[depth] === grp);
+    out.push({
+      label: nest > 1 ? `Select tuplet (level ${depth + 1})` : 'Select tuplet',
+      ref: { t: 'tuplet', mi: r.mi, staff: r.staff, voice: r.voice, idx, depth },
     });
   }
-  if (items.length) menu.value = { x: e.clientX, y: e.clientY, items };
+  return out;
 }
 
 // ---------------------------------------------------------------- commands shared with the keyboard and inspector

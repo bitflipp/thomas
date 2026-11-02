@@ -1235,7 +1235,7 @@ function planTuplet(
   const beamSets = new Set(notes.map((n) => n.beam));
   const fullyBeamed = notes.length > 0 && beamSets.size === 1 && !beamSets.has(undefined);
   let bracket = t.bracket ?? !fullyBeamed;
-  if (notes[0]?.beam?.cross) bracket = true; // the number alone is lost among the stems of a beam between the staves
+  if (notes[0]?.beam?.cross && t.bracket !== false) bracket = true; // the number alone is lost among the stems of a beam between the staves
   if (!(showNum || bracket)) return;
   const anchor = notes[0] ?? evs[0];
   const crossY = notes[0]?.beam?.crossY;
@@ -1244,7 +1244,7 @@ function planTuplet(
   // A number on the side away from the beams (where the heads are) always gets a bracket:
   // a bare number there would float among the heads and read as belonging to a single note.
   const beamDir = crossY ? undefined : (notes[0]?.beam?.dir ?? anchor.stem);
-  if (showNum && notes.length && beamDir && above !== (beamDir === 'up')) bracket = true;
+  if (showNum && notes.length && beamDir && above !== (beamDir === 'up') && t.bracket !== false) bracket = true;
   // Horizontal extent: from the first head's left to the last head's right. Rests have no
   // geometry and count as one space wide at their x.
   const geoms = evs.map((e) => (e.ev.kind === 'note' ? must(geomOf.get(e)) : null));
