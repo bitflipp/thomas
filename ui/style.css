@@ -73,7 +73,6 @@ body {
   letter-spacing: 0.03em;
 }
 button,
-select,
 input {
   font: inherit;
   color: inherit;
@@ -91,7 +90,6 @@ button {
   padding: 0 10px;
   white-space: nowrap;
 }
-select,
 input[type="text"],
 input[type="number"],
 input:not([type]) {
@@ -106,8 +104,7 @@ button.icon {
   width: var(--h);
   padding: 0;
 }
-button,
-select {
+button {
   cursor: pointer;
 }
 input[type="text"],
@@ -117,8 +114,7 @@ input[type="number"] {
   padding: 3px 6px;
   min-width: 0;
 }
-button:hover:not(:disabled),
-select:hover {
+button:hover:not(:disabled) {
   border-color: var(--accent);
 }
 button:disabled {
@@ -214,7 +210,7 @@ button.mini {
 }
 
 .palette {
-  width: 176px;
+  width: 192px;
   flex: none;
   overflow-y: auto;
   padding: 4px 10px 12px;
@@ -257,7 +253,7 @@ button.mini {
   flex-direction: column;
   gap: 4px;
 }
-.args select,
+.args .dd,
 .args input {
   width: 100%;
 }
@@ -296,7 +292,7 @@ button.mini {
 }
 
 .inspector {
-  width: 292px;
+  width: 324px;
   flex: none;
   overflow-y: auto;
   background: var(--panel);
@@ -625,7 +621,7 @@ kbd {
   min-width: 0;
   margin: 0;
 }
-.staffrow select {
+.staffrow .dd {
   flex: none;
   max-width: 92px;
   margin: 0;
@@ -665,7 +661,7 @@ kbd {
   color: var(--muted);
   font-size: 12px;
 }
-.joinrow select {
+.joinrow .dd {
   margin: 0;
 }
 .staves .btns {
@@ -673,11 +669,65 @@ kbd {
   display: flex;
   gap: var(--gap);
 }
-.staves .btns select {
+.staves .btns .dd {
   flex: 1;
   min-width: 0;
   margin: 0;
 }
 .staves .btns button {
   margin: 0;
+}
+
+/* The dropdown (ui/Dropdown.tsx): a button with a chevron, used for every choice from a list */
+button.dd {
+  padding: 3px 24px 3px 9px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 13px) 50%,
+    calc(100% - 9px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+button.dd {
+  justify-content: flex-start;
+  min-width: 84px;
+  font-weight: normal;
+  text-align: left;
+}
+.dd-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.dd-val svg,
+.dd-list svg {
+  width: 16px;
+  height: 16px;
+}
+.dd-list {
+  position: fixed;
+  z-index: 30;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  padding: 3px;
+}
+.dd-list [role="option"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px 0 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dd-list [role="option"].on {
+  background: var(--accent-soft);
+}
+.dd-list [role="option"][aria-selected="true"] {
+  color: var(--accent);
 }

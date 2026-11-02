@@ -1,4 +1,5 @@
 import { chooseDots, chooseDuration, setAccidentalSel } from './actions.ts';
+import { Dropdown } from './Dropdown.tsx';
 import { CPS, Glyph, Icon, Label } from './icons.tsx';
 import { AccidentalButtons, DurationButtons } from './pickers.tsx';
 import type { Tool } from './state.ts';
@@ -177,11 +178,11 @@ export function Palette() {
       </div>
       <div class="args">
         {t === 'dynamic' && (
-          <select value={dynText.value} onChange={(e) => (dynText.value = (e.target as HTMLSelectElement).value)}>
-            {DYNAMICS.map((d) => (
-              <option>{d}</option>
-            ))}
-          </select>
+          <Dropdown
+            value={dynText.value}
+            opts={DYNAMICS.map((d) => ({ value: d, label: d }))}
+            onChange={(d) => (dynText.value = d)}
+          />
         )}
         {t === 'text' && (
           <input value={textArg.value} onInput={(e) => (textArg.value = (e.target as HTMLInputElement).value)} />
@@ -201,29 +202,21 @@ export function Palette() {
           </label>
         )}
         {t === 'clef' && (
-          <select
+          <Dropdown
             value={CLEFS.findIndex(([, c]) => JSON.stringify(c) === JSON.stringify(clefArg.value))}
-            onChange={(e) => (clefArg.value = CLEFS[Number((e.target as HTMLSelectElement).value)][1])}
-          >
-            {CLEFS.map(([n], i) => (
-              <option value={i}>{n}</option>
-            ))}
-          </select>
+            opts={CLEFS.map(([n], i) => ({ value: i, label: n }))}
+            onChange={(i) => (clefArg.value = CLEFS[i][1])}
+          />
         )}
         {t === 'tuplet' && (
-          <select
+          <Dropdown
             value={tupletArg.value.join(':')}
-            onChange={(e) => {
-              const [a, b] = (e.target as HTMLSelectElement).value.split(':').map(Number);
+            opts={RATIOS.map(([a, b]) => ({ value: `${a}:${b}`, label: `${a}:${b}` }))}
+            onChange={(v) => {
+              const [a, b] = v.split(':').map(Number);
               tupletArg.value = [a, b];
             }}
-          >
-            {RATIOS.map(([a, b]) => (
-              <option>
-                {a}:{b}
-              </option>
-            ))}
-          </select>
+          />
         )}
       </div>
       <p class="hint">{HINTS[t]}</p>

@@ -11,19 +11,11 @@ import { eventOf, markOf, tupletOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import type { Event, MarkBody, MarkPlacement, NoteEvent, Score } from '../src/model.ts';
 import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
-import {
-  chooseDots,
-  chooseDuration,
-  flipStem,
-  nudge,
-  setAccidentalSel,
-  slurSelection,
-  tieSelection,
-} from './actions.ts';
+import { chooseDots, flipStem, nudge, slurSelection, tieSelection } from './actions.ts';
+import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
 import { deleteSelection, evRefs, menu } from './interact.ts';
 import { DYNAMICS } from './Palette.tsx';
-import { AccidentalButtons, DurationButtons } from './pickers.tsx';
 import { run, score, selection, space } from './state.ts';
 
 function Row({ label, children }: { label: string; children: preact.ComponentChildren }) {
@@ -34,24 +26,18 @@ function Row({ label, children }: { label: string; children: preact.ComponentChi
     </div>
   );
 }
-/** A dropdown over (value, label) pairs; a mixed selection shows an empty entry. */
+/** A dropdown over (value, label[, icon]) entries; a mixed selection shows an empty entry. */
 function Pick<T extends string | number | boolean | undefined>({
   value,
   opts,
   onChange,
 }: {
   value: T | 'mixed';
-  opts: [T, string][];
+  opts: [T, string, preact.ComponentChildren?][];
   onChange: (v: T) => void;
 }) {
-  const i = opts.findIndex(([v]) => v === value);
   return (
-    <select value={i} onChange={(e) => onChange(opts[Number((e.target as HTMLSelectElement).value)][0])}>
-      {i < 0 && <option value={-1}></option>}
-      {opts.map(([, l], k) => (
-        <option value={k}>{l}</option>
-      ))}
-    </select>
+    <Dropdown value={value} opts={opts.map(([v, label, icon]) => ({ value: v, label, icon }))} onChange={onChange} />
   );
 }
 function Num({
@@ -149,7 +135,7 @@ function ScoreSection() {
           × <Num value={s.page.height} min={50} max={900} onChange={(n) => run((x) => C.setPage(x, { height: n }))} />{' '}
           mm
         </Row>
-        <Row label="Bar numbers">
+        <Row label="Measure numbers">
           <Pick
             value={s.page.measureNumbers ?? 'system'}
             opts={[
@@ -166,12 +152,12 @@ function ScoreSection() {
   );
 }
 
-const CLEF_OPTS: [string, { sign: 'G' | 'F' | 'C'; line: number; octave?: number }][] = [
-  ['G2', { sign: 'G', line: 2 }],
-  ['F4', { sign: 'F', line: 4 }],
-  ['C3', { sign: 'C', line: 3 }],
-  ['C4', { sign: 'C', line: 4 }],
-  ['G2-1', { sign: 'G', line: 2, octave: -1 }],
+const CLEF_OPTS: [string, { sign: 'G' | 'F' | 'C'; line: number; octave?: number }, string][] = [
+  ['G2', { sign: 'G', line: 2 }, 'Treble'],
+  ['F4', { sign: 'F', line: 4 }, 'Bass'],
+  ['C3', { sign: 'C', line: 3 }, 'Alto'],
+  ['C4', { sign: 'C', line: 4 }, 'Tenor'],
+  ['G2-1', { sign: 'G', line: 2, octave: -1 }, 'Treble 8vb'],
 ];
 const clefKey = (c: { sign: string; line: number; octave?: number }) => `${c.sign}${c.line}${c.octave ? '-1' : ''}`;
 
@@ -183,20 +169,15 @@ function StavesSection() {
   const [over, setOver] = useState<number | undefined>();
   const [inst, setInst] = useState('piano');
   const clefSel = (st: Score['staves'][number]) => (
-    <select
+    <Dropdown
       value={clefKey(st.clef)}
       title="Clef"
-      onChange={(e) => {
-        const c = CLEF_OPTS.find(([k]) => k === (e.target as HTMLSelectElement).value)?.[1];
+      opts={CLEF_OPTS.map(([k, , label]) => ({ value: k, label }))}
+      onChange={(k) => {
+        const c = CLEF_OPTS.find(([q]) => q === k)?.[1];
         if (c) run((x) => C.setStaffClef(x, st.id, c));
       }}
-    >
-      <option value="G2">Treble</option>
-      <option value="F4">Bass</option>
-      <option value="C3">Alto</option>
-      <option value="C4">Tenor</option>
-      <option value="G2-1">Treble 8vb</option>
-    </select>
+    />
   );
   const openMenu = (x: number, y: number, st: Score['staves'][number], i: number) => {
     menu.value = {
@@ -303,7 +284,7 @@ function StavesSection() {
                 <Pick
                   value={conn[i]}
                   opts={[
-                    [undefined, 'nothing'],
+                    [undefined, 'none'],
                     ['brace', 'brace'],
                     ['bracket', 'bracket'],
                   ]}
@@ -314,15 +295,12 @@ function StavesSection() {
           </>
         ))}
         <div class="btns">
-          <select
+          <Dropdown
             value={inst}
             title="Instrument to add (also used by Insert above/below)"
-            onChange={(e) => setInst((e.target as HTMLSelectElement).value)}
-          >
-            {C.INSTRUMENTS.map((p) => (
-              <option value={p.key}>{p.label}</option>
-            ))}
-          </select>
+            opts={C.INSTRUMENTS.map((p) => ({ value: p.key, label: p.label }))}
+            onChange={setInst}
+          />
           <button type="button" onClick={() => run((x) => C.addInstrument(x, inst))}>
             Add
           </button>
@@ -349,16 +327,11 @@ function MeasureSection({ mi }: { mi: number }) {
             onChange={(n) => run((x) => C.setTimeSig(x, mi, { ...ts, beats: n }))}
           />{' '}
           /{' '}
-          <select
+          <Dropdown
             value={ts.beatType}
-            onChange={(e) =>
-              run((x) => C.setTimeSig(x, mi, { ...ts, beatType: Number((e.target as HTMLSelectElement).value) }))
-            }
-          >
-            {[1, 2, 4, 8, 16].map((b) => (
-              <option>{b}</option>
-            ))}
-          </select>
+            opts={[1, 2, 4, 8, 16].map((b) => ({ value: b, label: String(b) }))}
+            onChange={(b) => run((x) => C.setTimeSig(x, mi, { ...ts, beatType: b }))}
+          />
           {mi > 0 && m.time && (
             <button
               type="button"
@@ -371,14 +344,11 @@ function MeasureSection({ mi }: { mi: number }) {
           )}
         </Row>
         <Row label="Key">
-          <select
+          <Dropdown
             value={keyAt(s, mi)}
-            onChange={(e) => run((x) => C.setKeySig(x, mi, Number((e.target as HTMLSelectElement).value)))}
-          >
-            {KEYS.map((k) => (
-              <option value={k}>{KEYNAME(k)}</option>
-            ))}
-          </select>
+            opts={KEYS.map((k) => ({ value: k, label: KEYNAME(k) }))}
+            onChange={(k) => run((x) => C.setKeySig(x, mi, k))}
+          />
           {mi > 0 && m.key !== undefined && (
             <button
               type="button"
@@ -396,9 +366,9 @@ function MeasureSection({ mi }: { mi: number }) {
           <Pick
             value={m.barline ?? 'single'}
             opts={[
-              ['single', '│'],
-              ['double', '║'],
-              ['final', '𝄂'],
+              ['single', 'single', <Ui.barSingle />],
+              ['double', 'double', <Ui.barDouble />],
+              ['final', 'final', <Ui.barFinal />],
             ]}
             onChange={(v) => run((x) => C.setBarline(x, mi, v))}
           />
@@ -460,10 +430,10 @@ function Tog({
 }
 
 const BEAM_MODES: [BeamMode, string, string][] = [
-  ['auto', 'Auto', 'The automatic rules decide whether this note is beamed to the previous one'],
-  ['none', 'None', 'Not beamed to either neighbour'],
-  ['break', 'Start', 'Start a new beam at this note'],
-  ['join', 'Join', 'Continue the beam of the previous note (also across a beat)'],
+  ['auto', 'auto', 'The automatic rules decide whether this note is beamed to the previous one'],
+  ['none', 'none', 'Not beamed to either neighbour'],
+  ['break', 'start', 'Start a new beam at this note'],
+  ['join', 'join', 'Continue the beam of the previous note (also across a beat)'],
 ];
 
 /** The beam mode shared by the selected notes (`mixed` if they differ), the refs it applies to, why they cannot be joined to the previous note, and a selected tremolo note. */
@@ -535,9 +505,6 @@ function EventSection() {
         </div>
       </Group>
       <Group id="rhythm" title="Rhythm">
-        <div class="seg fill big">
-          <DurationButtons value={same(evs.map((e) => e.dur.base))} onPick={chooseDuration} />
-        </div>
         <Row label="Dot">
           <Pick
             value={same(evs.map((e) => e.dur.dots))}
@@ -554,7 +521,7 @@ function EventSection() {
             <Pick
               value={same(evs.filter((e) => e.kind === 'rest').map((e) => (e as { style: string }).style))}
               opts={[
-                ['normal', 'rest shown'],
+                ['normal', 'shown'],
                 ['hidden', 'hidden'],
               ]}
               onChange={(v) =>
@@ -571,7 +538,7 @@ function EventSection() {
       {notes.length > 0 && (
         <>
           <Group id="pitch" title="Pitch">
-            <div class="seg fill">
+            <div class="btns">
               <button type="button" title="Semitone up (↑)" onClick={() => nudge(1)}>
                 <Ui.up /> Semitone
               </button>
@@ -582,7 +549,7 @@ function EventSection() {
                 <Ui.up /> Step
               </button>
             </div>
-            <div class="seg fill">
+            <div class="btns">
               <button type="button" title="Semitone down (↓)" onClick={() => nudge(-1)}>
                 <Ui.down /> Semitone
               </button>
@@ -592,12 +559,6 @@ function EventSection() {
               <button type="button" title="Letter name down (Shift ↓)" onClick={() => nudge(undefined, -1)}>
                 <Ui.down /> Step
               </button>
-            </div>
-            <div class="seg fill big">
-              <AccidentalButtons
-                value={same(notes.flatMap((n) => n.pitches.map((p) => p.pitch.alter)))}
-                onPick={setAccidentalSel}
-              />
             </div>
             <Row label="Accidental">
               <Pick
@@ -670,8 +631,8 @@ function EventSection() {
                 value={same(notes.map((n) => n.stem))}
                 opts={[
                   [undefined, 'auto'],
-                  ['up', '↑'],
-                  ['down', '↓'],
+                  ['up', 'up', <Ui.up />],
+                  ['down', 'down', <Ui.down />],
                 ]}
                 onChange={(v) =>
                   upd((n) => {
@@ -683,22 +644,16 @@ function EventSection() {
             </Row>
             {beam && (
               <Row label="Beam">
-                <div class="seg fill">
-                  {BEAM_MODES.map(([mode, label, title]) => {
-                    const why = mode === 'join' ? beam.cannotJoin : undefined;
-                    return (
-                      <button
-                        type="button"
-                        aria-pressed={beam.mode === mode}
-                        disabled={!!why}
-                        title={why ?? title}
-                        onClick={() => run((x) => C.setBeamMode(x, beam.refs, mode))}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <Dropdown
+                  value={beam.mode}
+                  opts={BEAM_MODES.map(([mode, label, title]) => ({
+                    value: mode,
+                    label,
+                    title: mode === 'join' ? (beam.cannotJoin ?? title) : title,
+                    disabled: mode === 'join' && !!beam.cannotJoin,
+                  }))}
+                  onChange={(mode) => run((x) => C.setBeamMode(x, beam.refs, mode))}
+                />
               </Row>
             )}
             {notes.some((n) => n.art?.length) && (
@@ -707,8 +662,8 @@ function EventSection() {
                   value={same(notes.map((n) => n.artSide))}
                   opts={[
                     [undefined, 'auto'],
-                    ['above', '▲'],
-                    ['below', '▼'],
+                    ['above', 'above'],
+                    ['below', 'below'],
                   ]}
                   onChange={(v) =>
                     upd((n) => {
@@ -776,11 +731,11 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
       <Group title="Properties">
         {m.type === 'dynamic' && (
           <Row label="Dynamic">
-            <select value={m.text} onChange={(e) => upd({ text: (e.target as HTMLSelectElement).value } as never)}>
-              {DYNAMICS.map((d) => (
-                <option>{d}</option>
-              ))}
-            </select>
+            <Dropdown
+              value={m.text}
+              opts={DYNAMICS.map((d) => ({ value: d, label: d }))}
+              onChange={(d) => upd({ text: d } as never)}
+            />
           </Row>
         )}
         {m.type === 'text' && (
@@ -846,18 +801,11 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
         )}
         {m.type === 'clef' && (
           <Row label="Clef">
-            <select
+            <Dropdown
               value={`${m.clef.sign}${m.clef.line}`}
-              onChange={(e) => {
-                const v = (e.target as HTMLSelectElement).value;
-                upd({ clef: { sign: v[0] as 'G', line: Number(v[1]) } } as never);
-              }}
-            >
-              <option value="G2">Treble</option>
-              <option value="F4">Bass</option>
-              <option value="C3">Alto</option>
-              <option value="C4">Tenor</option>
-            </select>
+              opts={CLEF_OPTS.filter(([k]) => k !== 'G2-1').map(([k, , label]) => ({ value: k, label }))}
+              onChange={(v) => upd({ clef: { sign: v[0] as 'G', line: Number(v[1]) } } as never)}
+            />
           </Row>
         )}
         <Row label="Position">{`measure ${r.mi + 1}, ${(m.tick / 3360).toFixed(2).replace(/\.?0+$/, '')} quarters`}</Row>

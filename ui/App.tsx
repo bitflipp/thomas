@@ -7,6 +7,7 @@ import { lazy, Suspense } from 'preact/compat';
 import { useEffect, useRef } from 'preact/hooks';
 import { importMusicXml } from '../src/musicxml.ts';
 import { parseText, writeText } from '../src/textformat.ts';
+import { Dropdown } from './Dropdown.tsx';
 import { Inspector } from './Inspector.tsx';
 import { Ui } from './icons.tsx';
 import { menu, zoomBy } from './interact.ts';
@@ -173,20 +174,15 @@ export function App() {
             (e.target as HTMLInputElement).value = '';
           }}
         />
-        <select
-          value=""
+        <Dropdown
+          value={undefined}
           title="Open an example"
-          onChange={(e) => {
-            const v = (e.target as HTMLSelectElement).value;
-            if (v && (!dirty.value || confirm('Discard unsaved changes?')))
-              loadText(examples[v], v.replace(/^.*\//, ''));
+          placeholder="Examples…"
+          opts={Object.keys(examples).map((k) => ({ value: k, label: k.replace(/^.*\//, '') }))}
+          onChange={(v) => {
+            if (!dirty.value || confirm('Discard unsaved changes?')) loadText(examples[v], v.replace(/^.*\//, ''));
           }}
-        >
-          <option value="">Examples…</option>
-          {Object.keys(examples).map((k) => (
-            <option value={k}>{k.replace(/^.*\//, '')}</option>
-          ))}
-        </select>
+        />
         <span class="sep" />
         <button
           type="button"
@@ -206,15 +202,12 @@ export function App() {
           )}
         </button>
         {midiPorts.value.length > 0 && (
-          <select
+          <Dropdown
             title="MIDI output"
             value={midiOut.value ?? ''}
-            onChange={(e) => chooseOutput((e.target as HTMLSelectElement).value)}
-          >
-            {midiPorts.value.map((p) => (
-              <option value={p.id}>{p.name}</option>
-            ))}
-          </select>
+            opts={midiPorts.value.map((p) => ({ value: p.id, label: p.name }))}
+            onChange={chooseOutput}
+          />
         )}
         <span class="sep" />
         <div class="seg">

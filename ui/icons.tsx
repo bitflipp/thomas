@@ -222,6 +222,15 @@ export const Ui = {
     ),
   up: () => S(<path d="M12 19V5M6 11l6-6 6 6" />),
   down: () => S(<path d="M12 5v14M6 13l6 6 6-6" />),
+  barSingle: () => S(<path d="M12 4v16" />),
+  barDouble: () => S(<path d="M9 4v16M15 4v16" />),
+  barFinal: () =>
+    S(
+      <>
+        <path d="M8 4v16" />
+        <path d="M15 4v16" stroke-width="4" />
+      </>,
+    ),
   accent: () => S(<path d="M5 8l14 4-14 4" />),
   marcato: () => S(<path d="M6 18l6-12 6 12" />),
   staccato: () => S(<circle cx="12" cy="12" r="2.6" />, true),
