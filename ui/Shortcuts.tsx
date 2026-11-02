@@ -38,9 +38,23 @@ export function Shortcuts() {
     <div class="modal" onPointerDown={() => (showHelp.value = false)}>
       <div class="card" onPointerDown={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
         <h3>Keyboard shortcuts</h3>
-        <table>{ROWS.map(([k, v]) => <tr><td><kbd>{k}</kbd></td><td>{v}</td></tr>)}</table>
-        <p class="hint">Everything here is also available with the mouse: pick a tool on the left, click or drag on the score; the right panel edits whatever is selected.</p>
-        <button onClick={() => (showHelp.value = false)}>Close</button>
+        <table>
+          {ROWS.map(([k, v]) => (
+            <tr>
+              <td>
+                <kbd>{k}</kbd>
+              </td>
+              <td>{v}</td>
+            </tr>
+          ))}
+        </table>
+        <p class="hint">
+          Everything here is also available with the mouse: pick a tool on the left, click or drag on the score; the
+          right panel edits whatever is selected.
+        </p>
+        <button type="button" onClick={() => (showHelp.value = false)}>
+          Close
+        </button>
       </div>
     </div>
   );

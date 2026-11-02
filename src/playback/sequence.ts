@@ -5,9 +5,14 @@
 // turned into velocity); finally the intervals become note-on/off messages, plus CC64 for the pedal,
 // sorted by time. Every staff gets its own MIDI channel (`channelOf`), so a synth can give the staves
 // different instruments.
-import { PPQ, baseTicks, flattenVoice, marksOf, measureTicks, pitchMidi, timeAt, type Score } from '../model.ts';
+import type { Score } from '../model.ts';
+import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, pitchMidi, timeAt } from '../model.ts';
+import { must } from '../util.ts';
 
-export interface Msg { sec: number; bytes: number[] }
+export interface Msg {
+  sec: number;
+  bytes: number[];
+}
 export interface Sequence {
   /** Sorted by time; at one instant, note-offs and pedal-ups come before note-ons (a repeated note must re-articulate). */
   msgs: Msg[];
@@ -20,35 +25,64 @@ export interface Sequence {
   secToTick(sec: number): number;
 }
 
-const DYN: Record<string, number> = { ppp: 24, pp: 36, p: 50, mp: 62, mf: 76, f: 92, ff: 108, fff: 120, sf: 104, sfz: 104, fp: 92, rfz: 104 };
+const DYN: Record<string, number> = {
+  ppp: 24,
+  pp: 36,
+  p: 50,
+  mp: 62,
+  mf: 76,
+  f: 92,
+  ff: 108,
+  fff: 120,
+  sf: 104,
+  sfz: 104,
+  fp: 92,
+  rfz: 104,
+};
 const DEFAULT_VEL = 76;
 const STACCATO = 0.5;
 
 /** MIDI channel of the n-th staff: 0..15 without the percussion channel 9. */
-export const channelOf = (staffIndex: number): number => { const c = staffIndex % 15; return c >= 9 ? c + 1 : c; };
+export const channelOf = (staffIndex: number): number => {
+  const c = staffIndex % 15;
+  return c >= 9 ? c + 1 : c;
+};
 
-interface Note { start: number; end: number; midi: number; vel: number; ch: number }
+interface Note {
+  start: number;
+  end: number;
+  midi: number;
+  vel: number;
+  ch: number;
+}
 
 export function buildSequence(score: Score): Sequence {
   const measureStart: number[] = [];
   let total = 0;
-  score.measures.forEach((_, mi) => { measureStart.push(total); total += measureTicks(timeAt(score, mi)); });
+  score.measures.forEach((_, mi) => {
+    measureStart.push(total);
+    total += measureTicks(timeAt(score, mi));
+  });
 
   // Tempo map: a list of segments of constant seconds-per-tick, starting at 120 bpm (quarter) until the
   // first tempo mark. A mark at the same tick as the previous one replaces it (see `segs` below).
   const tempi: { tick: number; spt: number }[] = [{ tick: 0, spt: 60 / 120 / PPQ }];
   score.measures.forEach((m, mi) => {
-    for (const st of Object.values(m.staves)) for (const mk of marksOf(st)) {
-      if (mk.type !== 'tempo') continue;
-      const beatTicks = baseTicks({ base: mk.unit, dots: mk.dots });
-      tempi.push({ tick: measureStart[mi] + mk.tick, spt: 60 / (mk.bpm * (beatTicks / PPQ)) / PPQ });
-    }
+    for (const st of Object.values(m.staves))
+      for (const mk of marksOf(st)) {
+        if (mk.type !== 'tempo') continue;
+        const beatTicks = baseTicks({ base: mk.unit, dots: mk.dots });
+        tempi.push({ tick: measureStart[mi] + mk.tick, spt: 60 / (mk.bpm * (beatTicks / PPQ)) / PPQ });
+      }
   });
   tempi.sort((a, b) => a.tick - b.tick);
   const segs: { tick: number; sec: number; spt: number }[] = [];
   for (const t of tempi) {
     const last = segs[segs.length - 1];
-    if (last && last.tick === t.tick) { last.spt = t.spt; continue; }
+    if (last && last.tick === t.tick) {
+      last.spt = t.spt;
+      continue;
+    }
     segs.push({ tick: t.tick, sec: last ? last.sec + (t.tick - last.tick) * last.spt : 0, spt: t.spt });
   }
   const tickToSec = (tick: number): number => {
@@ -69,14 +103,26 @@ export function buildSequence(score: Score): Sequence {
     // Dynamics apply to the whole staff (all its voices), from their position until the next one.
     // A dynamic is looked up by `velAt` when a note starts; hairpins are not interpolated yet.
     const dyn: { tick: number; vel: number }[] = [];
-    const velAt = (tick: number) => { let v = DEFAULT_VEL; for (const d of dyn) if (d.tick <= tick) v = d.vel; return v; };
+    const velAt = (tick: number) => {
+      let v = DEFAULT_VEL;
+      for (const d of dyn) if (d.tick <= tick) v = d.vel;
+      return v;
+    };
     let down = false;
     score.measures.forEach((m, mi) => {
       for (const mk of marksOf(m.staves[sd.id])) {
         const t = measureStart[mi] + mk.tick;
-        if (mk.type === 'dynamic') { const v = DYN[mk.text]; if (v !== undefined) dyn.push({ tick: t, vel: v }); }
-        else if (mk.type === 'pedal') { if (down) pedal.push({ tick: t, ch, down: false }); pedal.push({ tick: t, ch, down: true }); down = true; }
-        else if (mk.type === 'stop' && mk.of === 'pedal' && down) { pedal.push({ tick: t, ch, down: false }); down = false; }
+        if (mk.type === 'dynamic') {
+          const v = DYN[mk.text];
+          if (v !== undefined) dyn.push({ tick: t, vel: v });
+        } else if (mk.type === 'pedal') {
+          if (down) pedal.push({ tick: t, ch, down: false });
+          pedal.push({ tick: t, ch, down: true });
+          down = true;
+        } else if (mk.type === 'stop' && mk.of === 'pedal' && down) {
+          pedal.push({ tick: t, ch, down: false });
+          down = false;
+        }
       }
     });
     if (down) pedal.push({ tick: total, ch, down: false });
@@ -87,12 +133,21 @@ export function buildSequence(score: Score): Sequence {
     const open = new Map<number, Map<number, Note>>();
     score.measures.forEach((m, mi) => {
       for (const v of m.staves[sd.id]?.voices ?? []) {
-        const ties = open.get(v.id) ?? open.set(v.id, new Map()).get(v.id)!;
+        const ties = open.get(v.id) ?? must(open.set(v.id, new Map()).get(v.id));
         const flat = flattenVoice(v);
         // Adds one sounding note. With `join` set, a note whose `nominal` start equals the end of the open
         // note of the same pitch extends that note instead (a tie); `shortened` (staccato) notes are
         // never tied into, since their end no longer meets the next start.
-        const add = (start: number, end: number, midi: number, vel: number, tie: boolean, join: boolean, shortened: boolean, nominal = start) => {
+        const add = (
+          start: number,
+          end: number,
+          midi: number,
+          vel: number,
+          tie: boolean,
+          join: boolean,
+          shortened: boolean,
+          nominal = start,
+        ) => {
           const cont = join ? ties.get(midi) : undefined;
           if (cont && cont.end === nominal) cont.end = end;
           else {
@@ -104,7 +159,8 @@ export function buildSequence(score: Score): Sequence {
           }
           if (!tie) ties.delete(midi);
         };
-        const accent = (te: (typeof flat)[number]) => (te.ev.kind === 'note' && (te.ev.art?.includes('accent') || te.ev.art?.includes('marcato')) ? 14 : 0);
+        const accent = (te: (typeof flat)[number]) =>
+          te.ev.kind === 'note' && (te.ev.art?.includes('accent') || te.ev.art?.includes('marcato')) ? 14 : 0;
         const done = new Set<unknown>();
         for (const te of flat) {
           if (te.ev.kind !== 'note' || done.has(te.ev)) continue;
@@ -116,8 +172,10 @@ export function buildSequence(score: Score): Sequence {
             const pair = flat.filter((x) => x.tremolo === trem && x.ev.kind === 'note');
             if (pair.length === 2) {
               const [p0, p1] = pair;
-              done.add(p0.ev); done.add(p1.ev);
-              const from = measureStart[mi] + p0.start, to = measureStart[mi] + p1.start + p1.ticks;
+              done.add(p0.ev);
+              done.add(p1.ev);
+              const from = measureStart[mi] + p0.start;
+              const to = measureStart[mi] + p1.start + p1.ticks;
               const stroke = (PPQ * 4) / 2 ** (trem.beams + 2);
               const count = Math.max(2, Math.round((to - from) / stroke));
               const len = (to - from) / count;
@@ -125,13 +183,24 @@ export function buildSequence(score: Score): Sequence {
               for (let k = 0; k < count; k++) {
                 const who = (k % 2 ? p1 : p0).ev;
                 if (who.kind !== 'note') continue;
-                const lastOfWho = k >= count - 2, firstOfWho = k < 2;
-                for (const np of who.pitches) add(from + k * len, from + (k + 1) * len, pitchMidi(np.pitch), vel, !!np.tie && lastOfWho, firstOfWho, !lastOfWho);
+                const lastOfWho = k >= count - 2;
+                const firstOfWho = k < 2;
+                for (const np of who.pitches)
+                  add(
+                    from + k * len,
+                    from + (k + 1) * len,
+                    pitchMidi(np.pitch),
+                    vel,
+                    !!np.tie && lastOfWho,
+                    firstOfWho,
+                    !lastOfWho,
+                  );
               }
               continue;
             }
           }
-          const start = start0, end = start + te.ticks;
+          const start = start0;
+          const end = start + te.ticks;
           const stac = te.ev.art?.includes('staccato');
           const vel = velAt(start) + accent(te);
           // Grace notes: slashed ones (acciaccature) are quick and end exactly on the beat. The others
@@ -146,13 +215,18 @@ export function buildSequence(score: Score): Sequence {
             let total = lens.reduce((a, b) => a + b, 0);
             let t = start - total;
             if (!quick || t < 0) {
-              if (total > te.ticks / 2) { const f = te.ticks / 2 / total; lens = lens.map((l) => l * f); total = te.ticks / 2; }
+              if (total > te.ticks / 2) {
+                const f = te.ticks / 2 / total;
+                lens = lens.map((l) => l * f);
+                total = te.ticks / 2;
+              }
               t = start;
               mainOn = start + total;
             }
             const gv = Math.max(1, velAt(start) - 8);
             graces.forEach((g, gi) => {
-              for (const np of g.pitches) notes.push({ start: t, end: t + lens[gi], midi: pitchMidi(np.pitch), vel: gv, ch });
+              for (const np of g.pitches)
+                notes.push({ start: t, end: t + lens[gi], midi: pitchMidi(np.pitch), vel: gv, ch });
               t += lens[gi];
             });
           }
@@ -184,5 +258,12 @@ export function buildSequence(score: Score): Sequence {
     evs.push({ sec: tickToSec(p.tick), order: p.down ? 1 : 0, bytes: [0xb0 | p.ch, 64, p.down ? 127 : 0] });
   }
   evs.sort((a, b) => a.sec - b.sec || a.order - b.order);
-  return { msgs: evs.map(({ sec, bytes }) => ({ sec, bytes })), channels: [...used].sort((a, b) => a - b), totalTicks: total, measureStart, tickToSec, secToTick };
+  return {
+    msgs: evs.map(({ sec, bytes }) => ({ sec, bytes })),
+    channels: [...used].sort((a, b) => a - b),
+    totalTicks: total,
+    measureStart,
+    tickToSec,
+    secToTick,
+  };
 }

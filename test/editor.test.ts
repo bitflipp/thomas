@@ -1,10 +1,11 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseText, writeText } from '../src/textformat.ts';
-import { validate, flattenVoice, marksOf, type Score } from '../src/model.ts';
-import * as C from '../src/editor/commands.ts';
+import { test } from 'node:test';
 import { indexScore } from '../src/editor/addr.ts';
+import * as C from '../src/editor/commands.ts';
 import { dependentNotes } from '../src/editor/hit.ts';
+import type { Score } from '../src/model.ts';
+import { flattenVoice, marksOf, validate } from '../src/model.ts';
+import { parseText, writeText } from '../src/textformat.ts';
 
 const base = (m = '  rh.1: R:2\n  lh.1: R:2') => `page 210x297 margin=10 space=1.75
 staff rh clef=G2
@@ -17,11 +18,18 @@ m2
   lh.1: R:2
 `;
 const load = (t = base()): Score => parseText(t);
-const ok = (s: Score) => { assert.deepEqual(validate(s), []); assert.equal(writeText(parseText(writeText(s))), writeText(s)); return s; };
+const ok = (s: Score) => {
+  assert.deepEqual(validate(s), []);
+  assert.equal(writeText(parseText(writeText(s))), writeText(s));
+  return s;
+};
 const loc = { mi: 0, staff: 'rh', voice: 1 };
 const PPQ4 = 3360;
 const c4 = { step: 'c' as const, alter: 0, octave: 4 };
-const show = (s: Score, mi = 0, st = 'rh') => writeText(s).split('\n').filter((l) => l.startsWith(`  ${st}.`) && true)[mi] ?? '';
+const show = (s: Score, mi = 0, st = 'rh') =>
+  writeText(s)
+    .split('\n')
+    .filter((l) => l.startsWith(`  ${st}.`) && true)[mi] ?? '';
 
 test('enterNote into a measure rest leaves rests around it', () => {
   const s = ok(C.enterNote(load(), loc, PPQ4 / 2, { base: 8, dots: 0 }, c4));
@@ -76,22 +84,29 @@ test('a mark is added to and moved between events', () => {
   s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4);
   s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'mf' }));
   s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'f' })); // replaces the one on that event
-  const dyn = () => marksOf(s.measures[0].staves.rh).filter((m) => m.type === 'dynamic').map((m) => `${(m as { text: string }).text}@${m.tick}`).join();
+  const dyn = () =>
+    marksOf(s.measures[0].staves.rh)
+      .filter((m) => m.type === 'dynamic')
+      .map((m) => `${(m as { text: string }).text}@${m.tick}`)
+      .join();
   assert.equal(dyn(), 'f@0');
   s = ok(C.moveMark(s, { ...loc, idx: 0, k: 0 }, { ...loc, idx: 1 }));
-  assert.equal(dyn(), 'f@' + PPQ4);
+  assert.equal(dyn(), `f@${PPQ4}`);
 });
 test('marks hang on events: they follow a changed note, and a hairpin goes when the note carrying one end is replaced', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4);
   s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'mf' }));
   s = ok(C.addSpanOver(s, 'cresc', { ...loc, idx: 0 }, { ...loc, idx: 0 })); // ends where the second note starts
-  const types = () => marksOf(s.measures[0].staves.rh).map((m) => `${m.type}@${m.tick}`).join();
-  assert.equal(types(), 'dynamic@0,hairpin@0,stop@' + PPQ4);
+  const types = () =>
+    marksOf(s.measures[0].staves.rh)
+      .map((m) => `${m.type}@${m.tick}`)
+      .join();
+  assert.equal(types(), `dynamic@0,hairpin@0,stop@${PPQ4}`);
   s = ok(C.enterNote(s, loc, 0, { base: 4, dots: 0 }, { step: 'd', alter: 0, octave: 4 })); // another note in place of the first
-  assert.equal(types(), 'dynamic@0,hairpin@0,stop@' + PPQ4);
+  assert.equal(types(), `dynamic@0,hairpin@0,stop@${PPQ4}`);
   s = ok(C.setDuration(s, { ...loc, idx: 0 }, { base: 8, dots: 0 }));
-  assert.equal(types(), 'dynamic@0,hairpin@0,stop@' + PPQ4); // the note after it stays where it was
+  assert.equal(types(), `dynamic@0,hairpin@0,stop@${PPQ4}`); // the note after it stays where it was
   s = ok(C.enterNote(s, loc, 0, { base: 2, dots: 0 }, c4)); // the half note covers the event that carried the stop
   assert.equal(types(), 'dynamic@0');
 });
@@ -115,21 +130,23 @@ test('ties, transposition, cross-staff', () => {
   assert.match(show(s), /\\staff lh/);
 });
 
-import { engrave } from '../src/engrave/system.ts';
-import { buildHitIndex, hitTest, measureAt, snapTick, marquee } from '../src/editor/hit.ts';
 import { readFileSync } from 'node:fs';
+import { buildHitIndex, hitTest, marquee, measureAt, snapTick } from '../src/editor/hit.ts';
+import { engrave } from '../src/engrave/system.ts';
 
 test('hit index: every note head of the example is found where it is drawn', () => {
   const s = parseText(readFileSync(new URL('../examples/tango.txt', import.meta.url), 'utf8'));
   const res = engrave(s, { respectBreaks: true });
   const h = buildHitIndex(s, res);
-  let heads = 0, found = 0;
+  let heads = 0;
+  let found = 0;
   for (const t of h.targets) {
     if (t.k !== 'head') continue;
     heads++;
     const b = t.boxes[0];
     const got = hitTest(h, t.page, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0.05);
-    if (got && got.ref.t === 'ev' && t.ref.t === 'ev' && got.ref.mi === t.ref.mi && got.ref.staff === t.ref.staff) found++;
+    if (got && got.ref.t === 'ev' && t.ref.t === 'ev' && got.ref.mi === t.ref.mi && got.ref.staff === t.ref.staff)
+      found++;
   }
   assert.ok(heads > 500);
   assert.ok(found / heads > 0.97, `${found}/${heads}`);
@@ -139,7 +156,8 @@ test('slots: a point in a measure maps to the measure, staff and a nearby column
   const res = engrave(s, { respectBreaks: true });
   const g = res.layout.measures.find((m) => m.mi === 2 && m.staff === 1)!;
   const got = measureAt(res.layout, g.page, (g.x0 + g.x1) / 2, g.y + 2)!;
-  assert.equal(got.mi, 2); assert.equal(got.staff, 1);
+  assert.equal(got.mi, 2);
+  assert.equal(got.staff, 1);
   const sn = snapTick(g, 3360 * 4, g.cols[2].x + 0.1, 840);
   assert.equal(sn.tick, g.cols[2].tick);
   const h = buildHitIndex(s, res);
@@ -149,7 +167,7 @@ test('slots: a point in a measure maps to the measure, staff and a nearby column
 
 test('beam groups and tremolos', () => {
   let s = load();
-  for (let i = 0; i < 4; i++) s = C.enterNote(s, loc, i * 3360 / 2, { base: 8, dots: 0 }, c4);
+  for (let i = 0; i < 4; i++) s = C.enterNote(s, loc, (i * 3360) / 2, { base: 8, dots: 0 }, c4);
   s = ok(C.makeBeam(s, loc, 0, 3));
   assert.match(show(s), /\[c4:8 c4 c4 c4\]/);
   s = ok(C.ungroup(s, { ...loc, idx: 1 }));
@@ -187,7 +205,10 @@ test('staves: add, connect, move, remove', () => {
   s = ok(C.setConnection(s, 1, 'bracket'));
   assert.deepEqual(C.connections(s), ['brace', 'bracket']);
   s = ok(C.moveStaff(s, 's3', -1));
-  assert.deepEqual(s.staves.map((x) => x.id), ['rh', 's3', 'lh']);
+  assert.deepEqual(
+    s.staves.map((x) => x.id),
+    ['rh', 's3', 'lh'],
+  );
   s = ok(C.addStaff(s, { clef: { sign: 'G', line: 2 }, at: 1 }));
   assert.equal(C.connections(s)[0], undefined);
   s = ok(C.removeStaff(s, 's3'));
@@ -205,23 +226,37 @@ test('cross-staff references vanish with their staff', () => {
 });
 
 test('a selected hairpin names the events it hangs on, and the text format keeps the voice that carries a mark', () => {
-  const s = parseText('# music typesetter score\nstaff rh clef=G2\n\nm1 time=4/4 key=0\n  rh.1: c5:2 d5\n  rh.2: \\< e4:2 r \\!\n');
+  const s = parseText(
+    '# music typesetter score\nstaff rh clef=G2\n\nm1 time=4/4 key=0\n  rh.1: c5:2 d5\n  rh.2: \\< e4:2 r \\!\n',
+  );
   const idx = indexScore(s);
   const mk = marksOf(s.measures[0].staves.rh).find((m) => m.type === 'hairpin')!;
   const a = idx.mark.get(mk)!;
   assert.deepEqual([a.voice, a.idx], [2, 0]);
-  assert.deepEqual(dependentNotes(s, { t: 'mark', ...a }).map((x) => [x.voice, x.idx]), [[2, 0], [2, 1]]);
+  assert.deepEqual(
+    dependentNotes(s, { t: 'mark', ...a }).map((x) => [x.voice, x.idx]),
+    [
+      [2, 0],
+      [2, 1],
+    ],
+  );
   assert.equal(marksOf(s.measures[0].staves.rh).find((m) => m.type === 'stop')!.idx, -1); // the end of the measure, on voice 2
   assert.deepEqual(JSON.parse(JSON.stringify(parseText(writeText(s)))), JSON.parse(JSON.stringify(s)));
 });
 
 test('a line drawn from note to note hangs on those events (a stop goes before the starts at its position; the voice end when it ends on the last event)', () => {
-  let s = C.enterNote(load(base().replace('time=2/4', 'time=4/4').replace(/R:2/g, 'R:1')), loc, 0, { base: 4, dots: 0 }, c4);
+  let s = C.enterNote(
+    load(base().replace('time=2/4', 'time=4/4').replace(/R:2/g, 'R:1')),
+    loc,
+    0,
+    { base: 4, dots: 0 },
+    c4,
+  );
   s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4); // a quarter, a quarter, a half rest
   s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 2 }, { ...loc, idx: 2 })); // ends on the last event of the voice
   s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 1 }, { ...loc, idx: 0 })); // drawn backwards, and ending where the first one starts
   const m = marksOf(s.measures[0].staves.rh).map((x) => `${x.type === 'stop' ? 'stop' : x.type}@${x.tick}`);
-  assert.deepEqual(m, ['pedal@0', 'stop@' + 2 * PPQ4, 'pedal@' + 2 * PPQ4, 'stop@' + 4 * PPQ4]);
+  assert.deepEqual(m, ['pedal@0', `stop@${2 * PPQ4}`, `pedal@${2 * PPQ4}`, `stop@${4 * PPQ4}`]);
   assert.throws(() => C.addSpanOver(s, 'cresc', { ...loc, idx: 0 }, { ...loc, staff: 'lh', idx: 0 }), /one staff/);
 });
 
@@ -231,7 +266,13 @@ test('a hairpin that stops before a note belongs to the note before it, also acr
   const mk = marksOf(s.measures[32].staves.s2).find((m) => m.type === 'hairpin')!;
   const a = indexScore(s).mark.get(mk)!;
   const ns = dependentNotes(s, { t: 'mark', ...a });
-  assert.deepEqual(ns.map((x) => [x.mi, x.idx]), [[32, 2], [33, 3]]); // eb2 in m33, the last 16th before the quintuplet in m34
+  assert.deepEqual(
+    ns.map((x) => [x.mi, x.idx]),
+    [
+      [32, 2],
+      [33, 3],
+    ],
+  ); // eb2 in m33, the last 16th before the quintuplet in m34
 });
 
 test('the end of a slur on a unison head shared with another voice is still found (gewitter m78-79, voice 2)', async () => {
@@ -247,7 +288,25 @@ test('the end of a slur on a unison head shared with another voice is still foun
 });
 
 test('halving the rest of an empty bar gives ordinary half rests, not a whole-bar rest', () => {
-  const s = ok(C.setDuration(load(base('  rh.1: R:1\n  lh.1: R:1').replace('time=2/4', 'time=4/4').replace(/\nm2\n.*\n.*\n$/, '\n')), { ...loc, idx: 0 }, { base: 2, dots: 0 }));
-  const rests = flattenVoice(s.measures[0].staves.rh.voices[0]).map((t) => t.ev as { kind: string; style: string; dur: { base: number } });
-  assert.deepEqual(rests.map((r) => [r.kind, r.style, r.dur.base]), [['rest', 'normal', 2], ['rest', 'normal', 2]]);
+  const s = ok(
+    C.setDuration(
+      load(
+        base('  rh.1: R:1\n  lh.1: R:1')
+          .replace('time=2/4', 'time=4/4')
+          .replace(/\nm2\n.*\n.*\n$/, '\n'),
+      ),
+      { ...loc, idx: 0 },
+      { base: 2, dots: 0 },
+    ),
+  );
+  const rests = flattenVoice(s.measures[0].staves.rh.voices[0]).map(
+    (t) => t.ev as { kind: string; style: string; dur: { base: number } },
+  );
+  assert.deepEqual(
+    rests.map((r) => [r.kind, r.style, r.dur.base]),
+    [
+      ['rest', 'normal', 2],
+      ['rest', 'normal', 2],
+    ],
+  );
 });

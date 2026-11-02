@@ -5,13 +5,21 @@
 // (`Prim.r`, `.n`, `.k`; see scene.ts), groups the primitives of one object into a `Target` with a few
 // boxes (or sampled points for curves) and addresses it with a `Ref`. Queries are then plain geometry
 // on those targets and never need the primitives again.
-import type { Engraved, Layout, MeasureGeom } from '../engrave/system.ts';
-import type { Kind, Prim } from '../engrave/scene.ts';
-import { loadSmufl } from '../smufl.ts';
-import { markOf, eventOf, type EvAddr, indexScore, refKey, tupletOf, voiceOf, type Ref, type ScoreIndex } from './addr.ts';
-import { flattenVoice, marksOf, type Mark, type Score } from '../model.ts';
 
-export interface Box { x0: number; y0: number; x1: number; y1: number }
+import type { Kind, Prim } from '../engrave/scene.ts';
+import type { Engraved, Layout, MeasureGeom } from '../engrave/system.ts';
+import type { Mark, Score } from '../model.ts';
+import { flattenVoice, marksOf } from '../model.ts';
+import { loadSmufl } from '../smufl.ts';
+import type { EvAddr, Ref, ScoreIndex } from './addr.ts';
+import { eventOf, indexScore, markOf, refKey, tupletOf, voiceOf } from './addr.ts';
+
+export interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
 export interface Target {
   page: number;
   ref: Ref;
@@ -24,18 +32,52 @@ export interface Target {
   /** Lower wins when several targets are under the pointer: a head beats the stem and a slur over it. */
   prio: number;
 }
-export interface HitIndex { targets: Target[]; byPage: Target[][]; layout: Layout; index: ScoreIndex }
+export interface HitIndex {
+  targets: Target[];
+  byPage: Target[][];
+  layout: Layout;
+  index: ScoreIndex;
+}
 
-const PRIO: Partial<Record<Kind, number>> = { head: 0, rest: 0, acc: 1, dot: 1, artic: 1, arpeggio: 1, dyn: 1, hairpin: 1, pedal: 1, ottava: 1, tempo: 1, text: 1, stem: 2, flag: 2, ledger: 3, tie: 2, slur: 2, tuplet: 3 };
+const PRIO: Partial<Record<Kind, number>> = {
+  head: 0,
+  rest: 0,
+  acc: 1,
+  dot: 1,
+  artic: 1,
+  arpeggio: 1,
+  dyn: 1,
+  hairpin: 1,
+  pedal: 1,
+  ottava: 1,
+  tempo: 1,
+  text: 1,
+  stem: 2,
+  flag: 2,
+  ledger: 3,
+  tie: 2,
+  slur: 2,
+  tuplet: 3,
+};
 
 function primBox(p: Prim): Box | undefined {
   const sm = loadSmufl();
   switch (p.t) {
     case 'glyph': {
-      const b = sm.bbox(p.name), sx = p.sx ?? 1, sy = p.sy ?? 1;
+      const b = sm.bbox(p.name);
+      const sx = p.sx ?? 1;
+      const sy = p.sy ?? 1;
       return { x0: p.x + b.x0 * sx, x1: p.x + b.x1 * sx, y0: p.y - b.y1 * sy, y1: p.y - b.y0 * sy };
     }
-    case 'line': { const h = p.w / 2; return { x0: Math.min(p.x1, p.x2) - h, x1: Math.max(p.x1, p.x2) + h, y0: Math.min(p.y1, p.y2) - h, y1: Math.max(p.y1, p.y2) + h }; }
+    case 'line': {
+      const h = p.w / 2;
+      return {
+        x0: Math.min(p.x1, p.x2) - h,
+        x1: Math.max(p.x1, p.x2) + h,
+        y0: Math.min(p.y1, p.y2) - h,
+        y1: Math.max(p.y1, p.y2) + h,
+      };
+    }
     case 'text': {
       const w = p.s.length * p.size * 0.55;
       const x0 = p.anchor === 'middle' ? p.x - w / 2 : p.anchor === 'end' ? p.x - w : p.x;
@@ -44,8 +86,16 @@ function primBox(p: Prim): Box | undefined {
     case 'path': {
       const n = p.d.match(/-?\d*\.?\d+/g)?.map(Number) ?? [];
       if (n.length < 4) return undefined;
-      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (let i = 0; i + 1 < n.length; i += 2) { x0 = Math.min(x0, n[i]); x1 = Math.max(x1, n[i]); y0 = Math.min(y0, n[i + 1]); y1 = Math.max(y1, n[i + 1]); }
+      let x0 = Number.POSITIVE_INFINITY;
+      let y0 = Number.POSITIVE_INFINITY;
+      let x1 = Number.NEGATIVE_INFINITY;
+      let y1 = Number.NEGATIVE_INFINITY;
+      for (let i = 0; i + 1 < n.length; i += 2) {
+        x0 = Math.min(x0, n[i]);
+        x1 = Math.max(x1, n[i]);
+        y0 = Math.min(y0, n[i + 1]);
+        y1 = Math.max(y1, n[i + 1]);
+      }
       return { x0, y0, x1, y1 };
     }
   }
@@ -59,12 +109,20 @@ function curvePts(d: string): { x: number; y: number }[] {
   const out: { x: number; y: number }[] = [];
   for (let t = 0; t <= 1.0001; t += 0.05) {
     const u = 1 - t;
-    out.push({ x: u * u * u * x0 + 3 * u * u * t * ax + 3 * u * t * t * bx + t * t * t * x1, y: u * u * u * y0 + 3 * u * u * t * ay + 3 * u * t * t * by + t * t * t * y1 });
+    out.push({
+      x: u * u * u * x0 + 3 * u * u * t * ax + 3 * u * t * t * bx + t * t * t * x1,
+      y: u * u * u * y0 + 3 * u * u * t * ay + 3 * u * t * t * by + t * t * t * y1,
+    });
   }
   return out;
 }
 
-const union = (a: Box, b: Box): Box => ({ x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) });
+const union = (a: Box, b: Box): Box => ({
+  x0: Math.min(a.x0, b.x0),
+  y0: Math.min(a.y0, b.y0),
+  x1: Math.max(a.x1, b.x1),
+  y1: Math.max(a.y1, b.y1),
+});
 
 /** The model reference a primitive depicts (tagged by the engraver). */
 export function primRef(index: ScoreIndex, p: Prim): Ref | undefined {
@@ -95,11 +153,16 @@ export function buildHitIndex(score: Score, res: Engraved): HitIndex {
       const bb = primBox(p);
       if (!bb) continue;
       const head = ref.t === 'ev' && ref.pi !== undefined;
-      const key = `${pi}|${p.k === 'slur' || p.k === 'tie' ? p.k + '|' : ''}${refKey(ref)}${head ? '|h' : ''}`;
+      const key = `${pi}|${p.k === 'slur' || p.k === 'tie' ? `${p.k}|` : ''}${refKey(ref)}${head ? '|h' : ''}`;
       let t = byKey.get(key);
-      if (!t) { t = { page: pi, ref, k: head ? 'head' : p.k, boxes: [], bbox: bb, prio: PRIO[head ? 'head' : p.k] ?? 3 }; byKey.set(key, t); }
-      if (p.k === 'slur' || p.k === 'tie') (t.pts ??= []).push(...curvePts(p.t === 'path' ? p.d : ''));
-      else t.boxes.push(bb);
+      if (!t) {
+        t = { page: pi, ref, k: head ? 'head' : p.k, boxes: [], bbox: bb, prio: PRIO[head ? 'head' : p.k] ?? 3 };
+        byKey.set(key, t);
+      }
+      if (p.k === 'slur' || p.k === 'tie') {
+        t.pts ??= [];
+        t.pts.push(...curvePts(p.t === 'path' ? p.d : ''));
+      } else t.boxes.push(bb);
       t.bbox = union(t.bbox, bb);
       if (p.k === 'rest') t.prio = 0;
     }
@@ -111,34 +174,43 @@ export function buildHitIndex(score: Score, res: Engraved): HitIndex {
 }
 
 function distBox(b: Box, x: number, y: number): number {
-  const dx = Math.max(b.x0 - x, 0, x - b.x1), dy = Math.max(b.y0 - y, 0, y - b.y1);
+  const dx = Math.max(b.x0 - x, 0, x - b.x1);
+  const dy = Math.max(b.y0 - y, 0, y - b.y1);
   return Math.hypot(dx, dy);
 }
 function distTarget(t: Target, x: number, y: number): number {
   if (t.pts) {
     // Distance to the polyline through the samples, not to the samples themselves: those are far
     // apart on a long slur and a point between two of them would otherwise miss.
-    let m = Infinity;
+    let m = Number.POSITIVE_INFINITY;
     for (let i = 0; i < t.pts.length; i++) {
-      const a = t.pts[i], b = t.pts[i + 1] ?? a, dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+      const a = t.pts[i];
+      const b = t.pts[i + 1] ?? a;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const l2 = dx * dx + dy * dy;
       const u = l2 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2)) : 0;
       m = Math.min(m, Math.hypot(a.x + u * dx - x, a.y + u * dy - y));
     }
     return m;
   }
-  return t.boxes.reduce((m, b) => Math.min(m, distBox(b, x, y)), Infinity);
+  return t.boxes.reduce((m, b) => Math.min(m, distBox(b, x, y)), Number.POSITIVE_INFINITY);
 }
 
 /** The object under (x, y) on a page, `tol` staff spaces of slack. */
 export function hitTest(h: HitIndex, page: number, x: number, y: number, tol = 0.3): Target | undefined {
-  let best: Target | undefined, bestScore = Infinity;
+  let best: Target | undefined;
+  let bestScore = Number.POSITIVE_INFINITY;
   for (const t of h.byPage[page] ?? []) {
     if (x < t.bbox.x0 - tol - 2 && !t.pts) continue;
     const d = distTarget(t, x, y);
     const lim = t.k === 'slur' || t.k === 'tie' ? 0.5 : tol;
     if (d > lim) continue;
     const s = t.prio * 0.4 + d;
-    if (s < bestScore) { best = t; bestScore = s; }
+    if (s < bestScore) {
+      best = t;
+      bestScore = s;
+    }
   }
   return best;
 }
@@ -172,7 +244,11 @@ export function measureAt(layout: Layout, page: number, x: number, y: number): M
   if (!best) return undefined;
   const { sys, staff } = best;
   let found: MeasureGeom | undefined;
-  for (const g of layout.measures) if (g.sys === sys.sys && g.staff === staff && x >= g.x0 && x < g.x1 + 0.01) { found = g; break; }
+  for (const g of layout.measures)
+    if (g.sys === sys.sys && g.staff === staff && x >= g.x0 && x < g.x1 + 0.01) {
+      found = g;
+      break;
+    }
   return found;
 }
 
@@ -180,20 +256,35 @@ export function measureAt(layout: Layout, page: number, x: number, y: number): M
 export function xOfTick(g: MeasureGeom, len: number, tick: number): number {
   const pts = [...g.cols.map((c) => ({ t: c.tick, x: c.x })), { t: len, x: g.x1 }];
   if (!pts.length || pts[0].t > 0) pts.unshift({ t: 0, x: Math.min(g.x0 + 1.2, pts[0]?.x ?? g.x1) });
-  for (let i = 1; i < pts.length; i++) if (tick <= pts[i].t) { const a = pts[i - 1], b = pts[i]; return b.t === a.t ? b.x : a.x + ((b.x - a.x) * (tick - a.t)) / (b.t - a.t); }
+  for (let i = 1; i < pts.length; i++)
+    if (tick <= pts[i].t) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      return b.t === a.t ? b.x : a.x + ((b.x - a.x) * (tick - a.t)) / (b.t - a.t);
+    }
   return g.x1;
 }
 
 /** The rhythmic position nearest to x: an existing column or a multiple of `grid` ticks (`'events'`: columns only, where marks can hang). */
-export function snapTick(g: MeasureGeom, len: number, x: number, grid: number | 'events'): { tick: number; x: number; onColumn: boolean } {
+export function snapTick(
+  g: MeasureGeom,
+  len: number,
+  x: number,
+  grid: number | 'events',
+): { tick: number; x: number; onColumn: boolean } {
   const cand = new Map<number, boolean>();
   if (grid !== 'events') for (let t = 0; t < len; t += grid) cand.set(t, false);
   else if (!g.cols.some((c) => c.tick < len)) cand.set(0, false);
   for (const c of g.cols) if (c.tick < len) cand.set(c.tick, true);
-  let best = { tick: 0, x: xOfTick(g, len, 0), onColumn: false }, bd = Infinity;
+  let best = { tick: 0, x: xOfTick(g, len, 0), onColumn: false };
+  let bd = Number.POSITIVE_INFINITY;
   for (const [t, col] of cand) {
-    const cx = xOfTick(g, len, t), d = Math.abs(cx - x) - (col ? 0.15 : 0);
-    if (d < bd) { bd = d; best = { tick: t, x: cx, onColumn: col }; }
+    const cx = xOfTick(g, len, t);
+    const d = Math.abs(cx - x) - (col ? 0.15 : 0);
+    if (d < bd) {
+      bd = d;
+      best = { tick: t, x: cx, onColumn: col };
+    }
   }
   return best;
 }
@@ -203,12 +294,22 @@ export const posAtY = (top: number, y: number): number => Math.round((top + 4 - 
 export const yAtPos = (top: number, pos: number): number => top + 4 - pos / 2;
 
 /** The measure of a given staff nearest to a point (used when a drag must stay on one staff). */
-export function measureAtStaff(layout: Layout, page: number, x: number, y: number, staff: number): MeasureGeom | undefined {
-  let best: MeasureGeom | undefined, bd = Infinity;
+export function measureAtStaff(
+  layout: Layout,
+  page: number,
+  x: number,
+  y: number,
+  staff: number,
+): MeasureGeom | undefined {
+  let best: MeasureGeom | undefined;
+  let bd = Number.POSITIVE_INFINITY;
   for (const g of layout.measures) {
     if (g.page !== page || g.staff !== staff || x < g.x0 || x >= g.x1 + 0.01) continue;
     const d = Math.abs(g.y + 2 - y);
-    if (d < bd) { bd = d; best = g; }
+    if (d < bd) {
+      bd = d;
+      best = g;
+    }
   }
   return best;
 }
@@ -222,8 +323,11 @@ export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
   if (ref.t !== 'slur' && ref.t !== 'tie' && ref.t !== 'tuplet') return [];
   const out: EvAddr[] = [{ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: ref.idx }];
   if (ref.t === 'tuplet') {
-    const v = voiceOf(score, ref), g = v && tupletOf(score, ref);
-    if (v && g) for (const te of flattenVoice(v)) if (te.tuplets[ref.depth] === g) out.push({ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: te.index });
+    const v = voiceOf(score, ref);
+    const g = v && tupletOf(score, ref);
+    if (v && g)
+      for (const te of flattenVoice(v))
+        if (te.tuplets[ref.depth] === g) out.push({ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: te.index });
     return out;
   }
   // Walk forward through the voice, across measures, to the note that ends the slur (the one carrying
@@ -235,7 +339,10 @@ export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
     for (const te of flattenVoice(v)) {
       if (mi === ref.mi && te.index <= ref.idx) continue;
       if (te.ev === start) continue;
-      if (ref.t === 'tie' ? te.ev.kind === 'note' : te.ev.slurStop?.includes(ref.id)) { out.push({ mi, staff: ref.staff, voice: ref.voice, idx: te.index }); return out; }
+      if (ref.t === 'tie' ? te.ev.kind === 'note' : te.ev.slurStop?.includes(ref.id)) {
+        out.push({ mi, staff: ref.staff, voice: ref.voice, idx: te.index });
+        return out;
+      }
       if (ref.t === 'tie') return out;
     }
   }
@@ -248,11 +355,20 @@ export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
  */
 function anchorOf(score: Score, staff: string, mi: number, m: Mark): EvAddr | undefined {
   const at = { staff, voice: m.voice };
-  const count = (i: number) => { const v = voiceOf(score, { mi: i, ...at }); return v ? flattenVoice(v).length : 0; };
-  if (m.idx < 0) { const n = count(mi); return n ? { mi, ...at, idx: n - 1 } : undefined; }
+  const count = (i: number) => {
+    const v = voiceOf(score, { mi: i, ...at });
+    return v ? flattenVoice(v).length : 0;
+  };
+  if (m.idx < 0) {
+    const n = count(mi);
+    return n ? { mi, ...at, idx: n - 1 } : undefined;
+  }
   if (m.type !== 'stop') return { mi, ...at, idx: m.idx };
   if (m.idx > 0) return { mi, ...at, idx: m.idx - 1 };
-  for (let i = mi - 1; i >= 0; i--) { const n = count(i); if (n) return { mi: i, ...at, idx: n - 1 }; } // the previous measure's last event
+  for (let i = mi - 1; i >= 0; i--) {
+    const n = count(i);
+    if (n) return { mi: i, ...at, idx: n - 1 };
+  } // the previous measure's last event
   return { mi, ...at, idx: 0 };
 }
 
@@ -263,12 +379,23 @@ function markNotes(score: Score, ref: Extract<Ref, { t: 'mark' }>): EvAddr[] {
   const out: EvAddr[] = [];
   const own = anchorOf(score, ref.staff, ref.mi, m);
   if (own) out.push(own);
-  const ends = m.type === 'hairpin' ? (x: Mark) => x.type === 'stop' && x.of === 'hairpin' && x.id === m.id
-    : m.type === 'pedal' || m.type === 'ottava' ? (x: Mark) => x.type === 'stop' && x.of === m.type : undefined;
-  if (ends) for (let mi = ref.mi; mi < score.measures.length; mi++) {
-    const stop = marksOf(score.measures[mi].staves[ref.staff]).find((x) => ends(x) && (mi > ref.mi || x.tick > m.tick));
-    if (stop) { const a = anchorOf(score, ref.staff, mi, stop); if (a) out.push(a); break; }
-  }
+  const ends =
+    m.type === 'hairpin'
+      ? (x: Mark) => x.type === 'stop' && x.of === 'hairpin' && x.id === m.id
+      : m.type === 'pedal' || m.type === 'ottava'
+        ? (x: Mark) => x.type === 'stop' && x.of === m.type
+        : undefined;
+  if (ends)
+    for (let mi = ref.mi; mi < score.measures.length; mi++) {
+      const stop = marksOf(score.measures[mi].staves[ref.staff]).find(
+        (x) => ends(x) && (mi > ref.mi || x.tick > m.tick),
+      );
+      if (stop) {
+        const a = anchorOf(score, ref.staff, mi, stop);
+        if (a) out.push(a);
+        break;
+      }
+    }
   return out;
 }
 
@@ -283,12 +410,22 @@ export function noteBoxes(h: HitIndex, page: number, want: EvAddr[]): Box[] {
   const heads = ts.filter((t) => t.ref.t === 'ev' && (t.k === 'head' || t.k === 'rest'));
   const out: Box[] = [];
   const own = new Set<string>();
-  for (const t of heads) if (keys.has(key(t.ref))) { out.push(t.bbox); own.add(key(t.ref)); }
+  for (const t of heads)
+    if (keys.has(key(t.ref))) {
+      out.push(t.bbox);
+      own.add(key(t.ref));
+    }
   for (const t of ts) {
     if (t.ref.t !== 'ev' || t.k !== 'stem' || !keys.has(key(t.ref)) || own.has(key(t.ref))) continue;
-    const b = t.bbox, r = 0.8;
-    const ends: Box[] = [{ x0: b.x0 - r, x1: b.x1 + r, y0: b.y0 - r, y1: b.y0 + r }, { x0: b.x0 - r, x1: b.x1 + r, y0: b.y1 - r, y1: b.y1 + r }];
-    for (const hd of heads) if (ends.some((e) => hd.bbox.x0 <= e.x1 && hd.bbox.x1 >= e.x0 && hd.bbox.y0 <= e.y1 && hd.bbox.y1 >= e.y0)) out.push(hd.bbox);
+    const b = t.bbox;
+    const r = 0.8;
+    const ends: Box[] = [
+      { x0: b.x0 - r, x1: b.x1 + r, y0: b.y0 - r, y1: b.y0 + r },
+      { x0: b.x0 - r, x1: b.x1 + r, y0: b.y1 - r, y1: b.y1 + r },
+    ];
+    for (const hd of heads)
+      if (ends.some((e) => hd.bbox.x0 <= e.x1 && hd.bbox.x1 >= e.x0 && hd.bbox.y0 <= e.y1 && hd.bbox.y1 >= e.y0))
+        out.push(hd.bbox);
   }
   return out;
 }
@@ -297,7 +434,14 @@ export function noteBoxes(h: HitIndex, page: number, want: EvAddr[]): Box[] {
  * The event a position on a staff-measure stands for: the one at the nearest column (a mark hangs on it), in voice `prefer`
  * if it has an event there, else in the first voice that does. Undefined when the staff-measure has no events.
  */
-export function eventAtX(score: Score, g: MeasureGeom, staff: string, len: number, x: number, prefer: number): EvAddr | undefined {
+export function eventAtX(
+  score: Score,
+  g: MeasureGeom,
+  staff: string,
+  len: number,
+  x: number,
+  prefer: number,
+): EvAddr | undefined {
   const sn = snapTick(g, len, x, 'events');
   const sm = score.measures[g.mi]?.staves[staff];
   if (!sm) return undefined;

@@ -4,12 +4,24 @@
 // highlight) cannot hold on to events or marks themselves. It holds a `Ref` instead: measure index,
 // staff id, voice id and the flat event index within the voice, which survive an edit that does not
 // restructure that voice. `indexScore` goes from objects to addresses and the `*Of` functions back.
-import { flattenVoice, marksOf, type Event, type Mark, type Score, type TupletGroup, type Voice } from '../model.ts';
+import type { Event, Mark, Score, TupletGroup, Voice } from '../model.ts';
+import { flattenVoice, marksOf } from '../model.ts';
 
 /** An event: measure, staff id, voice id and its index in the voice's flattened event order. */
-export interface EvAddr { mi: number; staff: string; voice: number; idx: number }
+export interface EvAddr {
+  mi: number;
+  staff: string;
+  voice: number;
+  idx: number;
+}
 /** A mark: the voice it hangs on, the event (index in the voice; -1 = the voice's end marks) and its place in that list. */
-export interface MarkAddr { mi: number; staff: string; voice: number; idx: number; k: number }
+export interface MarkAddr {
+  mi: number;
+  staff: string;
+  voice: number;
+  idx: number;
+  k: number;
+}
 
 /**
  * Anything that can be selected or hovered. The extra fields say which part of an event is meant:
@@ -26,12 +38,18 @@ export type Ref =
 /** A string identity for a Ref, for sets and map keys (refs are plain objects and compare by identity). */
 export const refKey = (r: Ref): string => {
   switch (r.t) {
-    case 'ev': return `ev:${r.mi}:${r.staff}:${r.voice}:${r.idx}${r.pi === undefined ? '' : ':' + r.pi}`;
-    case 'tie': return `tie:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.pi}`;
-    case 'slur': return `slur:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.id}`;
-    case 'tuplet': return `tup:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.depth}`;
-    case 'mark': return `mark:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.k}`;
-    case 'measure': return `m:${r.mi}`;
+    case 'ev':
+      return `ev:${r.mi}:${r.staff}:${r.voice}:${r.idx}${r.pi === undefined ? '' : `:${r.pi}`}`;
+    case 'tie':
+      return `tie:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.pi}`;
+    case 'slur':
+      return `slur:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.id}`;
+    case 'tuplet':
+      return `tup:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.depth}`;
+    case 'mark':
+      return `mark:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.k}`;
+    case 'measure':
+      return `m:${r.mi}`;
   }
 };
 
@@ -43,7 +61,9 @@ export interface ScoreIndex {
 }
 
 export function indexScore(score: Score): ScoreIndex {
-  const ev = new Map<Event, EvAddr>(), mark = new Map<Mark, MarkAddr>(), tuplet = new Map<TupletGroup, EvAddr & { depth: number }>();
+  const ev = new Map<Event, EvAddr>();
+  const mark = new Map<Mark, MarkAddr>();
+  const tuplet = new Map<TupletGroup, EvAddr & { depth: number }>();
   score.measures.forEach((m, mi) => {
     for (const [staff, sm] of Object.entries(m.staves)) {
       for (const mk of marksOf(sm)) mark.set(mk, { mi, staff, voice: mk.voice, idx: mk.idx, k: mk.k });
@@ -51,7 +71,9 @@ export function indexScore(score: Score): ScoreIndex {
         for (const te of flattenVoice(v)) {
           const a = { mi, staff, voice: v.id, idx: te.index };
           ev.set(te.ev, a);
-          te.tuplets.forEach((t, depth) => { if (!tuplet.has(t)) tuplet.set(t, { ...a, depth }); });
+          te.tuplets.forEach((t, depth) => {
+            if (!tuplet.has(t)) tuplet.set(t, { ...a, depth });
+          });
         }
       }
     }
@@ -66,7 +88,11 @@ export function eventOf(score: Score, a: EvAddr): Event | undefined {
   const v = voiceOf(score, a);
   return v ? flattenVoice(v)[a.idx]?.ev : undefined;
 }
-export function markOf(score: Score, a: MarkAddr): Mark | undefined { return marksOf(score.measures[a.mi]?.staves[a.staff]).find((m) => m.voice === a.voice && m.idx === a.idx && m.k === a.k); }
+export function markOf(score: Score, a: MarkAddr): Mark | undefined {
+  return marksOf(score.measures[a.mi]?.staves[a.staff]).find(
+    (m) => m.voice === a.voice && m.idx === a.idx && m.k === a.k,
+  );
+}
 export function tupletOf(score: Score, a: EvAddr & { depth: number }): TupletGroup | undefined {
   const v = voiceOf(score, a);
   return v ? flattenVoice(v)[a.idx]?.tuplets[a.depth] : undefined;

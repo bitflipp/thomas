@@ -1,12 +1,12 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseText, writeText } from '../src/textformat.ts';
-import { validate, flattenVoice, PPQ } from '../src/model.ts';
+import { test } from 'node:test';
+import { describe, findCollisions } from '../src/engrave/collide.ts';
 import { prepare } from '../src/engrave/prep.ts';
-import { engrave } from '../src/engrave/system.ts';
 import { HEAD_SCALE } from '../src/engrave/spacing.ts';
+import { engrave } from '../src/engrave/system.ts';
+import { flattenVoice, PPQ, validate } from '../src/model.ts';
 import { pageToSvg } from '../src/render.ts';
-import { findCollisions, describe } from '../src/engrave/collide.ts';
+import { parseText, writeText } from '../src/textformat.ts';
 
 const HEAD = `title "T"
 page 210x297 margin=10 space=1.91
@@ -23,7 +23,7 @@ m1 time=2/4 key=0
 `);
   assert.deepEqual(validate(s), []);
   const flat = flattenVoice(s.measures[0].staves.rh.voices[0]);
-  assert.equal(flat[0].ticks, (PPQ / 4) * 4 / 6);
+  assert.equal(flat[0].ticks, ((PPQ / 4) * 4) / 6);
   assert.equal(flat.length, 8);
 });
 
@@ -103,7 +103,8 @@ m2
 });
 
 const prims = (src: string) => engrave(parseText(src)).pages[0].prims;
-const ledgers = (ps: ReturnType<typeof prims>) => ps.filter((p) => p.t === 'line' && p.y1 === p.y2 && p.w === 0.16 && p.x2 - p.x1 < 3);
+const ledgers = (ps: ReturnType<typeof prims>) =>
+  ps.filter((p) => p.t === 'line' && p.y1 === p.y2 && p.w === 0.16 && p.x2 - p.x1 < 3);
 
 test('identical primes (same pitch and duration) in two voices share one notehead', () => {
   const ps = prims(`${HEAD}
@@ -128,23 +129,29 @@ m1 time=2/4
 });
 
 test('ledger lines only where a head sits on or beyond them', () => {
-  const none = ledgers(prims(`${HEAD}
+  const none = ledgers(
+    prims(`${HEAD}
 m1 time=2/4
   rh.1: d4:4 g5:4
   lh.1: R:2
-`)); // d4 = space below the staff, g5 = space above: no ledger lines
+`),
+  ); // d4 = space below the staff, g5 = space above: no ledger lines
   assert.equal(none.length, 0);
-  const one = ledgers(prims(`${HEAD}
+  const one = ledgers(
+    prims(`${HEAD}
 m1 time=2/4
   rh.1: c4:4 a5:4
   lh.1: R:2
-`)); // c4 on the first line below, a5 on the first line above
+`),
+  ); // c4 on the first line below, a5 on the first line above
   assert.equal(one.length, 2);
-  const two = ledgers(prims(`${HEAD}
+  const two = ledgers(
+    prims(`${HEAD}
 m1 time=2/4
   rh.1: b3:4 e6:4
   lh.1: R:2
-`)); // b3 needs the c4 line; e6 needs a5, c6, e6
+`),
+  ); // b3 needs the c4 line; e6 needs a5, c6, e6
   assert.equal(two.length, 4);
 });
 
@@ -191,7 +198,10 @@ m1 time=2/4
 });
 
 test('measure numbers: shown at the start of every system but the first', () => {
-  const body = Array.from({ length: 30 }, (_, i) => `m${i + 1}${i === 0 ? ' time=2/4' : ''}\n  rh.1: c5:8 d5 e5 f5\n  lh.1: R:2`).join('\n');
+  const body = Array.from(
+    { length: 30 },
+    (_, i) => `m${i + 1}${i === 0 ? ' time=2/4' : ''}\n  rh.1: c5:8 d5 e5 f5\n  lh.1: R:2`,
+  ).join('\n');
   const res = engrave(parseText(`${HEAD}\n${body}\n`));
   const nums = res.pages.flatMap((p) => p.prims.filter((x) => x.t === 'text' && x.italic && /^\d+$/.test(x.s)));
   assert.ok(res.systems > 1);
@@ -221,10 +231,16 @@ m1 time=2/4
   assert.deepEqual(validate(s), []);
   const p = prepare(s);
   const evs = p.measures[0][1].voices[0].evs;
-  assert.deepEqual(evs.slice(0, 6).map((e) => e.staff), [1, 1, 1, 0, 0, 0]);
+  assert.deepEqual(
+    evs.slice(0, 6).map((e) => e.staff),
+    [1, 1, 1, 0, 0, 0],
+  );
   assert.ok(evs.every((e) => e.home === 1));
   assert.ok(evs[0].beam!.cross);
-  assert.deepEqual(evs.slice(0, 6).map((e) => e.stem), ['up', 'up', 'up', 'down', 'down', 'down']);
+  assert.deepEqual(
+    evs.slice(0, 6).map((e) => e.stem),
+    ['up', 'up', 'up', 'down', 'down', 'down'],
+  );
   assert.equal(p.measures[0][0].evs.filter((e) => e.ev.kind === 'note').length, 3); // the rh column holds the arrivals
   const prims = engrave(s).pages[0].prims;
   const beams = prims.filter((q) => q.k === 'beam');

@@ -4,10 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-TypeScript runs directly on Node (≥ 22.18, type stripping; no build step, no linter). PDF output needs `rsvg-convert`.
+TypeScript runs directly on Node (≥ 22.18, type stripping; no build step). Formatting and linting: Biome (`biome.json`). PDF output needs `rsvg-convert`.
 
 ```
 npm test                                          # all tests (node --test test/)
+npm run lint                                      # biome check: format + lint + import order (all rules are errors)
+npm run lint:fix                                  # apply safe fixes and formatting
 node --test --test-name-pattern="ledger" test/    # a single test by name
 node src/cli.ts render examples/gewitter.txt out/gewitter --pdf   # -> out/gewitter-N.svg + .pdf
 node src/cli.ts check examples/gewitter.txt --collisions --mark out/mk   # list overlaps; out/mk-N.svg boxes them in red
@@ -16,6 +18,8 @@ node src/cli.ts check <file>                      # validate measure lengths
 python3 tools/crop.py out/gewitter-2.svg x y w h out.png [px]      # render a region (staff spaces) to PNG
 npm run ui                                        # editor UI (Vite dev server, ui/); npm run ui:build -> out/ui
 ```
+
+Biome enforces the type-stripping constraints (`noEnum`, `noParameterProperties`, `useImportType`) and bans `!` non-null assertions: use `must(x)` from `src/util.ts` (throws on a violated invariant). `noDelete`, `noParameterAssign` and `useDefaultSwitchClause` are off on purpose (optional model fields must be absent, not `undefined`; numeric code reassigns parameters; switches are checked by the types).
 
 Because `node` strips types only: no enums, no constructor parameter properties, and imports need the `.ts` extension.
 

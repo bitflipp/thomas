@@ -1,3 +1,4 @@
+import { must } from './util.ts';
 // Core score model. The model (plain JSON-serialisable data) is the source of truth; the text format
 // (textformat.ts) and the MusicXML importer produce and consume it, the engraver and playback read it,
 // and the editor changes it only through pure functions (src/editor/commands.ts).
@@ -19,7 +20,10 @@ export interface Pitch {
 }
 
 export type BaseDur = 1 | 2 | 4 | 8 | 16 | 32 | 64;
-export interface Dur { base: BaseDur; dots: number }
+export interface Dur {
+  base: BaseDur;
+  dots: number;
+}
 
 export type AccOverride = 'force' | 'cautionary';
 export interface NotePitch {
@@ -29,7 +33,10 @@ export interface NotePitch {
 }
 
 export type Articulation = 'accent' | 'marcato' | 'staccato';
-export interface SlurStart { id: number; side?: 'above' | 'below' }
+export interface SlurStart {
+  id: number;
+  side?: 'above' | 'below';
+}
 
 /** A grace note (or chord) played just before the note it is attached to; takes no time in the measure. */
 export interface Grace {
@@ -80,9 +87,16 @@ export interface TupletGroup {
  * Events outside explicit groups are beamed automatically (see beams.ts); `noBeam` opts a note out.
  * A group exists only where the automatic choice would be different.
  */
-export interface BeamGroup { kind: 'beam'; items: Item[] }
+export interface BeamGroup {
+  kind: 'beam';
+  items: Item[];
+}
 /** Two-note (fingered) tremolo: exactly two notes, drawn with `beams` beams between them. */
-export interface TremoloGroup { kind: 'tremolo'; beams: number; items: Item[] }
+export interface TremoloGroup {
+  kind: 'tremolo';
+  beams: number;
+  items: Item[];
+}
 export type Item = Event | TupletGroup | BeamGroup | TremoloGroup;
 
 export interface Voice {
@@ -113,10 +127,19 @@ export type TimedMark = MarkBody & { tick: number };
  */
 export type Mark = TimedMark & { voice: number; idx: number; k: number };
 
-export interface StaffMeasure { voices: Voice[] }
+export interface StaffMeasure {
+  voices: Voice[];
+}
 
-export interface TimeSig { beats: number; beatType: number }
-export interface Clef { sign: 'G' | 'F' | 'C'; line: number; octave?: number }
+export interface TimeSig {
+  beats: number;
+  beatType: number;
+}
+export interface Clef {
+  sign: 'G' | 'F' | 'C';
+  line: number;
+  octave?: number;
+}
 
 export interface Measure {
   /** Set where the time signature changes (always on the first measure). */
@@ -128,13 +151,26 @@ export interface Measure {
   staves: Record<string, StaffMeasure>;
 }
 
-export interface StaffDef { id: string; clef: Clef; name?: string }
-export interface StaffGroup { kind: 'brace' | 'bracket'; staves: string[] }
+export interface StaffDef {
+  id: string;
+  clef: Clef;
+  name?: string;
+}
+export interface StaffGroup {
+  kind: 'brace' | 'bracket';
+  staves: string[];
+}
 
-export interface Meta { title?: string; subtitle?: string; composer?: string; rights?: string }
+export interface Meta {
+  title?: string;
+  subtitle?: string;
+  composer?: string;
+  rights?: string;
+}
 export interface PageSetup {
   /** Page size and margin in millimetres. */
-  width: number; height: number;
+  width: number;
+  height: number;
   margin: number;
   /** Millimetres per staff space: the global engraving scale. */
   staffSpace: number;
@@ -152,21 +188,36 @@ export interface Score {
 
 // ---------------------------------------------------------------- helpers: durations, flattening, marks
 
-export function gcd(a: number, b: number): number { return b ? gcd(b, a % b) : Math.abs(a); }
+export function gcd(a: number, b: number): number {
+  return b ? gcd(b, a % b) : Math.abs(a);
+}
 
 export function baseTicks(d: Dur): number {
   let t = (PPQ * 4) / d.base;
   let add = t;
-  for (let i = 0; i < d.dots; i++) { add /= 2; t += add; }
+  for (let i = 0; i < d.dots; i++) {
+    add /= 2;
+    t += add;
+  }
   return t;
 }
 
-export function measureTicks(t: TimeSig): number { return (t.beats * PPQ * 4) / t.beatType; }
+export function measureTicks(t: TimeSig): number {
+  return (t.beats * PPQ * 4) / t.beatType;
+}
 
-export function isTuplet(i: Item): i is TupletGroup { return i.kind === 'tuplet'; }
-export function isBeam(i: Item): i is BeamGroup { return i.kind === 'beam'; }
-export function isTremolo(i: Item): i is TremoloGroup { return i.kind === 'tremolo'; }
-export function isEvent(i: Item): i is Event { return i.kind === 'note' || i.kind === 'rest'; }
+export function isTuplet(i: Item): i is TupletGroup {
+  return i.kind === 'tuplet';
+}
+export function isBeam(i: Item): i is BeamGroup {
+  return i.kind === 'beam';
+}
+export function isTremolo(i: Item): i is TremoloGroup {
+  return i.kind === 'tremolo';
+}
+export function isEvent(i: Item): i is Event {
+  return i.kind === 'note' || i.kind === 'rest';
+}
 
 export interface TimedEvent {
   ev: Event;
@@ -189,7 +240,16 @@ export function flattenVoice(v: Voice): TimedEvent[] {
         let ticks = baseTicks(it.dur);
         for (const tg of tuplets) ticks = (ticks * tg.normal) / tg.actual;
         if (!Number.isInteger(ticks)) throw new Error(`non-integer duration ${ticks}`);
-        out.push({ ev: it, start: t, ticks, tm: tuplets.map((x) => ({ actual: x.actual, normal: x.normal })), tuplets, beamGroup: bg, tremolo: tr, index: out.length });
+        out.push({
+          ev: it,
+          start: t,
+          ticks,
+          tm: tuplets.map((x) => ({ actual: x.actual, normal: x.normal })),
+          tuplets,
+          beamGroup: bg,
+          tremolo: tr,
+          index: out.length,
+        });
         t += ticks;
       } else if (isTuplet(it)) walk(it.items, [...tuplets, it], bg, tr);
       else if (isBeam(it)) walk(it.items, tuplets, it, tr);
@@ -205,9 +265,13 @@ export function collectMarks(sm: StaffMeasure): Mark[] {
   const out: Mark[] = [];
   for (const v of sm.voices) {
     const fl = flattenVoice(v);
-    for (const te of fl) te.ev.marks?.forEach((b, k) => out.push({ ...b, tick: te.start, voice: v.id, idx: te.index, k } as Mark));
-    const last = fl[fl.length - 1], len = last ? last.start + last.ticks : 0;
-    v.end?.forEach((b, k) => out.push({ ...b, tick: len, voice: v.id, idx: -1, k } as Mark));
+    for (const te of fl)
+      for (const [k, b] of (te.ev.marks ?? []).entries()) {
+        out.push({ ...b, tick: te.start, voice: v.id, idx: te.index, k } as Mark);
+      }
+    const last = fl[fl.length - 1];
+    const len = last ? last.start + last.ticks : 0;
+    for (const [k, b] of (v.end ?? []).entries()) out.push({ ...b, tick: len, voice: v.id, idx: -1, k } as Mark);
   }
   return out.sort((a, b) => a.tick - b.tick);
 }
@@ -216,7 +280,10 @@ const marksCache = new WeakMap<StaffMeasure, Mark[]>();
 export function marksOf(sm: StaffMeasure | undefined): Mark[] {
   if (!sm) return [];
   let r = marksCache.get(sm);
-  if (!r) marksCache.set(sm, (r = collectMarks(sm)));
+  if (!r) {
+    r = collectMarks(sm);
+    marksCache.set(sm, r);
+  }
   return r;
 }
 
@@ -230,13 +297,25 @@ export function anchorMarks(sm: StaffMeasure, marks: TimedMark[]): void {
     let done = false;
     for (const v of sm.voices) {
       const te = flattenVoice(v).find((t) => t.start === tick);
-      if (te) { (te.ev.marks ??= []).push(body); done = true; break; }
+      if (te) {
+        te.ev.marks ??= [];
+        te.ev.marks.push(body);
+        done = true;
+        break;
+      }
     }
     if (done) continue;
     const v = sm.voices.find((x) => x.items.length > 0);
     if (!v) continue;
-    const fl = flattenVoice(v), next = fl.find((t) => t.start > tick);
-    if (next) (next.ev.marks ??= []).push(body); else (v.end ??= []).push(body);
+    const fl = flattenVoice(v);
+    const next = fl.find((t) => t.start > tick);
+    if (next) {
+      next.ev.marks ??= [];
+      next.ev.marks.push(body);
+    } else {
+      v.end ??= [];
+      v.end.push(body);
+    }
   }
 }
 
@@ -250,14 +329,16 @@ export function pitchMidi(p: Pitch): number {
   return (p.octave + 1) * 12 + base + p.alter;
 }
 /** Diatonic position: c0 = 0, d0 = 1, ... */
-export function pitchStep(p: Pitch): number { return p.octave * 7 + STEPS.indexOf(p.step); }
+export function pitchStep(p: Pitch): number {
+  return p.octave * 7 + STEPS.indexOf(p.step);
+}
 
 export function timeAt(score: Score, mi: number): TimeSig {
-  for (let i = mi; i >= 0; i--) if (score.measures[i].time) return score.measures[i].time!;
+  for (let i = mi; i >= 0; i--) if (score.measures[i].time) return must(score.measures[i].time);
   return { beats: 4, beatType: 4 };
 }
 export function keyAt(score: Score, mi: number): number {
-  for (let i = mi; i >= 0; i--) if (score.measures[i].key !== undefined) return score.measures[i].key!;
+  for (let i = mi; i >= 0; i--) if (score.measures[i].key !== undefined) return must(score.measures[i].key);
   return 0;
 }
 
@@ -270,8 +351,10 @@ export function validate(score: Score): string[] {
       if (isEvent(it)) continue;
       const flat = flattenVoice({ id: 0, items: it.items });
       const notes = flat.filter((t) => t.ev.kind === 'note').length;
-      if (isBeam(it) && notes < 2) errs.push(`${where}: beam group needs at least two notes (use \\nobeam to keep a note unbeamed)`);
-      if (isTremolo(it) && (notes !== 2 || flat.length !== 2)) errs.push(`${where}: tremolo must contain exactly two notes`);
+      if (isBeam(it) && notes < 2)
+        errs.push(`${where}: beam group needs at least two notes (use \\nobeam to keep a note unbeamed)`);
+      if (isTremolo(it) && (notes !== 2 || flat.length !== 2))
+        errs.push(`${where}: tremolo must contain exactly two notes`);
       groupErrs(it.items, where);
     }
   };
@@ -281,14 +364,23 @@ export function validate(score: Score): string[] {
       const at = `m${mi + 1} ${sid}`;
       if (!ids.has(sid)) errs.push(`m${mi + 1}: unknown staff ${sid}`);
       for (const v of sm.voices) {
-        for (const te of flattenVoice(v)) if (te.ev.staff !== undefined && (!ids.has(te.ev.staff) || te.ev.staff === sid)) errs.push(`${at}.${v.id}: bad cross-staff target ${te.ev.staff}`);
+        for (const te of flattenVoice(v))
+          if (te.ev.staff !== undefined && (!ids.has(te.ev.staff) || te.ev.staff === sid))
+            errs.push(`${at}.${v.id}: bad cross-staff target ${te.ev.staff}`);
         let t: number;
-        try { t = voiceTicks(v); } catch (e) { errs.push(`${at}.${v.id}: ${(e as Error).message}`); continue; }
+        try {
+          t = voiceTicks(v);
+        } catch (e) {
+          errs.push(`${at}.${v.id}: ${(e as Error).message}`);
+          continue;
+        }
         if (t > len) errs.push(`${at}.${v.id}: voice too long (${t} > ${len})`);
         else if (t < len && t > 0) errs.push(`${at}.${v.id}: voice too short (${t} < ${len})`);
         groupErrs(v.items, `${at}.${v.id}`);
       }
-      for (const v of sm.voices) for (const b of v.end ?? []) if (b.type !== 'stop') errs.push(`${at}.${v.id}: only stops can sit at the end of a measure`);
+      for (const v of sm.voices)
+        for (const b of v.end ?? [])
+          if (b.type !== 'stop') errs.push(`${at}.${v.id}: only stops can sit at the end of a measure`);
     }
   });
   return errs;

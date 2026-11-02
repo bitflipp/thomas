@@ -1,9 +1,9 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { importMusicXml } from '../src/musicxml.ts';
-import { writeText, parseText } from '../src/textformat.ts';
+import { test } from 'node:test';
 import { validate } from '../src/model.ts';
+import { importMusicXml } from '../src/musicxml.ts';
+import { parseText, writeText } from '../src/textformat.ts';
 
 const xml = readFileSync(new URL('../examples/gewitter.musicxml', import.meta.url), 'utf8');
 

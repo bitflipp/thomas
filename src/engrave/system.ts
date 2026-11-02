@@ -3,13 +3,19 @@
 // `engrave` runs the whole pipeline: prepare the score, space every measure, choose the systems
 // (`planSystems`), justify and draw each system's notes, run the spanners over all systems, then
 // finalise (staff distances from the skylines, staff lines, clefs, barlines, brace) and paginate.
-import { keyAt, timeAt, type Score, type Clef } from '../model.ts';
+import type { Clef, Score } from '../model.ts';
+import { keyAt, timeAt } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
-import { prepare, posToY, type Prepared } from './prep.ts';
-import { spaceMeasure, placeMeasure, keyChange, COMPRESS, type MeasureSpacing } from './spacing.ts';
-import { drawSystemNotes, xAtTick, D, CROSS_GAP0, type SysCtx } from './draw.ts';
+import { must } from '../util.ts';
+import type { SysCtx } from './draw.ts';
+import { CROSS_GAP0, D, drawSystemNotes, xAtTick } from './draw.ts';
+import type { Prepared } from './prep.ts';
+import { posToY, prepare } from './prep.ts';
+import type { Page, Prim } from './scene.ts';
+import { oid, Skyline, tagFrom } from './scene.ts';
+import type { MeasureSpacing } from './spacing.ts';
+import { keyChange, placeMeasure, spaceMeasure } from './spacing.ts';
 import { drawSpanners } from './spanners.ts';
-import { Skyline, oid, tagFrom, type Page, type Prim } from './scene.ts';
 
 const sm = loadSmufl();
 
@@ -31,8 +37,10 @@ const FLAT_POS_TREBLE = [4, 7, 3, 6, 2, 5, 1];
 
 export function clefGlyph(c: Clef, change = false): { name: string; y: number } {
   const y = 4 - (c.line - 1);
-  if (c.sign === 'G') return { name: change ? 'gClefChange' : c.octave === -1 ? 'gClef8vb' : c.octave === 1 ? 'gClef8va' : 'gClef', y };
-  if (c.sign === 'F') return { name: change ? 'fClefChange' : c.octave === -1 ? 'fClef8vb' : c.octave === 1 ? 'fClef8va' : 'fClef', y };
+  if (c.sign === 'G')
+    return { name: change ? 'gClefChange' : c.octave === -1 ? 'gClef8vb' : c.octave === 1 ? 'gClef8va' : 'gClef', y };
+  if (c.sign === 'F')
+    return { name: change ? 'fClefChange' : c.octave === -1 ? 'fClef8vb' : c.octave === 1 ? 'fClef8va' : 'fClef', y };
   return { name: change ? 'cClefChange' : 'cClef', y };
 }
 
@@ -48,7 +56,16 @@ function keyPositions(fifths: number, clef: Clef): number[] {
   const d = shift > 3 ? shift - 7 : shift;
   const base = fifths > 0 ? SHARP_POS_TREBLE.slice(0, fifths) : FLAT_POS_TREBLE.slice(0, -fifths);
   // Flats keep the treble window [1, 7] moved by the offset (bass: -1..5, the last flat lowest).
-  return base.map((p) => { let q = p + d; if (fifths > 0) { while (q > 9) q -= 7; } else { while (q < 1 + d) q += 7; while (q > 7 + d) q -= 7; } return q; });
+  return base.map((p) => {
+    let q = p + d;
+    if (fifths > 0) {
+      while (q > 9) q -= 7;
+    } else {
+      while (q < 1 + d) q += 7;
+      while (q > 7 + d) q -= 7;
+    }
+    return q;
+  });
 }
 
 function keyWidth(fifths: number): number {
@@ -63,7 +80,9 @@ function timeWidth(ts: { beats: number; beatType: number }): number {
 function prefixWidth(prep: Prepared, mi: number, first: boolean): number {
   const score = prep.score;
   let cw = 0;
-  score.staves.forEach((_, si) => { cw = Math.max(cw, sm.adv(clefGlyph(prep.clefAt(si, mi, 0)).name)); });
+  score.staves.forEach((_, si) => {
+    cw = Math.max(cw, sm.adv(clefGlyph(prep.clefAt(si, mi, 0)).name));
+  });
   let w = 0.9 + cw + 1.0;
   w += keyWidth(keyAt(score, mi));
   if (first) w += timeWidth(timeAt(score, mi));
@@ -71,7 +90,11 @@ function prefixWidth(prep: Prepared, mi: number, first: boolean): number {
 }
 
 /** The measures a..b (inclusive) that make up one system. */
-interface SysPlan { a: number; b: number; last: boolean }
+interface SysPlan {
+  a: number;
+  b: number;
+  last: boolean;
+}
 
 /**
  * Chooses the line breaks by dynamic programming over the measures. A system a..b costs more the
@@ -81,7 +104,13 @@ interface SysPlan { a: number; b: number; last: boolean }
  * last line of the piece is not stretched at all when it is under 55 % full, so it costs nothing then. Forced breaks split the piece
  * into independent segments first. At most 14 measures are tried per line.
  */
-function planSystems(prep: Prepared, spN: MeasureSpacing[], spF: MeasureSpacing[], W: number, forced: Set<number>): SysPlan[] {
+function planSystems(
+  prep: Prepared,
+  spN: MeasureSpacing[],
+  spF: MeasureSpacing[],
+  W: number,
+  forced: Set<number>,
+): SysPlan[] {
   const n = spN.length;
   const natural = (a: number, b: number, comp = false) => {
     let w = prefixWidth(prep, a, a === 0) + (comp ? spF[a].compWidth : spF[a].minWidth);
@@ -94,12 +123,12 @@ function planSystems(prep: Prepared, spN: MeasureSpacing[], spF: MeasureSpacing[
     const segEnd = (si + 1 < starts.length ? starts[si + 1] : n) - 1;
     const isFinalSeg = segEnd === n - 1;
     const len = segEnd - segStart + 1;
-    const best: number[] = Array(len + 1).fill(Infinity);
-    const from: number[] = Array(len + 1).fill(-1);
+    const best: number[] = new Array(len + 1).fill(Number.POSITIVE_INFINITY);
+    const from: number[] = new Array(len + 1).fill(-1);
     best[0] = 0;
     for (let i = 1; i <= len; i++) {
       for (let j = Math.max(0, i - 14); j < i; j++) {
-        if (best[j] === Infinity) continue;
+        if (best[j] === Number.POSITIVE_INFINITY) continue;
         const nat = natural(segStart + j, segStart + i - 1);
         const cmp = natural(segStart + j, segStart + i - 1, true);
         const single = i - j === 1;
@@ -107,43 +136,80 @@ function planSystems(prep: Prepared, spN: MeasureSpacing[], spF: MeasureSpacing[
         const lastLine = isFinalSeg && i === len;
         let cost: number;
         if (cmp > W) cost = 200 + (cmp - W) * 10;
-        else if (nat > W) { const c = (nat - W) / Math.max(0.01, nat - cmp); cost = 10 * c * c; }
-        else if (lastLine) cost = nat / W > 0.55 ? 2 * (1 - nat / W) ** 2 * 100 : 0;
+        else if (nat > W) {
+          const c = (nat - W) / Math.max(0.01, nat - cmp);
+          cost = 10 * c * c;
+        } else if (lastLine) cost = nat / W > 0.55 ? 2 * (1 - nat / W) ** 2 * 100 : 0;
         else cost = ((W - nat) / W) ** 2 * 160;
         cost += 3; // per-system cost: prefer fewer lines
         const tot = best[j] + cost;
-        if (tot < best[i]) { best[i] = tot; from[i] = j; }
+        if (tot < best[i]) {
+          best[i] = tot;
+          from[i] = j;
+        }
       }
     }
     const cuts: number[] = [];
     let i = len;
-    while (i > 0) { cuts.push(i); i = from[i]; }
+    while (i > 0) {
+      cuts.push(i);
+      i = from[i];
+    }
     cuts.reverse();
     let prev = 0;
-    for (const c of cuts) { plans.push({ a: segStart + prev, b: segStart + c - 1, last: false }); prev = c; }
+    for (const c of cuts) {
+      plans.push({ a: segStart + prev, b: segStart + c - 1, last: false });
+      prev = c;
+    }
   });
   plans[plans.length - 1].last = true;
   return plans;
 }
 
 /** Where a measure of a staff sits on its page (staff spaces); `cols` are the x positions of its rhythmic columns, which the editor snaps to. */
-export interface MeasureGeom { page: number; sys: number; mi: number; staff: number; x0: number; x1: number; y: number; cols: { tick: number; x: number }[] }
+export interface MeasureGeom {
+  page: number;
+  sys: number;
+  mi: number;
+  staff: number;
+  x0: number;
+  x1: number;
+  y: number;
+  cols: { tick: number; x: number }[];
+}
 /** Where a system sits: its measure range, horizontal extent and the page y of each staff's top line. */
-export interface SystemGeom { page: number; sys: number; a: number; b: number; x0: number; x1: number; staffY: number[] }
+export interface SystemGeom {
+  page: number;
+  sys: number;
+  a: number;
+  b: number;
+  x0: number;
+  x1: number;
+  staffY: number[];
+}
 /** The page geometry of the whole piece, for the editor's hit testing (see src/editor/hit.ts). */
-export interface Layout { systems: SystemGeom[]; measures: MeasureGeom[] }
+export interface Layout {
+  systems: SystemGeom[];
+  measures: MeasureGeom[];
+}
 /** The result of engraving: pages of primitives plus the layout geometry. */
-export interface Engraved { pages: Page[]; systems: number; staffSpace: number; layout: Layout }
+export interface Engraved {
+  pages: Page[];
+  systems: number;
+  staffSpace: number;
+  layout: Layout;
+}
 
 /** Engraves the whole score. Vertical sizes are only known after the spanners are placed, so the staff distances come last. */
 export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
-  const warn = opts.warn ?? (() => {});
+  const warn = opts.warn ?? (() => undefined);
   const respect = opts.respectBreaks ?? true;
   const prep = prepare(score);
   const nS = score.staves.length;
   const nM = score.measures.length;
   const S = score.page.staffSpace;
-  const pageW = score.page.width / S, pageH = score.page.height / S;
+  const pageW = score.page.width / S;
+  const pageH = score.page.height / S;
   const margin = score.page.margin / S;
   const hasBrace = score.groups.some((g) => g.kind === 'brace');
   const braceRoom = hasBrace ? 2.4 : 0.8;
@@ -153,7 +219,10 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const spF = score.measures.map((_, mi) => spaceMeasure(prep, mi, true));
 
   const forced = new Set<number>();
-  if (respect) score.measures.forEach((m, mi) => { if (m.breakBefore) forced.add(mi); });
+  if (respect)
+    score.measures.forEach((m, mi) => {
+      if (m.breakBefore) forced.add(mi);
+    });
   const plans = planSystems(prep, spN, spF, W, forced);
 
   // ---- Build systems. Each system is justified by solving for the stretch factor that makes
@@ -171,10 +240,15 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     let f = 1;
     const nat = widthAt(1);
     if (!plan.last || nat / W > 0.55 || opts.fillLast) {
-      let lo = 0.3, hi = 20;
+      let lo = 0.3;
+      let hi = 20;
       if (widthAt(lo) > W) f = lo;
       else {
-        for (let it = 0; it < 50; it++) { const mid = (lo + hi) / 2; if (widthAt(mid) > W) hi = mid; else lo = mid; }
+        for (let it = 0; it < 50; it++) {
+          const mid = (lo + hi) / 2;
+          if (widthAt(mid) > W) hi = mid;
+          else lo = mid;
+        }
         f = lo;
       }
       if (plan.last) f = Math.min(f, opts.fillLast ? 4 : 1.6);
@@ -184,13 +258,29 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     let x = prefix;
     for (let mi = plan.a; mi <= plan.b; mi++) {
       const p = placeMeasure(spacing[mi], f);
-      placed[mi] = p; mx[mi] = x; x += p.width;
+      placed[mi] = p;
+      mx[mi] = x;
+      x += p.width;
     }
     if (widthAt(f) > W * 1.001) warn(`system ${index + 1}: content ${nat.toFixed(1)} exceeds width ${W.toFixed(1)}`);
     systems.push({
-      prep, index, a: plan.a, b: plan.b, spacing, placed, mx, prefix, width: x, f,
-      prims: score.staves.map(() => []), sky: score.staves.map(() => new Skyline()), staffY: [], barlines: [], tupletBoxes: [],
-      gap: score.staves.map(() => CROSS_GAP0), gapNeed: score.staves.map(() => 0),
+      prep,
+      index,
+      a: plan.a,
+      b: plan.b,
+      spacing,
+      placed,
+      mx,
+      prefix,
+      width: x,
+      f,
+      prims: score.staves.map(() => []),
+      sky: score.staves.map(() => new Skyline()),
+      staffY: [],
+      barlines: [],
+      tupletBoxes: [],
+      gap: score.staves.map(() => CROSS_GAP0),
+      gapNeed: score.staves.map(() => 0),
     });
   }
 
@@ -199,16 +289,22 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     // A cross-staff beam is drawn for a given distance between the staves, and the beam itself changes
     // what room the gap needs: iterate a few times until the gap satisfies both, then pin it so later
     // phases may widen but never shrink it.
-    const crossing = ctx.gapNeed.some((g) => g > 0) || prep.allEvs.some((e) => e.mi >= ctx.a && e.mi <= ctx.b && e.staff !== e.home);
+    const crossing =
+      ctx.gapNeed.some((g) => g > 0) || prep.allEvs.some((e) => e.mi >= ctx.a && e.mi <= ctx.b && e.staff !== e.home);
     if (!crossing) continue;
     for (let it = 0; it < 4; it++) {
       let changed = false;
       for (let s = 1; s < nS; s++) {
         const want = Math.max(staffGap(ctx, s), ctx.gapNeed[s] + 0.3);
-        if (Math.abs(want - ctx.gap[s]) > 0.01) { ctx.gap[s] = want; changed = true; }
+        if (Math.abs(want - ctx.gap[s]) > 0.01) {
+          ctx.gap[s] = want;
+          changed = true;
+        }
       }
       if (!changed) break;
-      ctx.prims = score.staves.map(() => []); ctx.sky = score.staves.map(() => new Skyline()); ctx.gapNeed = score.staves.map(() => 0);
+      ctx.prims = score.staves.map(() => []);
+      ctx.sky = score.staves.map(() => new Skyline());
+      ctx.gapNeed = score.staves.map(() => 0);
       drawSystemNotes(ctx);
     }
     ctx.pinned = true;
@@ -218,13 +314,20 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   // cross-staff beams: widen it and redraw.
   for (let it = 0; it < 4; it++) {
     let changed = false;
-    for (const ctx of systems) if (ctx.pinned) for (let s = 1; s < nS; s++) {
-      const want = staffGap(ctx, s);
-      if (want > ctx.gap[s] + 0.01) { ctx.gap[s] = want; changed = true; }
-    }
+    for (const ctx of systems)
+      if (ctx.pinned)
+        for (let s = 1; s < nS; s++) {
+          const want = staffGap(ctx, s);
+          if (want > ctx.gap[s] + 0.01) {
+            ctx.gap[s] = want;
+            changed = true;
+          }
+        }
     if (!changed) break;
     for (const ctx of systems) {
-      ctx.prims = score.staves.map(() => []); ctx.sky = score.staves.map(() => new Skyline()); ctx.gapNeed = score.staves.map(() => 0);
+      ctx.prims = score.staves.map(() => []);
+      ctx.sky = score.staves.map(() => new Skyline());
+      ctx.gapNeed = score.staves.map(() => 0);
       drawSystemNotes(ctx);
     }
     drawSpanners(systems);
@@ -233,7 +336,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   // ---- Finalize each system: staff positions from the skyline extents, then staff lines, clefs,
   // key/time signatures, measure numbers, barlines and the brace, in system coordinates.
   const sysPrims: Prim[][] = [];
-  const sysTop: number[] = [], sysBottom: number[] = [];
+  const sysTop: number[] = [];
+  const sysBottom: number[] = [];
   for (const ctx of systems) {
     const ext = ctx.sky.map((k) => k.extent());
     ctx.staffY = [0];
@@ -248,7 +352,16 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     // the clef, key and time signature at the left.
     for (let s = 0; s < nS; s++) {
       const y0 = ctx.staffY[s];
-      for (let l = 0; l < 5; l++) P.push({ t: 'line', x1: 0, x2: ctx.width, y1: y0 + l, y2: y0 + l, w: D.staffLineThickness as number, k: 'staff' });
+      for (let l = 0; l < 5; l++)
+        P.push({
+          t: 'line',
+          x1: 0,
+          x2: ctx.width,
+          y1: y0 + l,
+          y2: y0 + l,
+          w: D.staffLineThickness as number,
+          k: 'staff',
+        });
       for (const p of ctx.prims[s]) P.push(shift(p, 0, y0));
       // Initial clef, then key signature, then the time signature, left to right. The time
       // signature is shown at the start of the piece only; later ones are drawn mid-system.
@@ -260,7 +373,10 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       const keyId = oid({});
       if (key) {
         const name = key > 0 ? 'accidentalSharp' : 'accidentalFlat';
-        keyPositions(key, clef).forEach((pos) => { P.push({ t: 'glyph', name, x: kx, y: y0 + posToY(pos), k: 'keysig', o: keyId }); kx += sm.adv(name) + 0.12; });
+        keyPositions(key, clef).forEach((pos) => {
+          P.push({ t: 'glyph', name, x: kx, y: y0 + posToY(pos), k: 'keysig', o: keyId });
+          kx += sm.adv(name) + 0.12;
+        });
         kx += 0.9;
       }
       if (first) timeSig(P, kx, y0, timeAt(score, ctx.a));
@@ -272,10 +388,14 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
           const kc = keyChange(score, mi);
           if (kc) {
             const oid2 = oid({});
-            const put = (name: string, pos: number) => { P.push({ t: 'glyph', name, x: tx, y: y0 + posToY(pos), k: 'keysig', o: oid2 }); tx += sm.adv(name) + 0.12; };
-            const oldPos = keyPositions(kc.from, clef), newPos = keyPositions(kc.to, clef);
-            kc.nat.forEach((i) => put('accidentalNatural', oldPos[i]));
-            newPos.forEach((pos) => put(kc.to > 0 ? 'accidentalSharp' : 'accidentalFlat', pos));
+            const put = (name: string, pos: number) => {
+              P.push({ t: 'glyph', name, x: tx, y: y0 + posToY(pos), k: 'keysig', o: oid2 });
+              tx += sm.adv(name) + 0.12;
+            };
+            const oldPos = keyPositions(kc.from, clef);
+            const newPos = keyPositions(kc.to, clef);
+            for (const i of kc.nat) put('accidentalNatural', oldPos[i]);
+            for (const pos of newPos) put(kc.to > 0 ? 'accidentalSharp' : 'accidentalFlat', pos);
             tx += 0.6;
           }
           if (score.measures[mi].time) timeSig(P, tx, y0, timeAt(score, mi));
@@ -306,7 +426,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
         if (mi === ctx.a) {
           // The clef at the start of the system may reach above the staff and it is not in the
           // skyline, so a measure number there is lifted above it explicitly.
-          const cb = sm.bbox(clefGlyph(prep.clefAt(0, ctx.a, 0)).name), cy = clefGlyph(prep.clefAt(0, ctx.a, 0)).y;
+          const cb = sm.bbox(clefGlyph(prep.clefAt(0, ctx.a, 0)).name);
+          const cy = clefGlyph(prep.clefAt(0, ctx.a, 0)).y;
           if (x + w > 0.9) y = Math.min(y, cy - cb.y1 - 0.5);
         }
         P.push({ t: 'text', x, y, s: label, size, italic: true, k: 'measurenum', o: oid({}) });
@@ -320,11 +441,18 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     const groupsOf: [number, number][] = [];
     const used = new Set<number>();
     for (const g of score.groups) {
-      const idx = g.staves.map((id) => score.staves.findIndex((s) => s.id === id)).filter((i) => i >= 0).sort((x, y) => x - y);
-      if (idx.length) { groupsOf.push([idx[0], idx[idx.length - 1]]); idx.forEach((i) => used.add(i)); }
+      const idx = g.staves
+        .map((id) => score.staves.findIndex((s) => s.id === id))
+        .filter((i) => i >= 0)
+        .sort((x, y) => x - y);
+      if (idx.length) {
+        groupsOf.push([idx[0], idx[idx.length - 1]]);
+        for (const i of idx) used.add(i);
+      }
     }
     for (let s = 0; s < nS; s++) if (!used.has(s)) groupsOf.push([s, s]);
-    const thin = D.thinBarlineThickness as number, thick = D.thickBarlineThickness as number;
+    const thin = D.thinBarlineThickness as number;
+    const thick = D.thickBarlineThickness as number;
     P.push({ t: 'line', x1: 0, x2: 0, y1: 0, y2: bottom, w: thin, k: 'barline', o: oid({}) });
     for (let mi = ctx.a; mi <= ctx.b; mi++) {
       const bx = ctx.mx[mi] + ctx.placed[mi].endX;
@@ -332,7 +460,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       const lastInSys = mi === ctx.b;
       for (const [s0, s1] of groupsOf) {
         const nBar = P.length;
-        const y0 = ctx.staffY[s0], y1 = ctx.staffY[s1] + 4;
+        const y0 = ctx.staffY[s0];
+        const y1 = ctx.staffY[s1] + 4;
         if (bl === 'final' || (lastInSys && mi === nM - 1)) {
           const tx = ctx.width - thick / 2;
           P.push({ t: 'line', x1: tx, x2: tx, y1: y0, y2: y1, w: thick });
@@ -348,9 +477,13 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     // Brace or bracket for each staff group. A brace glyph is scaled to the height of its staves,
     // with its width following in proportion up to a maximum; a bracket is a plain thick line.
     for (const g of score.groups) {
-      const idx = g.staves.map((id) => score.staves.findIndex((s) => s.id === id)).filter((i) => i >= 0).sort((x, y) => x - y);
+      const idx = g.staves
+        .map((id) => score.staves.findIndex((s) => s.id === id))
+        .filter((i) => i >= 0)
+        .sort((x, y) => x - y);
       if (!idx.length) continue;
-      const y0 = ctx.staffY[idx[0]], y1 = ctx.staffY[idx[idx.length - 1]] + 4;
+      const y0 = ctx.staffY[idx[0]];
+      const y1 = ctx.staffY[idx[idx.length - 1]] + 4;
       if (g.kind === 'brace') {
         const b = sm.bbox('brace');
         const bh = b.y1 - b.y0;
@@ -360,7 +493,16 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
         // place it so that its top edge matches the top of the first staff.
         P.push({ t: 'glyph', name: 'brace', x: -0.35 - b.x1 * sx, y: y1 + b.y0 * sy, sx, sy, k: 'brace', o: oid({}) });
       } else {
-        P.push({ t: 'line', x1: -0.8, x2: -0.8, y1: y0 - 0.2, y2: y1 + 0.2, w: D.bracketThickness as number, k: 'brace', o: oid({}) });
+        P.push({
+          t: 'line',
+          x1: -0.8,
+          x2: -0.8,
+          y1: y0 - 0.2,
+          y2: y1 + 0.2,
+          w: D.bracketThickness as number,
+          k: 'brace',
+          o: oid({}),
+        });
       }
     }
     sysPrims.push(P);
@@ -374,16 +516,31 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const pages: Page[] = [];
   const footerH = 3.5;
   const usableBottom = pageH - margin - footerH;
-  const newPage = (): Page => { const p: Page = { width: pageW, height: pageH, prims: [] }; pages.push(p); return p; };
+  const newPage = (): Page => {
+    const p: Page = { width: pageW, height: pageH, prims: [] };
+    pages.push(p);
+    return p;
+  };
   const meta = score.meta;
   let page = newPage();
   // Header on the first page: title, subtitle, composer. The rights line and the page numbers
   // are added after the systems are placed.
   let top1 = margin + 1.5;
-  const tsz = 22 * pt, ssz = 14 * pt, csz = 11 * pt;
-  if (meta.title) { top1 += tsz * 0.9; page.prims.push({ t: 'text', x: pageW / 2, y: top1, s: meta.title, size: tsz, anchor: 'middle' }); }
-  if (meta.subtitle) { top1 += ssz * 1.7; page.prims.push({ t: 'text', x: pageW / 2, y: top1, s: meta.subtitle, size: ssz, anchor: 'middle' }); }
-  if (meta.composer) { top1 += csz * 1.9; page.prims.push({ t: 'text', x: pageW - margin, y: top1, s: meta.composer, size: csz, anchor: 'end' }); }
+  const tsz = 22 * pt;
+  const ssz = 14 * pt;
+  const csz = 11 * pt;
+  if (meta.title) {
+    top1 += tsz * 0.9;
+    page.prims.push({ t: 'text', x: pageW / 2, y: top1, s: meta.title, size: tsz, anchor: 'middle' });
+  }
+  if (meta.subtitle) {
+    top1 += ssz * 1.7;
+    page.prims.push({ t: 'text', x: pageW / 2, y: top1, s: meta.subtitle, size: ssz, anchor: 'middle' });
+  }
+  if (meta.composer) {
+    top1 += csz * 1.9;
+    page.prims.push({ t: 'text', x: pageW - margin, y: top1, s: meta.composer, size: csz, anchor: 'end' });
+  }
   top1 += 3.5;
   const topOf = (pi: number) => (pi === 0 ? top1 : margin + 2.5);
   let pageIdx = 0;
@@ -398,7 +555,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     const onPageCount = pageSystems[pageIdx].length;
     let y = cursor + (onPageCount ? gapMin : 0) + needTop;
     if (onPageCount && (forcedPage || y - needTop + h > usableBottom)) {
-      pageIdx++; pageSystems[pageIdx] = [];
+      pageIdx++;
+      pageSystems[pageIdx] = [];
       cursor = topOf(pageIdx);
       y = cursor + needTop;
     }
@@ -415,7 +573,9 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       const extra = usableBottom - (placeY[last] + sysBottom[last]);
       if (extra <= 0) return;
       const per = Math.min(extra / (list.length - 1), 5);
-      list.forEach((si, k) => { placeY[si] += per * k; });
+      list.forEach((si, k) => {
+        placeY[si] += per * k;
+      });
     });
   }
   const layout: Layout = { systems: [], measures: [] };
@@ -425,14 +585,44 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     for (const si of list) for (const p of sysPrims[si]) page.prims.push(shift(p, x0, placeY[si]));
     for (const si of list) {
       const ctx = systems[si];
-      layout.systems.push({ page: pi, sys: si, a: ctx.a, b: ctx.b, x0, x1: x0 + ctx.width, staffY: ctx.staffY.map((y) => placeY[si] + y) });
-      for (let mi = ctx.a; mi <= ctx.b; mi++) for (let st = 0; st < nS; st++) {
-        const cols = ctx.spacing[mi].cols.map((c, j) => ({ tick: c.tick, x: x0 + ctx.mx[mi] + ctx.placed[mi].xs[j] }));
-        layout.measures.push({ page: pi, sys: si, mi, staff: st, x0: x0 + ctx.mx[mi], x1: x0 + ctx.mx[mi] + ctx.placed[mi].endX, y: placeY[si] + ctx.staffY[st], cols });
-      }
+      layout.systems.push({
+        page: pi,
+        sys: si,
+        a: ctx.a,
+        b: ctx.b,
+        x0,
+        x1: x0 + ctx.width,
+        staffY: ctx.staffY.map((y) => placeY[si] + y),
+      });
+      for (let mi = ctx.a; mi <= ctx.b; mi++)
+        for (let st = 0; st < nS; st++) {
+          const cols = ctx.spacing[mi].cols.map((c, j) => ({
+            tick: c.tick,
+            x: x0 + ctx.mx[mi] + ctx.placed[mi].xs[j],
+          }));
+          layout.measures.push({
+            page: pi,
+            sys: si,
+            mi,
+            staff: st,
+            x0: x0 + ctx.mx[mi],
+            x1: x0 + ctx.mx[mi] + ctx.placed[mi].endX,
+            y: placeY[si] + ctx.staffY[st],
+            cols,
+          });
+        }
     }
-    if (meta.rights) page.prims.push({ t: 'text', x: pageW / 2, y: pageH - margin, s: meta.rights, size: 9 * pt, anchor: 'middle' });
-    if (pi > 0) page.prims.push({ t: 'text', x: pageW - margin, y: margin + 1.2, s: String(pi + 1), size: 10 * pt, anchor: 'end' });
+    if (meta.rights)
+      page.prims.push({ t: 'text', x: pageW / 2, y: pageH - margin, s: meta.rights, size: 9 * pt, anchor: 'middle' });
+    if (pi > 0)
+      page.prims.push({
+        t: 'text',
+        x: pageW - margin,
+        y: margin + 1.2,
+        s: String(pi + 1),
+        size: 10 * pt,
+        anchor: 'end',
+      });
   });
   return { pages, systems: systems.length, staffSpace: S, layout };
 }
@@ -442,10 +632,11 @@ function staffGap(ctx: SysCtx, s: number): number {
   // First the gap that the pairwise overlap in x requires: a tall slur in one staff only matters
   // where the other staff has content below it.
   let need = 0;
-  for (const a of ctx.sky[s - 1].boxes) for (const b of ctx.sky[s].boxes) {
-    if (a.spanner && b.spanner) continue;
-    if (a.x1 > b.x0 && a.x0 < b.x1) need = Math.max(need, a.y1 - 4 - b.y0 + 1.0);
-  }
+  for (const a of ctx.sky[s - 1].boxes)
+    for (const b of ctx.sky[s].boxes) {
+      if (a.spanner && b.spanner) continue;
+      if (a.x1 > b.x0 && a.x0 < b.x1) need = Math.max(need, a.y1 - 4 - b.y0 + 1.0);
+    }
   // Then clear of both staves' lines, whether or not anything overlaps in x: content hanging
   // below the upper staff or above the lower one needs room of its own, and 3.7 is the minimum.
   for (const a of ctx.sky[s - 1].boxes) if (!a.spanner) need = Math.max(need, a.y1 - 4 + 0.7);
@@ -460,31 +651,47 @@ function staffGap(ctx: SysCtx, s: number): number {
  */
 function alignDynamics(ctx: SysCtx, nS: number): void {
   const isMark = (p: Prim) => (p.k === 'dyn' || p.k === 'hairpin') && p.a !== undefined;
-  const span = (p: Prim): [number, number] => (p.t === 'glyph' ? [p.x, p.x + sm.adv(p.name)] : p.t === 'line' ? [Math.min(p.x1, p.x2), Math.max(p.x1, p.x2)] : [0, 0]);
+  const span = (p: Prim): [number, number] =>
+    p.t === 'glyph'
+      ? [p.x, p.x + sm.adv(p.name)]
+      : p.t === 'line'
+        ? [Math.min(p.x1, p.x2), Math.max(p.x1, p.x2)]
+        : [0, 0];
   for (let s = 0; s + 1 < nS; s++) {
-    const below = ctx.prims[s].filter((p) => isMark(p) && p.a! > 4);
-    const above = ctx.prims[s + 1].filter((p) => isMark(p) && p.a! < 0);
-    if (!below.length || !above.length) continue;
-    const target = ctx.staffY[s] + below[0].a!;
-    const dy = target - (ctx.staffY[s + 1] + above[0].a!);
+    const below = ctx.prims[s].filter((p) => isMark(p) && must(p.a) > 4);
+    const above = ctx.prims[s + 1].filter((p) => isMark(p) && must(p.a) < 0);
+    if (!(below.length && above.length)) continue;
+    const target = ctx.staffY[s] + must(below[0].a);
+    const dy = target - (ctx.staffY[s + 1] + must(above[0].a));
     // Only ever move up, away from the lower staff: dy < 0 means the lower staff's row sits below
     // the upper staff's row and has to rise to its baseline...
     if (dy >= 0) continue;
     // ... but never into the upper staff's own content (notes standing below it, ledger lines, ...):
     // `dyMin` is the lowest it may go, from the upper staff's skyline.
-    let dyMin = -Infinity;
+    let dyMin = Number.NEGATIVE_INFINITY;
     for (const p of above) {
       const [x0, x1] = span(p);
       const top = p.t === 'glyph' ? p.y - sm.bbox(p.name).y1 : p.t === 'line' ? Math.min(p.y1, p.y2) - 0.3 : 0;
-      for (const b of ctx.sky[s].boxes) if (!b.spanner && b.x1 > x0 - 0.3 && b.x0 < x1 + 0.3) dyMin = Math.max(dyMin, ctx.staffY[s] - ctx.staffY[s + 1] + b.y1 + 0.3 - top);
+      for (const b of ctx.sky[s].boxes)
+        if (!b.spanner && b.x1 > x0 - 0.3 && b.x0 < x1 + 0.3)
+          dyMin = Math.max(dyMin, ctx.staffY[s] - ctx.staffY[s + 1] + b.y1 + 0.3 - top);
     }
     const dyAdj = Math.min(0, Math.max(dy, dyMin));
-    const clash = above.some((a) => below.some((b) => { const [a0, a1] = span(a), [b0, b1] = span(b); return a1 > b0 - 0.5 && a0 < b1 + 0.5; }));
+    const clash = above.some((a) =>
+      below.some((b) => {
+        const [a0, a1] = span(a);
+        const [b0, b1] = span(b);
+        return a1 > b0 - 0.5 && a0 < b1 + 0.5;
+      }),
+    );
     if (clash) continue;
     for (const p of dyAdj < 0 ? above : []) {
       if (p.t === 'glyph') p.y += dyAdj;
-      else if (p.t === 'line') { p.y1 += dyAdj; p.y2 += dyAdj; }
-      p.a! += dyAdj;
+      else if (p.t === 'line') {
+        p.y1 += dyAdj;
+        p.y2 += dyAdj;
+      }
+      p.a = must(p.a) + dyAdj;
     }
     // the lower marks could not rise all the way (content of the upper staff hangs into the gap): the upper staff's marks
     // sink to the same row instead, so that dynamics and hairpins of the two staves still read as one line
@@ -492,8 +699,11 @@ function alignDynamics(ctx: SysCtx, nS: number): void {
     if (deficit > 0.01) {
       for (const p of below) {
         if (p.t === 'glyph') p.y += deficit;
-        else if (p.t === 'line') { p.y1 += deficit; p.y2 += deficit; }
-        p.a! += deficit;
+        else if (p.t === 'line') {
+          p.y1 += deficit;
+          p.y2 += deficit;
+        }
+        p.a = must(p.a) + deficit;
       }
     }
   }
@@ -501,13 +711,17 @@ function alignDynamics(ctx: SysCtx, nS: number): void {
 
 /** Draws a time signature as stacked digits, each row centred on the wider one. */
 function timeSig(P: Prim[], x: number, y0: number, ts: { beats: number; beatType: number }): void {
-  const wn = String(ts.beats).length, wd = String(ts.beatType).length;
+  const wn = String(ts.beats).length;
+  const wd = String(ts.beatType).length;
   const w = sm.adv('timeSig2');
   const maxw = Math.max(wn, wd) * w;
   const drawC = (n: number, y: number, len: number) => {
     const off = (maxw - len * w) / 2;
     let px = x + off;
-    for (const ch of String(n)) { P.push({ t: 'glyph', name: `timeSig${ch}`, x: px, y }); px += w; }
+    for (const ch of String(n)) {
+      P.push({ t: 'glyph', name: `timeSig${ch}`, x: px, y });
+      px += w;
+    }
   };
   const n0 = P.length;
   drawC(ts.beats, y0 + 1, wn);
@@ -517,9 +731,20 @@ function timeSig(P: Prim[], x: number, y0: number, ts: { beats: number; beatType
 
 function shift(p: Prim, dx: number, dy: number): Prim {
   switch (p.t) {
-    case 'glyph': return { ...p, x: p.x + dx, y: p.y + dy };
-    case 'line': return { ...p, x1: p.x1 + dx, x2: p.x2 + dx, y1: p.y1 + dy, y2: p.y2 + dy };
-    case 'text': return { ...p, x: p.x + dx, y: p.y + dy };
-    case 'path': return { ...p, d: p.d.replace(/(-?\d*\.?\d+(?:e-?\d+)?)[ ,](-?\d*\.?\d+(?:e-?\d+)?)/gi, (_m, a: string, b: string) => `${(parseFloat(a) + dx).toFixed(3)} ${(parseFloat(b) + dy).toFixed(3)}`) };
+    case 'glyph':
+      return { ...p, x: p.x + dx, y: p.y + dy };
+    case 'line':
+      return { ...p, x1: p.x1 + dx, x2: p.x2 + dx, y1: p.y1 + dy, y2: p.y2 + dy };
+    case 'text':
+      return { ...p, x: p.x + dx, y: p.y + dy };
+    case 'path':
+      return {
+        ...p,
+        d: p.d.replace(
+          /(-?\d*\.?\d+(?:e-?\d+)?)[ ,](-?\d*\.?\d+(?:e-?\d+)?)/gi,
+          (_m, a: string, b: string) =>
+            `${(Number.parseFloat(a) + dx).toFixed(3)} ${(Number.parseFloat(b) + dy).toFixed(3)}`,
+        ),
+      };
   }
 }

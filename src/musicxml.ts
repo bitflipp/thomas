@@ -6,14 +6,33 @@
 // and beam ranges nested into groups), with beams and brackets that the engraver's automatic choice
 // reproduces left out again; (4) timed marks are hung on events (`anchorMarks`).
 // Everything MuseScore-specific that is only a position or an automatic break is dropped on purpose.
-import { parseXml, child, children, text, type XNode } from './xml.ts';
-import {
-  PPQ, STEPS, anchorMarks, baseTicks, measureTicks,
-  type Score, type Measure, type Item, type Event, type NoteEvent, type RestEvent,
-  type Dur, type BaseDur, type Clef, type TimedMark, type TupletGroup, type BeamGroup, type Step, type StaffDef,
-  type Articulation, type Pitch, type TimeSig, type Grace, type NotePitch,
-} from './model.ts';
+
 import { beatTicks, simplifyBeams, simplifyTupletBrackets } from './beams.ts';
+import type {
+  Articulation,
+  BaseDur,
+  BeamGroup,
+  Clef,
+  Dur,
+  Event,
+  Grace,
+  Item,
+  Measure,
+  NoteEvent,
+  NotePitch,
+  Pitch,
+  RestEvent,
+  Score,
+  StaffDef,
+  Step,
+  TimedMark,
+  TimeSig,
+  TupletGroup,
+} from './model.ts';
+import { anchorMarks, baseTicks, measureTicks, PPQ, STEPS } from './model.ts';
+import { must } from './util.ts';
+import type { XNode } from './xml.ts';
+import { child, children, parseXml, text } from './xml.ts';
 
 export interface ImportOptions {
   /** Keep the stem directions of the source (by default they are left to the engraver). */
@@ -24,7 +43,15 @@ export interface ImportOptions {
   warn?: (msg: string) => void;
 }
 
-const TYPE_BASE: Record<string, BaseDur> = { whole: 1, half: 2, quarter: 4, eighth: 8, '16th': 16, '32nd': 32, '64th': 64 };
+const TYPE_BASE: Record<string, BaseDur> = {
+  whole: 1,
+  half: 2,
+  quarter: 4,
+  eighth: 8,
+  '16th': 16,
+  '32nd': 32,
+  '64th': 64,
+};
 
 /** The written duration with exactly this many ticks (up to three dots), if there is one. */
 export function ticksToDur(t: number): Dur | null {
@@ -35,7 +62,10 @@ export function ticksToDur(t: number): Dur | null {
 
 /** A note or rest as read from the file, before it is placed into a voice tree. */
 interface RawNote {
-  tick: number; ticks: number; staff: number; voice: number;
+  tick: number;
+  ticks: number;
+  staff: number;
+  voice: number;
   ev: Event;
   /** Time modification: [actual, normal] notes of a tuplet. */
   tmRatio?: [number, number];
@@ -49,7 +79,7 @@ interface RawNote {
 }
 
 export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
-  const warn = opts.warn ?? (() => {});
+  const warn = opts.warn ?? (() => undefined);
   const root = parseXml(xml);
   if (root.tag !== 'score-partwise') throw new Error('only score-partwise MusicXML is supported');
 
@@ -58,7 +88,9 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
   const meta: Score['meta'] = {};
   for (const c of children(root, 'credit')) {
     const type = text(c, 'credit-type');
-    const words = children(c, 'credit-words').map((w) => w.text.trim()).join(' ');
+    const words = children(c, 'credit-words')
+      .map((w) => w.text.trim())
+      .join(' ');
     if (!words) continue;
     if (type === 'title' && !meta.title) meta.title = words;
     else if (type === 'subtitle' && !meta.subtitle) meta.subtitle = words;
@@ -66,7 +98,10 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
     else if (type === 'rights' && !meta.rights) meta.rights = words;
   }
   meta.title ??= text(child(root, 'work'), 'work-title');
-  meta.composer ??= root.children.find((c) => c.tag === 'identification')?.children.find((c) => c.tag === 'creator' && c.attrs.type === 'composer')?.text.trim();
+  meta.composer ??= root.children
+    .find((c) => c.tag === 'identification')
+    ?.children.find((c) => c.tag === 'creator' && c.attrs.type === 'composer')
+    ?.text.trim();
   meta.rights ??= text(child(root, 'identification'), 'rights');
 
   const defaults = child(root, 'defaults');
@@ -74,12 +109,15 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
   const tenths = Number(text(child(defaults, 'scaling'), 'tenths') ?? 40);
   const mmPerTenth = mm / tenths;
   const pl = child(defaults, 'page-layout');
-  const pw = Number(text(pl, 'page-width') ?? 1100), ph = Number(text(pl, 'page-height') ?? 1550);
+  const pw = Number(text(pl, 'page-width') ?? 1100);
+  const ph = Number(text(pl, 'page-height') ?? 1550);
   const pm = child(pl, 'page-margins');
   const margin = pm ? Number(text(pm, 'left-margin') ?? 50) * mmPerTenth : 10;
   const page = {
-    width: round(pw * mmPerTenth, 1), height: round(ph * mmPerTenth, 1),
-    margin: round(margin, 1), staffSpace: round(10 * mmPerTenth, 3),
+    width: round(pw * mmPerTenth, 1),
+    height: round(ph * mmPerTenth, 1),
+    margin: round(margin, 1),
+    staffSpace: round(10 * mmPerTenth, 3),
   };
 
   // ---- parts & staves. A part with several staves (piano) becomes several staves of ours,
@@ -106,7 +144,8 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
       ids.push(id);
       staves.push({ id, clef: { sign: 'G', line: 2 }, name: text(sp, 'part-name') });
     }
-    if (n > 1) groups.push({ kind: sound.startsWith('keyboard') || /harp/.test(sound) ? 'brace' : 'bracket', staves: ids });
+    if (n > 1)
+      groups.push({ kind: sound.startsWith('keyboard') || /harp/.test(sound) ? 'brace' : 'bracket', staves: ids });
     partStaffIds.push(ids);
   });
 
@@ -158,19 +197,24 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
             const key = child(el, 'key');
             if (key && pi === 0) measure.key = Number(text(key, 'fifths') ?? 0);
             const time = child(el, 'time');
-            if (time && pi === 0) measure.time = { beats: Number(text(time, 'beats')), beatType: Number(text(time, 'beat-type')) };
+            if (time && pi === 0)
+              measure.time = { beats: Number(text(time, 'beats')), beatType: Number(text(time, 'beat-type')) };
             for (const c of children(el, 'clef')) {
               const clef: Clef = { sign: text(c, 'sign') as Clef['sign'], line: Number(text(c, 'line') ?? 2) };
               const oc = text(c, 'clef-octave-change');
               if (oc) clef.octave = Number(oc);
               const id = sid(Number(c.attrs.number ?? 1));
-              if (mi === 0 && cursor === 0) staves.find((s) => s.id === id)!.clef = clef;
+              if (mi === 0 && cursor === 0) must(staves.find((s) => s.id === id)).clef = clef;
               else marks.push({ staffId: id, mark: { type: 'clef', clef, tick: t(cursor) } });
             }
             break;
           }
-          case 'backup': cursor -= Number(text(el, 'duration')); break;
-          case 'forward': cursor += Number(text(el, 'duration')); break;
+          case 'backup':
+            cursor -= Number(text(el, 'duration'));
+            break;
+          case 'forward':
+            cursor += Number(text(el, 'duration'));
+            break;
           case 'print':
             if (pi === 0 && opts.keepBreaks) {
               if (el.attrs['new-page'] === 'yes') measure.breakBefore = 'page';
@@ -190,26 +234,59 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
               for (const d of dt.children) {
                 if (d.tag === 'dynamics') {
                   const name = d.children[0]?.tag;
-                  if (name) marks.push({ staffId, mark: { type: 'dynamic', text: name === 'other-dynamics' ? d.children[0].text.trim() : name, placement: placement === 'above' ? 'above' : undefined, tick } });
+                  if (name)
+                    marks.push({
+                      staffId,
+                      mark: {
+                        type: 'dynamic',
+                        text: name === 'other-dynamics' ? d.children[0].text.trim() : name,
+                        placement: placement === 'above' ? 'above' : undefined,
+                        tick,
+                      },
+                    });
                 } else if (d.tag === 'wedge') {
                   const id = Number(d.attrs.number ?? 1);
                   if (d.attrs.type === 'stop') marks.push({ staffId, mark: { type: 'stop', of: 'hairpin', id, tick } });
-                  else marks.push({ staffId, mark: { type: 'hairpin', kind: d.attrs.type === 'crescendo' ? 'cresc' : 'dim', id, placement: placement === 'above' ? 'above' : undefined, tick } });
+                  else
+                    marks.push({
+                      staffId,
+                      mark: {
+                        type: 'hairpin',
+                        kind: d.attrs.type === 'crescendo' ? 'cresc' : 'dim',
+                        id,
+                        placement: placement === 'above' ? 'above' : undefined,
+                        tick,
+                      },
+                    });
                 } else if (d.tag === 'pedal') {
                   const ty = d.attrs.type;
-                  if (ty === 'stop' || ty === 'change') marks.push({ staffId, mark: { type: 'stop', of: 'pedal', tick } });
+                  if (ty === 'stop' || ty === 'change')
+                    marks.push({ staffId, mark: { type: 'stop', of: 'pedal', tick } });
                   if (ty === 'start' || ty === 'change') marks.push({ staffId, mark: { type: 'pedal', tick } });
                 } else if (d.tag === 'octave-shift') {
-                  if (d.attrs.size && d.attrs.size !== '8') throw new Error(`octave-shift size ${d.attrs.size} unsupported`);
+                  if (d.attrs.size && d.attrs.size !== '8')
+                    throw new Error(`octave-shift size ${d.attrs.size} unsupported`);
                   if (d.attrs.type === 'stop') marks.push({ staffId, mark: { type: 'stop', of: 'ottava', tick } });
-                  else marks.push({ staffId, mark: { type: 'ottava', dir: d.attrs.type === 'down' ? 'up' : 'down', tick } });
+                  else
+                    marks.push({
+                      staffId,
+                      mark: { type: 'ottava', dir: d.attrs.type === 'down' ? 'up' : 'down', tick },
+                    });
                 } else if (d.tag === 'metronome') {
                   const unit = TYPE_BASE[text(d, 'beat-unit') ?? 'quarter'];
                   const dots = children(d, 'beat-unit-dot').length;
                   const bpm = Number(text(d, 'per-minute'));
                   if (unit && bpm) marks.push({ staffId, mark: { type: 'tempo', unit, dots, bpm, tick } });
                 } else if (d.tag === 'words') {
-                  marks.push({ staffId, mark: { type: 'text', text: d.text.trim(), placement: placement === 'below' ? 'below' : undefined, tick } });
+                  marks.push({
+                    staffId,
+                    mark: {
+                      type: 'text',
+                      text: d.text.trim(),
+                      placement: placement === 'below' ? 'below' : undefined,
+                      tick,
+                    },
+                  });
                 } else if (d.tag !== 'sound') warn(`m${mi + 1}: unsupported direction <${d.tag}>`);
               }
             }
@@ -221,15 +298,23 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
             const staffN = Number(text(el, 'staff') ?? 1);
             const voice = Number(text(el, 'voice') ?? 1);
             if (!homeStaff.has(voice)) homeStaff.set(voice, staffN);
-            const staffId = sid(homeStaff.get(voice)!);
+            const staffId = sid(must(homeStaff.get(voice)));
             const graceEl = child(el, 'grace');
-            if (graceEl) { // collected, then attached to the next note of the voice
+            if (graceEl) {
+              // collected, then attached to the next note of the voice
               if (!child(el, 'pitch')) break;
-              const gl = pendingGraces.get(voice) ?? pendingGraces.set(voice, []).get(voice)!;
-              if (isChord && gl.length) { gl[gl.length - 1].pitches.push(readPitch(el, mi)); break; }
+              const gl = pendingGraces.get(voice) ?? must(pendingGraces.set(voice, []).get(voice));
+              if (isChord && gl.length) {
+                gl[gl.length - 1].pitches.push(readPitch(el, mi));
+                break;
+              }
               const tn = text(el, 'type');
               const base = tn && TYPE_BASE[tn] ? TYPE_BASE[tn] : 8;
-              gl.push({ pitches: [readPitch(el, mi)], base, ...(graceEl.attrs.slash === 'yes' ? { slash: true } : {}) });
+              gl.push({
+                pitches: [readPitch(el, mi)],
+                base,
+                ...(graceEl.attrs.slash === 'yes' ? { slash: true } : {}),
+              });
               break;
             }
             const typeName = text(el, 'type');
@@ -245,16 +330,27 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
               break;
             }
             const tick = t(cursor);
-            const rn: RawNote = { tick, ticks: t(dur), staff: staffN, voice, ev: undefined as unknown as Event, tupStop: 0 };
+            const rn: RawNote = {
+              tick,
+              ticks: t(dur),
+              staff: staffN,
+              voice,
+              ev: undefined as unknown as Event,
+              tupStop: 0,
+            };
             if (rest) {
               const ev: RestEvent = { kind: 'rest', style: isMeasureRest ? 'measure' : 'normal', dur: d };
-              const ds = text(rest, 'display-step'), dop = text(rest, 'display-octave');
+              const ds = text(rest, 'display-step');
+              const dop = text(rest, 'display-octave');
               if (ds && dop) ev.display = { step: ds.toLowerCase() as Step, alter: 0, octave: Number(dop) };
               rn.ev = ev;
             } else {
               const ev: NoteEvent = { kind: 'note', dur: d, pitches: [readPitch(el, mi)] };
               const gr = pendingGraces.get(voice);
-              if (gr) { ev.graces = gr; pendingGraces.delete(voice); }
+              if (gr) {
+                ev.graces = gr;
+                pendingGraces.delete(voice);
+              }
               rn.trem = readNotations(el, ev, false);
               rn.ev = ev;
             }
@@ -273,13 +369,16 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
                 if (tup.attrs.placement) o.placement = tup.attrs.placement as 'above' | 'below';
                 const an = text(child(tup, 'tuplet-actual'), 'tuplet-number');
                 if (an) o.label = Number(an);
-                (rn.tupStart ??= []).push(o);
+                rn.tupStart ??= [];
+                rn.tupStart.push(o);
               } else rn.tupStop++;
             }
-            rn.beam1 = children(el, 'beam').find((b) => b.attrs.number === '1')?.text.trim();
+            rn.beam1 = children(el, 'beam')
+              .find((b) => b.attrs.number === '1')
+              ?.text.trim();
             const key = `${staffId}|${voice}`;
             if (!raws.has(key)) raws.set(key, []);
-            raws.get(key)!.push(rn);
+            must(raws.get(key)).push(rn);
             prev = rn;
             cursor += dur;
             break;
@@ -310,32 +409,42 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
     const mlen = measureTicks(timeNow);
     for (const [key, notes] of raw[mi]) {
       const [sid, v] = key.split('|');
-      const vid = voiceNums.get(sid)!.indexOf(Number(v)) + 1;
+      const vid = must(voiceNums.get(sid)).indexOf(Number(v)) + 1;
       const voice = { id: vid, items: buildVoice(notes, mlen, mi + 1, warn) };
       // Leave out what the engraver's automatic beaming and bracket choice does anyway, so the text
       // format only states deliberate deviations.
       simplifyBeams(voice, beatTicks(timeNow));
       simplifyTupletBrackets(voice, beatTicks(timeNow));
-      const sm = (measure.staves[sid] ??= { voices: [] });
+      measure.staves[sid] ??= { voices: [] };
+      const sm = measure.staves[sid];
       sm.voices.push(voice);
     }
     for (const sm of Object.values(measure.staves)) sm.voices.sort((a, b) => a.id - b.id);
     const byStaff = new Map<string, TimedMark[]>();
-    for (const { staffId, mark } of rawMarks[mi]) (byStaff.get(staffId) ?? byStaff.set(staffId, []).get(staffId)!).push(mark);
-    for (const [sid, ms] of byStaff) if (measure.staves[sid]) anchorMarks(measure.staves[sid], ms.sort((a, b) => a.tick - b.tick));
+    for (const { staffId, mark } of rawMarks[mi])
+      (byStaff.get(staffId) ?? must(byStaff.set(staffId, []).get(staffId))).push(mark);
+    for (const [sid, ms] of byStaff)
+      if (measure.staves[sid])
+        anchorMarks(
+          measure.staves[sid],
+          ms.sort((a, b) => a.tick - b.tick),
+        );
   }
   if (!measures[0].time) measures[0].time = timeNow;
   return { meta, page, staves, groups, measures };
 }
 
 /** Rounds to `d` decimals. */
-function round(x: number, d: number): number { const f = 10 ** d; return Math.round(x * f) / f; }
+function round(x: number, d: number): number {
+  const f = 10 ** d;
+  return Math.round(x * f) / f;
+}
 
 /** The pitch of a <note>; a `cautionary` accidental in the source becomes a forced one. */
 function readPitch(el: XNode, mi: number): NotePitch {
   const p = child(el, 'pitch');
   if (!p) throw new Error(`m${mi + 1}: unpitched notes not supported`);
-  const step = text(p, 'step')!.toLowerCase() as Step;
+  const step = must(text(p, 'step')).toLowerCase() as Step;
   if (!STEPS.includes(step)) throw new Error('bad step');
   const pitch: Pitch = { step, alter: Number(text(p, 'alter') ?? 0), octave: Number(text(p, 'octave')) };
   if (!Number.isInteger(pitch.alter)) throw new Error(`m${mi + 1}: microtones unsupported`);
@@ -355,9 +464,17 @@ function readNotations(el: XNode, ev: NoteEvent | RestEvent, isChord: boolean): 
     for (const s of children(n, 'slur')) {
       const id = Number(s.attrs.number ?? 1);
       if (s.attrs.type === 'start') {
-        const side = (s.attrs.placement ?? (s.attrs.orientation === 'over' ? 'above' : s.attrs.orientation === 'under' ? 'below' : undefined)) as 'above' | 'below' | undefined;
-        (ev.slurStart ??= []).push(side ? { id, side } : { id });
-      } else if (s.attrs.type === 'stop') (ev.slurStop ??= []).push(id);
+        const side = (s.attrs.placement ??
+          (s.attrs.orientation === 'over' ? 'above' : s.attrs.orientation === 'under' ? 'below' : undefined)) as
+          | 'above'
+          | 'below'
+          | undefined;
+        ev.slurStart ??= [];
+        ev.slurStart.push(side ? { id, side } : { id });
+      } else if (s.attrs.type === 'stop') {
+        ev.slurStop ??= [];
+        ev.slurStop.push(id);
+      }
     }
   }
   if (child(n, 'arpeggiate')) ev.arpeggio = true;
@@ -404,23 +521,34 @@ function decomposeGap(ticks: number): Dur[] {
 function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: string) => void): Item[] {
   // 1. Fill gaps with hidden rests and check continuity: a note starting before the previous
   // one ends is an error (overlap inside one voice), a note starting later leaves a gap.
-  const evs: { ev: Event; tm?: [number, number]; tupStart?: RawNote['tupStart']; tupStop: number; beam1?: string; trem?: RawNote['trem'] }[] = [];
+  const evs: {
+    ev: Event;
+    tm?: [number, number];
+    tupStart?: RawNote['tupStart'];
+    tupStop: number;
+    beam1?: string;
+    trem?: RawNote['trem'];
+  }[] = [];
   let pos = 0;
   for (const n of notes) {
     if (n.tick < pos) throw new Error(`m${mnum}: overlapping events in one voice`);
-    if (n.tick > pos) for (const d of decomposeGap(n.tick - pos)) evs.push({ ev: { kind: 'rest', style: 'hidden', dur: d }, tupStop: 0 });
+    if (n.tick > pos)
+      for (const d of decomposeGap(n.tick - pos))
+        evs.push({ ev: { kind: 'rest', style: 'hidden', dur: d }, tupStop: 0 });
     evs.push({ ev: n.ev, tm: n.tmRatio, tupStart: n.tupStart, tupStop: n.tupStop, beam1: n.beam1, trem: n.trem });
     pos = n.tick + n.ticks;
     // The notated duration (with the tuplet ratio applied) must equal the sounding one; a
     // mismatch usually means a feature we do not model, so warn about it.
     let expect = baseTicks(n.ev.dur);
     if (n.tmRatio) expect = (expect * n.tmRatio[1]) / n.tmRatio[0];
-    if (expect !== n.ticks && !(n.ev.kind === 'rest' && n.ev.style === 'measure')) warn(`m${mnum}: notated duration ${expect} != sounding ${n.ticks}`);
+    if (expect !== n.ticks && !(n.ev.kind === 'rest' && n.ev.style === 'measure'))
+      warn(`m${mnum}: notated duration ${expect} != sounding ${n.ticks}`);
   }
   if (pos > mlen) warn(`m${mnum}: voice longer than measure`);
   // A voice that stops early is padded with hidden rests (MuseScore does the same implicitly),
   // so every voice has exactly the length of its measure.
-  if (pos < mlen) for (const d of decomposeGap(mlen - pos)) evs.push({ ev: { kind: 'rest', style: 'hidden', dur: d }, tupStop: 0 });
+  if (pos < mlen)
+    for (const d of decomposeGap(mlen - pos)) evs.push({ ev: { kind: 'rest', style: 'hidden', dur: d }, tupStop: 0 });
 
   // 2. Tuplet ranges: explicit start/stop notations, plus implicit tuplets for notes that carry a
   // <time-modification> but no tuplet notation. Those are tuplets in timing only, with
@@ -433,14 +561,22 @@ function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: stri
   const closeImplicit = (b: number) => {
     if (!implicit) return;
     const { a, ratio } = implicit;
-    ranges.push({ a, b, rank: 3, make: () => ({ kind: 'tuplet', actual: ratio[0], normal: ratio[1], bracket: false, number: 'none', items: [] }) });
+    ranges.push({
+      a,
+      b,
+      rank: 3,
+      make: () => ({ kind: 'tuplet', actual: ratio[0], normal: ratio[1], bracket: false, number: 'none', items: [] }),
+    });
     implicit = null;
   };
   evs.forEach((e, i) => {
     if (e.tupStart) {
       closeImplicit(i - 1);
       for (const o of e.tupStart) {
-        if (!e.tm) { warn(`m${mnum}: tuplet without time-modification`); continue; }
+        if (!e.tm) {
+          warn(`m${mnum}: tuplet without time-modification`);
+          continue;
+        }
         open.push({ a: i, o, ratio: e.tm });
       }
     } else if (e.tm) {
@@ -454,7 +590,10 @@ function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: stri
       if (!t) continue;
       const { a, o, ratio } = t;
       ranges.push({
-        a, b: i, rank: 3, make: () => {
+        a,
+        b: i,
+        rank: 3,
+        make: () => {
           const g: TupletGroup = { kind: 'tuplet', actual: ratio[0], normal: ratio[1], items: [] };
           if (o.bracket !== undefined) g.bracket = o.bracket;
           if (o.number) g.number = o.number;
@@ -473,7 +612,11 @@ function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: stri
   let tstart: { i: number; beams: number } | null = null;
   evs.forEach((e, i) => {
     if (e.trem?.role === 'start') tstart = { i, beams: e.trem.beams };
-    else if (e.trem?.role === 'stop' && tstart) { const { i: a, beams } = tstart; ranges.push({ a, b: i, rank: 2, make: () => ({ kind: 'tremolo', beams, items: [] }) }); tstart = null; }
+    else if (e.trem?.role === 'stop' && tstart) {
+      const { i: a, beams } = tstart;
+      ranges.push({ a, b: i, rank: 2, make: () => ({ kind: 'tremolo', beams, items: [] }) });
+      tstart = null;
+    }
   });
   if (tstart) warn(`m${mnum}: tremolo without end`);
 
@@ -483,8 +626,10 @@ function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: stri
   let bstart = -1;
   evs.forEach((e, i) => {
     if (e.beam1 === 'begin') bstart = i;
-    else if (e.beam1 === 'end' && bstart >= 0) { brs.push({ a: bstart, b: i, rank: 1, make: () => ({ kind: 'beam', items: [] }) }); bstart = -1; }
-    else if (!e.beam1 && bstart < 0 && e.ev.kind === 'note' && e.ev.dur.base >= 8)
+    else if (e.beam1 === 'end' && bstart >= 0) {
+      brs.push({ a: bstart, b: i, rank: 1, make: () => ({ kind: 'beam', items: [] }) });
+      bstart = -1;
+    } else if (!e.beam1 && bstart < 0 && e.ev.kind === 'note' && e.ev.dur.base >= 8)
       brs.push({ a: i, b: i, rank: 1, make: () => ({ kind: 'beam', items: [] }) });
   });
   const all = [...ranges, ...brs];
@@ -495,9 +640,12 @@ function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: stri
   // 4. Nest. Walk the events; a stack holds the groups currently open, each closing after its
   // last event. Because the ranges are sorted outermost first, a group opening at an event is
   // always placed inside the innermost one still open.
-  interface Open { b: number; node: { items: Item[] } }
+  interface Open {
+    b: number;
+    node: { items: Item[] };
+  }
   const rootItems: Item[] = [];
-  const stack: Open[] = [{ b: Infinity, node: { items: rootItems } }];
+  const stack: Open[] = [{ b: Number.POSITIVE_INFINITY, node: { items: rootItems } }];
   let ri = 0;
   for (let i = 0; i < evs.length; i++) {
     while (stack.length > 1 && stack[stack.length - 1].b < i) stack.pop();
@@ -505,7 +653,12 @@ function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: (m: stri
       const r = all[ri++];
       const parent = stack[stack.length - 1];
       let b = r.b;
-      if (b > parent.b) { warn(`m${mnum}: ${r.rank === 3 ? 'tuplet' : r.rank === 2 ? 'tremolo' : 'beam'} crosses group boundary, truncated`); b = parent.b; }
+      if (b > parent.b) {
+        warn(
+          `m${mnum}: ${r.rank === 3 ? 'tuplet' : r.rank === 2 ? 'tremolo' : 'beam'} crosses group boundary, truncated`,
+        );
+        b = parent.b;
+      }
       const node = r.make() as TupletGroup | BeamGroup | TremoloGroup;
       parent.node.items.push(node);
       stack.push({ b, node });

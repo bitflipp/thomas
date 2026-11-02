@@ -5,8 +5,32 @@
 // when a system is placed.
 /** What a primitive is, for collision checking (see collide.ts). */
 export type Kind =
-  | 'staff' | 'head' | 'acc' | 'dot' | 'stem' | 'beam' | 'flag' | 'ledger' | 'rest' | 'artic' | 'tie' | 'slur' | 'tuplet'
-  | 'dyn' | 'hairpin' | 'pedal' | 'ottava' | 'tempo' | 'text' | 'clef' | 'keysig' | 'timesig' | 'barline' | 'measurenum' | 'arpeggio' | 'brace';
+  | 'staff'
+  | 'head'
+  | 'acc'
+  | 'dot'
+  | 'stem'
+  | 'beam'
+  | 'flag'
+  | 'ledger'
+  | 'rest'
+  | 'artic'
+  | 'tie'
+  | 'slur'
+  | 'tuplet'
+  | 'dyn'
+  | 'hairpin'
+  | 'pedal'
+  | 'ottava'
+  | 'tempo'
+  | 'text'
+  | 'clef'
+  | 'keysig'
+  | 'timesig'
+  | 'barline'
+  | 'measurenum'
+  | 'arpeggio'
+  | 'brace';
 /** Metadata attached to a primitive where it is pushed (via `tagFrom`); everything after drawing reads these instead of guessing. */
 export interface Tag {
   k?: Kind;
@@ -25,33 +49,78 @@ export interface Tag {
 const ids = new WeakMap<object, number>();
 const byId = new Map<number, WeakRef<object>>();
 /** Inverse of oid (diagnostics). */
-export function objOf(id: number): object | undefined { return byId.get(id)?.deref(); }
+export function objOf(id: number): object | undefined {
+  return byId.get(id)?.deref();
+}
 let nextId = 1;
 /** Stable numeric identity for any object, used for Tag.o / Tag.g. */
 export function oid(x: object): number {
   let i = ids.get(x);
-  if (i === undefined) { i = nextId++; ids.set(x, i); byId.set(i, new WeakRef(x)); }
+  if (i === undefined) {
+    i = nextId++;
+    ids.set(x, i);
+    byId.set(i, new WeakRef(x));
+  }
   return i;
 }
 /**
  * Tags prims[from..] in place: call it right after the drawing code that pushed them, with the
  * object they belong to (`o`; also gives `r`, the model object they depict) and optional groups.
  */
-export function tagFrom(prims: Prim[], from: number, k: Kind, o?: object | number, g?: (object | number | undefined)[]): void {
+export function tagFrom(
+  prims: Prim[],
+  from: number,
+  k: Kind,
+  o?: object | number,
+  g?: (object | number | undefined)[],
+): void {
   const oo = o === undefined ? undefined : typeof o === 'number' ? o : oid(o);
   const gg = g?.filter((x): x is object | number => x !== undefined).map((x) => (typeof x === 'number' ? x : oid(x)));
-  const rr = typeof o === 'object' ? ((o as { ev?: object }).ev ?? ((o as { kind?: string }).kind === 'tuplet' ? o : (o as { notes?: { ev: object }[] }).notes?.[0]?.ev)) : undefined;
-  for (let i = from; i < prims.length; i++) { prims[i].k = k; if (oo !== undefined) prims[i].o = oo; if (gg?.length) prims[i].g = gg; if (rr) prims[i].r = rr; }
+  const rr =
+    typeof o === 'object'
+      ? ((o as { ev?: object }).ev ??
+        ((o as { kind?: string }).kind === 'tuplet' ? o : (o as { notes?: { ev: object }[] }).notes?.[0]?.ev))
+      : undefined;
+  for (let i = from; i < prims.length; i++) {
+    prims[i].k = k;
+    if (oo !== undefined) prims[i].o = oo;
+    if (gg?.length) prims[i].g = gg;
+    if (rr) prims[i].r = rr;
+  }
 }
 
-export type Prim = Tag & (
-  | { t: 'glyph'; name: string; x: number; y: number; sx?: number; sy?: number; rot?: number }
-  | { t: 'line'; x1: number; y1: number; x2: number; y2: number; w: number; dash?: [number, number]; cap?: 'butt' | 'square' }
-  | { t: 'path'; d: string }
-  | { t: 'text'; x: number; y: number; s: string; size: number; anchor?: 'start' | 'middle' | 'end'; italic?: boolean; bold?: boolean });
+export type Prim = Tag &
+  (
+    | { t: 'glyph'; name: string; x: number; y: number; sx?: number; sy?: number; rot?: number }
+    | {
+        t: 'line';
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+        w: number;
+        dash?: [number, number];
+        cap?: 'butt' | 'square';
+      }
+    | { t: 'path'; d: string }
+    | {
+        t: 'text';
+        x: number;
+        y: number;
+        s: string;
+        size: number;
+        anchor?: 'start' | 'middle' | 'end';
+        italic?: boolean;
+        bold?: boolean;
+      }
+  );
 
 /** One output page: size in staff spaces and its primitives, already in page coordinates. */
-export interface Page { width: number; height: number; prims: Prim[] }
+export interface Page {
+  width: number;
+  height: number;
+  prims: Prim[];
+}
 
 /** Occupied regions, used to place marks without collisions (y down). */
 export class Skyline {
@@ -65,19 +134,25 @@ export class Skyline {
   /** The lowest occupied y (the maximum) within x0..x1, or `fallback` when nothing is there or lower. */
   bottom(x0: number, x1: number, fallback: number, skipSpanners = false, skipAcc = false): number {
     let r = fallback;
-    for (const b of this.boxes) if (b.x1 > x0 && b.x0 < x1 && b.y1 > r && !(skipSpanners && b.spanner) && !(skipAcc && b.acc)) r = b.y1;
+    for (const b of this.boxes)
+      if (b.x1 > x0 && b.x0 < x1 && b.y1 > r && !(skipSpanners && b.spanner) && !(skipAcc && b.acc)) r = b.y1;
     return r;
   }
   /** The highest occupied y (the minimum) within x0..x1, or `fallback`. */
   top(x0: number, x1: number, fallback: number, skipSpanners = false, skipAcc = false): number {
     let r = fallback;
-    for (const b of this.boxes) if (b.x1 > x0 && b.x0 < x1 && b.y0 < r && !(skipSpanners && b.spanner) && !(skipAcc && b.acc)) r = b.y0;
+    for (const b of this.boxes)
+      if (b.x1 > x0 && b.x0 < x1 && b.y0 < r && !(skipSpanners && b.spanner) && !(skipAcc && b.acc)) r = b.y0;
     return r;
   }
   /** Vertical extent of everything added, at least the staff itself (0..4); used to space staves apart. */
   extent(): { top: number; bottom: number } {
-    let top = 0, bottom = 4;
-    for (const b of this.boxes) { if (b.y0 < top) top = b.y0; if (b.y1 > bottom) bottom = b.y1; }
+    let top = 0;
+    let bottom = 4;
+    for (const b of this.boxes) {
+      if (b.y0 < top) top = b.y0;
+      if (b.y1 > bottom) bottom = b.y1;
+    }
     return { top, bottom };
   }
 }
