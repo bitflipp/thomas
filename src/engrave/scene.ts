@@ -102,7 +102,8 @@ export type Prim = Tag &
         dash?: [number, number];
         cap?: 'butt' | 'square';
       }
-    | { t: 'path'; d: string }
+    /** A filled outline; `dx`/`dy` move all of `d` (a path is placed by an offset instead of being rewritten each time it is shifted). */
+    | { t: 'path'; d: string; dx?: number; dy?: number }
     | {
         t: 'text';
         x: number;
@@ -167,13 +168,6 @@ export function shiftPrim(p: Prim, dx: number, dy: number): Prim {
     case 'text':
       return { ...p, x: p.x + dx, y: p.y + dy };
     case 'path':
-      return {
-        ...p,
-        d: p.d.replace(
-          /(-?\d*\.?\d+(?:e-?\d+)?)[ ,](-?\d*\.?\d+(?:e-?\d+)?)/gi,
-          (_m, a: string, b: string) =>
-            `${(Number.parseFloat(a) + dx).toFixed(3)} ${(Number.parseFloat(b) + dy).toFixed(3)}`,
-        ),
-      };
+      return { ...p, dx: (p.dx ?? 0) + dx, dy: (p.dy ?? 0) + dy };
   }
 }

@@ -52,7 +52,9 @@ export function pageToSvg(page: Page, staffSpaceMm: number, opts: SvgOptions = {
         );
         break;
       case 'path':
-        body.push(`<path d="${p.d}" fill="${col ?? '#000'}" stroke="none"${ix}/>`);
+        body.push(
+          `<path d="${p.d}"${p.dx || p.dy ? ` transform="translate(${f3(p.dx ?? 0)} ${f3(p.dy ?? 0)})"` : ''} fill="${col ?? '#000'}" stroke="none"${ix}/>`,
+        );
         break;
       case 'text':
         body.push(

@@ -84,7 +84,7 @@ function primBox(p: Prim): Box | undefined {
       return { x0, x1: x0 + w, y0: p.y - p.size * 0.8, y1: p.y + p.size * 0.25 };
     }
     case 'path': {
-      const n = p.d.match(/-?\d*\.?\d+/g)?.map(Number) ?? [];
+      const n = pathNumbers(p);
       if (n.length < 4) return undefined;
       let x0 = Number.POSITIVE_INFINITY;
       let y0 = Number.POSITIVE_INFINITY;
@@ -101,9 +101,20 @@ function primBox(p: Prim): Box | undefined {
   }
 }
 
+/** The numbers of a path's data (x y pairs), moved by the path's offset. */
+function pathNumbers(p: Extract<Prim, { t: 'path' }>): number[] {
+  const n = p.d.match(/-?\d*\.?\d+/g)?.map(Number) ?? [];
+  if (p.dx || p.dy)
+    for (let i = 0; i + 1 < n.length; i += 2) {
+      n[i] += p.dx ?? 0;
+      n[i + 1] += p.dy ?? 0;
+    }
+  return n;
+}
+
 /** Points along the first (upper) curve of a crescent path "M x y C ... " */
-function curvePts(d: string): { x: number; y: number }[] {
-  const n = d.match(/-?\d*\.?\d+/g)?.map(Number) ?? [];
+function curvePts(p: Prim): { x: number; y: number }[] {
+  const n = p.t === 'path' ? pathNumbers(p) : [];
   if (n.length < 8) return [];
   const [x0, y0, ax, ay, bx, by, x1, y1] = n;
   const out: { x: number; y: number }[] = [];
@@ -160,7 +171,7 @@ function addToTarget(byKey: Map<string, Target>, page: number, p: Prim, ref: Ref
   }
   if (isCurveKind(p.k)) {
     t.pts ??= [];
-    t.pts.push(...curvePts(p.t === 'path' ? p.d : ''));
+    t.pts.push(...curvePts(p));
   } else t.boxes.push(bb);
   t.bbox = union(t.bbox, bb);
   if (p.k === 'rest') t.prio = 0;

@@ -219,8 +219,16 @@ function shapeOf(p: Prim): Shape | null {
         false,
       );
     }
-    case 'path':
-      return finish(p, flattenPath(p.d));
+    case 'path': {
+      const rings = flattenPath(p.d);
+      if (p.dx || p.dy)
+        for (const r of rings)
+          for (let i = 0; i < r.length; i += 2) {
+            r[i] += p.dx ?? 0;
+            r[i + 1] += p.dy ?? 0;
+          }
+      return finish(p, rings);
+    }
     case 'glyph': {
       let base = glyphRings.get(p.name);
       if (!base) {
