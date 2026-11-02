@@ -1086,6 +1086,8 @@ interface TupletPlan {
   bx1: number;
   cx: number;
   cy: number;
+  /** The number sits on staff lines: it gets an opaque box with a border so that it stays readable. */
+  box: boolean;
 }
 
 /** What the placement of a tuplet's line is computed from. */
@@ -1106,6 +1108,7 @@ interface TupletFrame {
 
 const touchesStaffLine = (y: number, tolerance: number) => [0, 1, 2, 3, 4].some((l) => Math.abs(l - y) < tolerance);
 const TUPLET_NUMBER_SIZE = 1.8;
+const f = (v: number) => String(Math.round(v * 1000) / 1000);
 const MAX_TUPLET_SLOPE = 0.5;
 
 /** How far each member reaches on the chosen side: stems, beams and heads, and anything attached to the note (accidentals, articulations; only a note's own accidentals reach to its left). */
@@ -1218,8 +1221,8 @@ function slopedTupletLine(f: TupletFrame, clearance: number): { ya: number; yb: 
 }
 
 /**
- * Works out where the bracket and number of a tuplet go, on `forceSide` if given. With `moveOffStaffLines`
- * the bracket of a numbered tuplet is moved away from the notes until no staff line runs through the digit.
+ * Works out where the bracket and number of a tuplet go, on `forceSide` if given. A number in a bracket
+ * that staff lines run through gets a box (`box`).
  */
 function planTuplet(
   ctx: SysCtx,
@@ -1227,7 +1230,6 @@ function planTuplet(
   evs: EvL[],
   s: number,
   forceSide: 'above' | 'below' | undefined,
-  moveOffStaffLines: boolean,
 ): TupletPlan | undefined {
   if (!evs.length) return;
   const showNum = t.number !== 'none';
@@ -1273,30 +1275,28 @@ function planTuplet(
   // whole group including the heads at either end.
   const cx = !bracket && x1 > x0 && notes.length > 1 ? (x0 + x1) / 2 : (bx0 + bx1) / 2;
   let cy = ya + ((yb - ya) * (cx - x0)) / Math.max(0.001, x1 - x0);
-  if (bracket && showNum && moveOffStaffLines) {
-    // A digit is taller than a staff space, so only outside the staff is it clear of the lines. Give
-    // up after 18 steps of a quarter space: it is not worth moving further than a few spaces.
-    const d = above ? -0.25 : 0.25;
-    let k = 0;
-    while (k < 18 && touchesStaffLine(cy + k * d, 0.7)) k++;
-    if (!touchesStaffLine(cy + k * d, 0.7)) {
-      ya += k * d;
-      yb += k * d;
-      cy += k * d;
-    }
+  const box = bracket && showNum && touchesStaffLine(cy, 0.7);
+  if (box) {
+    // the box is taller than the bare digit: keep it off the beam and stems
+    const d = above ? -0.2 : 0.2;
+    ya += d;
+    yb += d;
+    cy += d;
   }
-  return { bracket, showNum, above, label: String(t.label ?? t.actual), ya, yb, x0, x1, bx0, bx1, cx, cy };
+  return { bracket, showNum, above, label: String(t.label ?? t.actual), ya, yb, x0, x1, bx0, bx1, cx, cy, box };
 }
 
 /** The tuplet's bracket (a line with a hook at each end, interrupted for the number) and number (plain italic text rather than Bravura's tuplet figures, which are bolder than the other numerals in the score), and their skyline boxes. */
 function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
-  const { bracket, showNum, above, ya, yb, x0, x1, bx0, bx1, cx, cy } = p;
+  const { bracket, showNum, above, ya, yb, x0, x1, bx0, bx1, cx, cy, box } = p;
   const textWidth = p.label.length * 1.0;
+  const boxHalfW = textWidth / 2 + 0.55;
+  const [boxTop, boxBottom] = [-1.07, 0.89]; // relative to cy: the digit (cap height ~1.26) spans -0.72..0.54, with 0.35 padding
   const hookLen = 0.75 * (above ? 1 : -1);
   const lineWidth = D.tupletBracketThickness as number;
   const yAt = (x: number) => ya + ((yb - ya) * (x - x0)) / Math.max(0.001, x1 - x0);
   if (bracket) {
-    const gap = showNum ? textWidth / 2 + 0.35 : 0;
+    const gap = showNum ? (box ? boxHalfW : textWidth / 2 + 0.35) : 0;
     const segments: [number, number][] = showNum
       ? [
           [bx0, cx - gap],
@@ -1307,9 +1307,22 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
     ctx.prims[s].push({ t: 'line', x1: bx0, y1: yAt(bx0), x2: bx0, y2: yAt(bx0) + hookLen, w: lineWidth });
     ctx.prims[s].push({ t: 'line', x1: bx1, y1: yAt(bx1), x2: bx1, y2: yAt(bx1) + hookLen, w: lineWidth });
   }
+  if (box) {
+    const [l, r, u, d, bw] = [cx - boxHalfW, cx + boxHalfW, cy + boxTop, cy + boxBottom, 0.1];
+    const rect = (x0: number, y0: number, x1: number, y1: number) => `M${f(x0)} ${f(y0)}H${f(x1)}V${f(y1)}H${f(x0)}Z`;
+    const rectCcw = (x0: number, y0: number, x1: number, y1: number) =>
+      `M${f(x0)} ${f(y0)}V${f(y1)}H${f(x1)}V${f(y0)}Z`;
+    ctx.prims[s].push({ t: 'path', d: rect(l, u, r, d), fill: '#fff', top: true });
+    ctx.prims[s].push({
+      t: 'path',
+      d: `${rect(l - bw / 2, u - bw / 2, r + bw / 2, d + bw / 2)}${rectCcw(l + bw / 2, u + bw / 2, r - bw / 2, d - bw / 2)}`,
+      top: true,
+    });
+  }
   if (showNum)
     ctx.prims[s].push({
       t: 'text',
+      top: box,
       x: cx,
       y: cy + TUPLET_NUMBER_SIZE * 0.3,
       s: p.label,
@@ -1320,18 +1333,26 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
   const yLo = Math.min(ya, yb) - (above ? 1.0 : 0);
   const yHi = Math.max(ya, yb) + (above ? 0 : 1.0);
   if (bracket) pushBox(ctx, s, bx0, bx1, above ? yLo - 0.2 : yLo, above ? yHi : yHi + 0.2); // no bracket, no band
-  if (showNum) pushBox(ctx, s, cx - textWidth / 2, cx + textWidth / 2, cy - 0.9, cy + 0.9);
+  if (showNum)
+    pushBox(
+      ctx,
+      s,
+      cx - (box ? boxHalfW : textWidth / 2),
+      cx + (box ? boxHalfW : textWidth / 2),
+      cy - (box ? -boxTop : 0.9),
+      cy + (box ? boxBottom : 0.9),
+    );
 }
 
 function drawTupletPrims(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): void {
-  let plan = planTuplet(ctx, t, evs, s, undefined, true);
+  let plan = planTuplet(ctx, t, evs, s, undefined);
   if (!plan) return;
   // A bare number that would sit on staff lines moves to the other side of the group, if that is
   // clear of them (found by planning there without moving anything off the lines).
   if (!plan.bracket && plan.showNum && !t.placement && touchesStaffLine(plan.cy, 0.75)) {
     const other = plan.above ? 'below' : 'above';
-    const probe = planTuplet(ctx, t, evs, s, other, false);
-    if (probe && !touchesStaffLine(probe.cy, 0.75)) plan = planTuplet(ctx, t, evs, s, other, true) ?? plan;
+    const probe = planTuplet(ctx, t, evs, s, other);
+    if (probe && !touchesStaffLine(probe.cy, 0.75)) plan = planTuplet(ctx, t, evs, s, other) ?? plan;
   }
   paintTuplet(ctx, plan, s);
 }

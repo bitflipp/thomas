@@ -103,7 +103,7 @@ export type Prim = Tag &
         cap?: 'butt' | 'square';
       }
     /** A filled outline; `dx`/`dy` move all of `d` (a path is placed by an offset instead of being rewritten each time it is shifted). */
-    | { t: 'path'; d: string; dx?: number; dy?: number }
+    | { t: 'path'; d: string; dx?: number; dy?: number; fill?: string; top?: boolean }
     | {
         t: 'text';
         x: number;
@@ -113,6 +113,8 @@ export type Prim = Tag &
         anchor?: 'start' | 'middle' | 'end';
         italic?: boolean;
         bold?: boolean;
+        /** Drawn above the lines (staff lines, barlines...) like `path.top`. */
+        top?: boolean;
       }
   );
 

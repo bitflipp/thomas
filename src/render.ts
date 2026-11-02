@@ -53,12 +53,12 @@ export function pageToSvg(page: Page, staffSpaceMm: number, opts: SvgOptions = {
         break;
       case 'path':
         body.push(
-          `<path d="${p.d}"${p.dx || p.dy ? ` transform="translate(${f3(p.dx ?? 0)} ${f3(p.dy ?? 0)})"` : ''} fill="${col ?? '#000'}" stroke="none"${ix}/>`,
+          `<path d="${p.d}"${p.dx || p.dy ? ` transform="translate(${f3(p.dx ?? 0)} ${f3(p.dy ?? 0)})"` : ''} fill="${p.fill ?? col ?? '#000'}" stroke="none"${ix}${p.top ? ' data-top="1"' : ''}/>`,
         );
         break;
       case 'text':
         body.push(
-          `<text x="${f3(p.x)}" y="${f3(p.y)}" font-size="${f3(p.size)}" text-anchor="${p.anchor ?? 'start'}"${fa}${ix}${p.italic ? ' font-style="italic"' : ''}${p.bold ? ' font-weight="bold"' : ''}>${esc(p.s)}</text>`,
+          `<text x="${f3(p.x)}" y="${f3(p.y)}" font-size="${f3(p.size)}" text-anchor="${p.anchor ?? 'start'}"${fa}${ix}${p.top ? ' data-top="1"' : ''}${p.italic ? ' font-style="italic"' : ''}${p.bold ? ' font-weight="bold"' : ''}>${esc(p.s)}</text>`,
         );
         break;
     }
@@ -72,9 +72,12 @@ export function pageToSvg(page: Page, staffSpaceMm: number, opts: SvgOptions = {
 <rect width="100%" height="100%" fill="#fff"/>
 <g fill="#000" stroke="#000" stroke-linecap="butt" font-family="${FONT}">
 <g stroke="none">
-${body.filter((b) => !b.startsWith('<line')).join('\n')}
+${body.filter((b) => !(b.startsWith('<line') || b.includes(' data-top="1"'))).join('\n')}
 </g>
 ${body.filter((b) => b.startsWith('<line')).join('\n')}
+<g stroke="none">
+${body.filter((b) => b.includes(' data-top="1"')).join('\n')}
+</g>
 </g>
 </svg>
 `;
