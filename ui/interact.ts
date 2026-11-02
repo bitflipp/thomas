@@ -10,7 +10,7 @@ import type { EvAddr, Ref } from '../src/editor/addr.ts';
 import { eventOf, markOf, refKey, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import { pitchAtPos } from '../src/editor/context.ts';
-import type { Box, Target } from '../src/editor/hit.ts';
+import type { Box, HitIndex, Target } from '../src/editor/hit.ts';
 import { eventAtX, hitTest, marquee, measureAt, measureAtStaff, posAtY, snapTick } from '../src/editor/hit.ts';
 import { eventAtTick } from '../src/editor/voice.ts';
 import type { Event, MarkBody, Score } from '../src/model.ts';
@@ -214,6 +214,75 @@ type Drag =
   | { k: 'mark'; ref: Extract<Ref, { t: 'mark' }>; start: Where; cx: number; cy: number; moved: boolean };
 let drag: Drag = { k: 'none' };
 
+const MARK_TOOLS = new Set<string>(['dynamic', 'text', 'tempo', 'clef']);
+type SpanTool = Extract<Drag, { k: 'span' }>['tool'];
+const SPAN_TOOLS = new Set<string>(['slur', 'cresc', 'dim', 'pedal', '8va', '8vb']);
+
+/** Starts dragging a span (slur, hairpin, pedal, octave shift) from the note under the pointer. */
+function startSpan(e: PointerEvent, w: Where, tool: SpanTool, target: Target | undefined): void {
+  if (target?.ref.t !== 'ev') {
+    say(tool === 'slur' ? 'Start the slur on a note' : 'Start the line on a note or rest', true);
+    return;
+  }
+  drag = {
+    k: 'span',
+    tool,
+    start: w,
+    cx: e.clientX,
+    cy: e.clientY,
+    from: { ...target.ref, pi: undefined } as never,
+  };
+  select([target.ref]);
+}
+
+function makeTupletAt(target: Target | undefined): void {
+  if (target?.ref.t !== 'ev') {
+    say('Click a note or rest to make it a tuplet', true);
+    return;
+  }
+  const r = target.ref;
+  run((s) => C.makeTuplet(s, r, tupletArg.value[0], tupletArg.value[1]));
+}
+
+/** Is the clicked ref already part of the selection (a whole-note ref counts for its chord-tone refs)? */
+function isSelected(r: Ref): boolean {
+  return selection.value.some(
+    (s) =>
+      refKey(s) === refKey(r) ||
+      (s.t === 'ev' &&
+        r.t === 'ev' &&
+        refKey({ ...s, pi: undefined } as Ref) === refKey({ ...r, pi: undefined } as Ref) &&
+        s.pi === undefined),
+  );
+}
+
+/**
+ * Select tool. Clicking a target selects it (shift/ctrl adds); pressing on a head or mark also
+ * starts a drag. Clicking empty space starts a marquee. A click on something that is already
+ * part of a multi-selection keeps that selection.
+ */
+function pressWithSelectTool(e: PointerEvent, w: Where, h: HitIndex, target: Target | undefined): void {
+  const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+  if (!target) {
+    const g = measureAt(h.layout, w.page, w.x, w.y);
+    drag = { k: 'marquee', start: w, additive, moved: false, base: additive ? selection.value : [] };
+    if (g) select([{ t: 'measure', mi: g.mi }], false);
+    else if (!additive) select([]);
+    return;
+  }
+  const r = target.ref;
+  const already = isSelected(r);
+  const onlyOther = selection.value.length === 1 && refKey(selection.value[0]) !== refKey(r);
+  if (additive) select([r], true);
+  else if (!already || onlyOther) select([r]);
+  if (r.t === 'ev' && target.k === 'head') {
+    const v = voiceOf(score.peek(), r);
+    const te = v && flattenVoice(v)[r.idx];
+    if (te && te.ev.kind === 'note')
+      drag = { k: 'head', ref: r, start: w, cx: e.clientX, cy: e.clientY, moved: false, target, startTick: te.start };
+  } else if (r.t === 'mark') drag = { k: 'mark', ref: r, start: w, cx: e.clientX, cy: e.clientY, moved: false };
+}
+
 export function onPointerDown(e: PointerEvent): void {
   if (e.button !== 0) return;
   menu.value = null;
@@ -221,90 +290,19 @@ export function onPointerDown(e: PointerEvent): void {
   const h = hit.peek();
   if (!(w && h)) return;
   const t = tool.value;
-  const alt = e.altKey;
   const target = asSelected(hitTest(h, w.page, w.x, w.y));
-  if (t === 'note' || t === 'rest') {
-    enter(w, alt);
-    return;
-  }
-  if (t === 'slur') {
-    if (target?.ref.t === 'ev') {
-      drag = {
-        k: 'span',
-        tool: 'slur',
-        start: w,
-        cx: e.clientX,
-        cy: e.clientY,
-        from: { ...target.ref, pi: undefined } as never,
-      };
-      select([target.ref]);
-    } else say('Start the slur on a note', true);
-    return;
-  }
-  if (t === 'cresc' || t === 'dim' || t === 'pedal' || t === '8va' || t === '8vb') {
-    if (target?.ref.t === 'ev') {
-      drag = {
-        k: 'span',
-        tool: t,
-        start: w,
-        cx: e.clientX,
-        cy: e.clientY,
-        from: { ...target.ref, pi: undefined } as never,
-      };
-      select([target.ref]);
-    } else say('Start the line on a note or rest', true);
-    return;
-  }
-  if (t === 'dynamic' || t === 'text' || t === 'tempo' || t === 'clef') {
-    addMarkAt(w);
-    return;
-  }
-  if (t === 'tuplet') {
-    if (target?.ref.t === 'ev') {
-      const r = target.ref;
-      run((s) => C.makeTuplet(s, r, tupletArg.value[0], tupletArg.value[1]));
-    } else say('Click a note or rest to make it a tuplet', true);
-    return;
-  }
-  if (alt && t === 'select') {
+  if (t === 'note' || t === 'rest') enter(w, e.altKey);
+  else if (SPAN_TOOLS.has(t)) startSpan(e, w, t as SpanTool, target);
+  else if (MARK_TOOLS.has(t)) addMarkAt(w);
+  else if (t === 'tuplet') makeTupletAt(target);
+  else if (e.altKey && t === 'select') {
     // Alt+click: put the playhead here
     const g = measureAt(h.layout, w.page, w.x, w.y);
     if (g) seek(measureTick(g.mi) + snapTick(g, lenOf(score.peek(), g.mi), w.x, PPQ / 4).tick);
-    return;
-  }
-  // Select tool. Clicking a target selects it (shift/ctrl adds); pressing on a head or mark also
-  // starts a drag. Clicking empty space starts a marquee. A click on something that is already
-  // part of a multi-selection keeps that selection.
-  const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-  if (target) {
-    const r = target.ref;
-    const already = selection.value.some(
-      (s) =>
-        refKey(s) === refKey(r) ||
-        (s.t === 'ev' &&
-          r.t === 'ev' &&
-          refKey({ ...s, pi: undefined } as Ref) === refKey({ ...r, pi: undefined } as Ref) &&
-          s.pi === undefined),
-    );
-    if (additive) select([r], true);
-    else if (!already || (selection.value.length > 1 && !already)) select([r]);
-    else if (selection.value.length === 1 && refKey(selection.value[0]) !== refKey(r)) select([r]);
-    if (r.t === 'ev' && target.k === 'head') {
-      const v = voiceOf(score.peek(), r);
-      const te = v && flattenVoice(v)[r.idx];
-      if (te && te.ev.kind === 'note')
-        drag = { k: 'head', ref: r, start: w, cx: e.clientX, cy: e.clientY, moved: false, target, startTick: te.start };
-    } else if (r.t === 'mark') drag = { k: 'mark', ref: r, start: w, cx: e.clientX, cy: e.clientY, moved: false };
-    return;
-  }
-  const g = measureAt(h.layout, w.page, w.x, w.y);
-  drag = { k: 'marquee', start: w, additive, moved: false, base: additive ? selection.value : [] };
-  if (g) select([{ t: 'measure', mi: g.mi }], false);
-  else if (!additive) select([]);
+  } else pressWithSelectTool(e, w, h, target);
 }
 
 /** What a click on the target selects: a single note as a whole (stem and all), a chord tone on its own. Hover shows the same. */
-const MARK_TOOLS = new Set(['dynamic', 'text', 'tempo', 'clef']);
 const ZERO: Box = { x0: 0, y0: 0, x1: 0, y1: 0 };
 /** Hover on the event a mark would hang on at the pointer (on `staff` only when given, else on the staff under it). */
 function eventHover(w: Where, staff?: string, prefer = voice.value): Target | null {
