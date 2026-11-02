@@ -37,14 +37,16 @@ of notes, autosave in the browser, printing (PDF via the print dialog). `Ctrl E`
 | File | Purpose |
 |---|---|
 | `src/model.ts` | Score model (JSON-serialisable), tick arithmetic, validation |
-| `src/xml.ts`, `src/musicxml.ts` | Small XML parser; MusicXML → model |
+| `src/xml.ts`, `src/musicxml*.ts` | Small XML parser; MusicXML → model (entry, measure reader, voice builder) |
 | `src/textformat.ts` | Model ⇄ text (writer and parser) |
 | `src/smufl.ts` | Bravura glyph outlines (as SVG paths) and metrics |
 | `src/engrave/prep.ts` | Analysis: clef/ottava state, written pitch positions, accidentals, beaming, stem directions |
 | `src/engrave/spacing.ts` | Columns per measure, extents, accidental stacking, stretchable spacing |
 | `src/engrave/draw.ts` | Heads, stems, flags, beams, tremolos, tuplets, articulations, arpeggios |
-| `src/engrave/spanners.ts` | Ties, slurs, dynamics, hairpins, pedal, octave shifts, tempo (collision-aware via skylines) |
-| `src/engrave/system.ts` | Line breaking (dynamic programming), justification, staff spacing, pagination |
+| `src/engrave/spanners.ts`, `marks.ts` | Ties and slurs; dynamics, hairpins, pedal, octave shifts, tempo (collision-aware via skylines) |
+| `src/engrave/linebreak.ts`, `justify.ts` | Line breaking (dynamic programming); stretching a system to the line |
+| `src/engrave/staffgap.ts`, `finalize.ts`, `signatures.ts`, `paginate.ts` | Staff distances, staff furniture (clefs, key/time signatures, barlines, braces), pagination |
+| `src/engrave/system.ts` | `engrave`: runs the whole pipeline |
 | `src/render.ts` | Scene → SVG (glyphs are embedded as paths, so the SVG is self-contained apart from text) |
 | `src/editor/` | Editing without a UI: Immer-based commands (`commands.ts`, `voice.ts`), addresses, musical context, hit testing and snapping (`hit.ts`) |
 | `ui/` | The browser editor (Vite + Preact + CodeMirror) |

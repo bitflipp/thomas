@@ -7,7 +7,6 @@
 // spanner pass. Every primitive pushed here is tagged (`tagFrom`) for collision checking and hit testing,
 // and its occupied area is added to the staff's skyline (`pushBox`) so that spanners and marks can avoid it.
 import type { TupletGroup } from '../model.ts';
-import { isTuplet } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
 import type { BeamL, EvL, Prepared } from './prep.ts';
@@ -180,99 +179,125 @@ export function staffOffset(ctx: SysCtx, from: number, to: number): number {
 
 /** Draws the notes, rests, stems, beams, tuplets and articulations of every measure of the system into `ctx.prims`. */
 export function drawSystemNotes(ctx: SysCtx): void {
-  const { prep } = ctx;
+  const nStaves = ctx.prep.score.staves.length;
   ledgerSegs = [];
-  const nS = prep.score.staves.length;
-  const levelsFor = (e: EvL) => beamLevels(e.te.ev.dur.base);
-
   for (let mi = ctx.a; mi <= ctx.b; mi++) {
-    const sp = ctx.spacing[mi];
-    const pl = ctx.placed[mi];
-    const colIndex = new Map(sp.cols.map((c, j) => [c.tick, j]));
-    for (let s = 0; s < nS; s++) {
-      const sml = prep.measures[mi][s];
-      // ---- 1. Position events. x comes from the measure's columns, so notes sounding together line up
-      // across staves; a whole-measure rest is centred in the bar instead.
-      for (const e of sml.evs) {
-        if (e.ev.kind === 'rest' && e.ev.style === 'measure') {
-          e.x = ctx.mx[mi] + (sp.lead + pl.endX) / 2 - sm.adv('restWhole') / 2;
-          continue;
-        }
-        const j = colIndex.get(e.start);
-        e.x = j === undefined ? xAtTick(ctx, mi, e.start) : ctx.mx[mi] + pl.xs[j];
-      }
-      // ---- 2. Notes: heads, ledger lines, accidentals, dots, arpeggio. Rests are drawn here too.
-      // Everything here is positioned from the head columns alone; stems come in the next phase.
-      for (const e of sml.evs) {
-        if (e.ev.kind === 'rest') {
-          // A whole-measure rest is not drawn when notes from another staff cross over onto this one:
-          // the rest would sit in the middle of those notes and say nothing true about the bar.
-          const crossedOver = e.ev.style === 'measure' && sml.evs.some((o) => o.home !== s && o.ev.kind === 'note');
-          if (e.ev.style !== 'hidden' && !crossedOver) drawRest(ctx, e, s);
-          continue;
-        }
-        drawNoteBasics(ctx, e, s);
-        if (e.graces) drawGraces(ctx, e, s);
-      }
+    // The phases run over all staves in turn: each needs what the previous drew on every staff.
+    for (let s = 0; s < nStaves; s++) {
+      positionEvents(ctx, mi, s);
+      drawHeadsAndRests(ctx, mi, s);
     }
-    for (let s = 0; s < nS; s++) {
-      const sml = prep.measures[mi][s];
-      // ---- 3. Stems and beams per voice. A cross-staff note's stem is drawn on the staff it sits on,
-      // but a beam over two staves is drawn once, on the voice's staff, by `drawCrossBeam`.
-      for (const v of sml.voices) {
-        const doneBeams = new Set<object>();
-        for (const e of v.evs) {
-          if (e.ev.kind !== 'note') continue;
-          const g = must(geomOf.get(e));
-          if (e.beam) {
-            if (doneBeams.has(e.beam)) continue;
-            doneBeams.add(e.beam);
-            if (e.beam.cross) drawCrossBeam(ctx, e.beam, s, levelsFor);
-            else drawBeamGroup(ctx, e.beam.notes, e.staff, levelsFor);
-          } else if (e.tremPair && e.tremIsFirst) {
-            drawTremoloPair(ctx, e, e.tremPair, e.staff);
-          } else if (e.tremPair) {
-            /* drawn with partner */
-          } else if (e.stem) {
-            const lv = levelsFor(e);
-            let len = stemLength(Math.max(1, lv));
-            // A displaced head right of an up-stem would run into the flag: lengthen the stem so that
-            // the flag starts clear of it.
-            if (e.stem === 'up' && e.te.ev.dur.base >= 8 && e.heads.some((h) => h.dx > g.hw / 2 && !h.shared))
-              len += 0.6;
-            // The flag of a down-stem curls up towards the (wider) head, so it needs a little more
-            // length to avoid touching it.
-            if (e.stem === 'down' && e.te.ev.dur.base >= 8) len += 0.3;
-            setStem(e, g, len);
-            drawStem(ctx, e, g, e.staff, true);
-          }
-        }
-      }
-    }
-    for (let s = 0; s < nS; s++) {
-      const sml = prep.measures[mi][s];
-      // ---- 4. Articulations are placed relative to the heads or the stem tip, so they come after
-      // the stems. Their outer edge is recorded (`articExtent`) so that slurs start beyond them.
-      for (const e of sml.evs) if (e.ev.kind === 'note' && e.ev.art?.length) drawArticulations(ctx, e, s);
-      // ---- 5. Tuplets. Brackets and numbers avoid the stems, beams and articulations drawn so far,
-      // which is why they come last.
-      const seen = new Set<TupletGroup>();
-      for (const v of sml.voices)
-        for (const e of v.evs)
-          for (const t of e.tupletKeys)
-            if (!seen.has(t)) {
-              seen.add(t);
-              const members = v.evs.filter((x) => x.tupletKeys.includes(t));
-              // Over a beam between two staves the bracket cannot avoid the stems in the gap, so it goes
-              // above the upper staff's notes (the bracket is drawn in `at`'s coordinates).
-              const at = members.some((x) => x.beam?.cross) ? Math.min(...members.map((x) => x.staff)) : s;
-              if (at !== s || members.some((x) => x.staff !== s))
-                withHomeGeometry(ctx, members, at, () => drawTuplet(ctx, t, members, at));
-              else drawTuplet(ctx, t, members, s);
-            }
+    for (let s = 0; s < nStaves; s++) drawStemsAndBeams(ctx, mi, s);
+    for (let s = 0; s < nStaves; s++) {
+      drawArticulationsOfStaff(ctx, mi, s);
+      drawTupletsOfStaff(ctx, mi, s);
     }
   }
   trimLedgers(ctx);
+}
+
+const beamLevelsOf = (e: EvL) => beamLevels(e.te.ev.dur.base);
+
+/**
+ * Phase 1: positions the events. x comes from the measure's columns, so notes sounding together line
+ * up across staves; a whole-measure rest is centred in the bar instead.
+ */
+function positionEvents(ctx: SysCtx, mi: number, s: number): void {
+  const sp = ctx.spacing[mi];
+  const pl = ctx.placed[mi];
+  const colIndex = new Map(sp.cols.map((c, j) => [c.tick, j]));
+  for (const e of ctx.prep.measures[mi][s].evs) {
+    if (e.ev.kind === 'rest' && e.ev.style === 'measure') {
+      e.x = ctx.mx[mi] + (sp.lead + pl.endX) / 2 - sm.adv('restWhole') / 2;
+      continue;
+    }
+    const j = colIndex.get(e.start);
+    e.x = j === undefined ? xAtTick(ctx, mi, e.start) : ctx.mx[mi] + pl.xs[j];
+  }
+}
+
+/**
+ * Phase 2: heads, ledger lines, accidentals, dots, arpeggio, grace notes, and the rests. Everything
+ * here is positioned from the head columns alone; stems come in the next phase.
+ */
+function drawHeadsAndRests(ctx: SysCtx, mi: number, s: number): void {
+  const evs = ctx.prep.measures[mi][s].evs;
+  for (const e of evs) {
+    if (e.ev.kind === 'rest') {
+      // A whole-measure rest is not drawn when notes from another staff cross over onto this one:
+      // the rest would sit in the middle of those notes and say nothing true about the bar.
+      const crossedOver = e.ev.style === 'measure' && evs.some((o) => o.home !== s && o.ev.kind === 'note');
+      if (e.ev.style !== 'hidden' && !crossedOver) drawRest(ctx, e, s);
+      continue;
+    }
+    drawNoteBasics(ctx, e, s);
+    if (e.graces) drawGraces(ctx, e, s);
+  }
+}
+
+/** The stem of a single note (not beamed, not in a tremolo pair) with the flag it needs. */
+function drawSingleStem(ctx: SysCtx, e: EvL): void {
+  const g = must(geomOf.get(e));
+  let len = stemLength(Math.max(1, beamLevelsOf(e)));
+  // A displaced head right of an up-stem would run into the flag: lengthen the stem so that
+  // the flag starts clear of it.
+  if (e.stem === 'up' && e.te.ev.dur.base >= 8 && e.heads.some((h) => h.dx > g.hw / 2 && !h.shared)) len += 0.6;
+  // The flag of a down-stem curls up towards the (wider) head, so it needs a little more
+  // length to avoid touching it.
+  if (e.stem === 'down' && e.te.ev.dur.base >= 8) len += 0.3;
+  setStem(e, g, len);
+  drawStem(ctx, e, g, e.staff, true);
+}
+
+/**
+ * Phase 3: stems and beams per voice. A cross-staff note's stem is drawn on the staff it sits on, but
+ * a beam over two staves is drawn once, on the voice's staff, by `drawCrossBeam`.
+ */
+function drawStemsAndBeams(ctx: SysCtx, mi: number, s: number): void {
+  for (const v of ctx.prep.measures[mi][s].voices) {
+    const doneBeams = new Set<object>();
+    for (const e of v.evs) {
+      if (e.ev.kind !== 'note') continue;
+      if (e.beam) {
+        if (doneBeams.has(e.beam)) continue;
+        doneBeams.add(e.beam);
+        if (e.beam.cross) drawCrossBeam(ctx, e.beam, s, beamLevelsOf);
+        else drawBeamGroup(ctx, e.beam.notes, e.staff, beamLevelsOf);
+      } else if (e.tremPair) {
+        if (e.tremIsFirst) drawTremoloPair(ctx, e, e.tremPair, e.staff); // the second is drawn with the first
+      } else if (e.stem) drawSingleStem(ctx, e);
+    }
+  }
+}
+
+/**
+ * Phase 4: articulations are placed relative to the heads or the stem tip, so they come after the
+ * stems. Their outer edge is recorded (`articExtent`) so that slurs start beyond them.
+ */
+function drawArticulationsOfStaff(ctx: SysCtx, mi: number, s: number): void {
+  for (const e of ctx.prep.measures[mi][s].evs)
+    if (e.ev.kind === 'note' && e.ev.art?.length) drawArticulations(ctx, e, s);
+}
+
+/**
+ * Phase 5: tuplets. Brackets and numbers avoid the stems, beams and articulations drawn so far, which
+ * is why they come last.
+ */
+function drawTupletsOfStaff(ctx: SysCtx, mi: number, s: number): void {
+  const seen = new Set<TupletGroup>();
+  for (const v of ctx.prep.measures[mi][s].voices)
+    for (const e of v.evs)
+      for (const t of e.tupletKeys) {
+        if (seen.has(t)) continue;
+        seen.add(t);
+        const members = v.evs.filter((x) => x.tupletKeys.includes(t));
+        // Over a beam between two staves the bracket cannot avoid the stems in the gap, so it goes
+        // above the upper staff's notes (the bracket is drawn in `at`'s coordinates).
+        const at = members.some((x) => x.beam?.cross) ? Math.min(...members.map((x) => x.staff)) : s;
+        if (at !== s || members.some((x) => x.staff !== s))
+          withHomeGeometry(ctx, members, at, () => drawTuplet(ctx, t, members, at));
+        else drawTuplet(ctx, t, members, s);
+      }
 }
 
 /** Runs `fn` with the geometry of members expressed in the coordinates of staff `target`. */
@@ -958,14 +983,163 @@ function drawTuplet(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): void {
   drawTupletPrims(ctx, t, evs, s);
   tagFrom(ctx.prims[s], n0, 'tuplet', t);
 }
-function drawTupletPrims(
+/** Where a tuplet's bracket and number go: the bracket line from (bx0, ya) to (bx1, yb) in the slope of (x0, ya)-(x1, yb), the number centred at (cx, cy). */
+interface TupletPlan {
+  bracket: boolean;
+  showNum: boolean;
+  above: boolean;
+  label: string;
+  ya: number;
+  yb: number;
+  x0: number;
+  x1: number;
+  bx0: number;
+  bx1: number;
+  cx: number;
+  cy: number;
+}
+
+/** What the placement of a tuplet's line is computed from. */
+interface TupletFrame {
+  above: boolean;
+  evs: EvL[];
+  notes: EvL[];
+  /** Per member: how far its stem, beam, heads and attachments reach on the tuplet's side. */
+  reach: number[];
+  /** Per member: x of its stem (rests: their x). */
+  stemXs: number[];
+  /** x of the first and last member's stem. */
+  x0: number;
+  x1: number;
+  /** A beam between two staves: the number goes on top of it. */
+  crossBeam: boolean;
+}
+
+const touchesStaffLine = (y: number, tolerance: number) => [0, 1, 2, 3, 4].some((l) => Math.abs(l - y) < tolerance);
+const TUPLET_NUMBER_SIZE = 1.8;
+const MAX_TUPLET_SLOPE = 0.5;
+
+/** How far each member reaches on the chosen side: stems, beams and heads, and anything attached to the note (accidentals, articulations; only a note's own accidentals reach to its left). */
+function tupletReach(ctx: SysCtx, evs: EvL[], geoms: (Geom | null)[], above: boolean, s: number): number[] {
+  const sky = ctx.sky[s];
+  return evs.map((e, i) => {
+    const g = geoms[i];
+    if (!g) return above ? 1.5 : 2.5;
+    const stemSide = e.stem === (above ? 'up' : 'down');
+    const base = above
+      ? stemSide
+        ? Math.min(g.stemTip, g.yTop - 0.5)
+        : g.yTop - 0.5
+      : stemSide
+        ? Math.max(g.stemTip, g.yBot + 0.5)
+        : g.yBot + 0.5;
+    // Whatever the skyline holds at this note's position (accidentals, articulations, ...),
+    // so that the bracket also clears what is attached to the note and not only the note.
+    const lx = g.headL - (e.heads.some((h) => h.acc) ? 1.6 : 0.2);
+    const other = above
+      ? sky.top(lx, g.headR, Number.POSITIVE_INFINITY)
+      : sky.bottom(lx, g.headR, Number.NEGATIVE_INFINITY);
+    return above ? Math.min(base, other) : Math.max(base, other);
+  });
+}
+
+/**
+ * The slope of the beams of a tuplet made of beam groups or tremolo pairs: with several groups their
+ * slopes are averaged, weighted by length, so a tuplet made of two beamed halves still gets one
+ * straight bracket. Undefined if there is no usable beam.
+ */
+function beamSlopeOf(notes: EvL[]): number | undefined {
+  const groups = new Map<object, EvL[]>();
+  for (const n of notes) {
+    const key = n.beam ?? (n.tremPair ? (n.tremIsFirst ? n : n.tremPair) : undefined);
+    if (!key) continue;
+    const list = groups.get(key) ?? [];
+    list.push(n);
+    groups.set(key, list);
+  }
+  let weighted = 0;
+  let length = 0;
+  for (const list of groups.values()) {
+    const ga = must(geomOf.get(list[0]));
+    const gb = must(geomOf.get(list[list.length - 1]));
+    const dx = gb.stemX - ga.stemX;
+    if (list.length > 1 && dx > 0.5 && !list[0].beam?.cross) {
+      weighted += ((gb.stemTip - ga.stemTip) / dx) * dx;
+      length += dx;
+    }
+  }
+  return length > 0 ? weighted / length : undefined;
+}
+
+/**
+ * Over a cross-staff beam the bracket rises or falls with the notes themselves, whatever else stands
+ * near its ends: the slope through the heads of the upper staff. The notes of the lower staff are on
+ * the other side of the beam and say nothing about it.
+ */
+function crossBeamHeadSlope(notes: EvL[], above: boolean): number {
+  const topStaff = Math.min(...notes.map((n) => n.staff));
+  const on = notes.filter((n) => n.staff === topStaff);
+  const ga = must(geomOf.get(on[0]));
+  const gb = must(geomOf.get(on[on.length - 1]));
+  const dx = gb.x - ga.x;
+  return dx > 0.5 ? (above ? gb.yTop - ga.yTop : gb.yBot - ga.yBot) / dx : 0;
+}
+
+/** The line of the given slope that clears every member (`a` is its y at x0), and `gap`: how far it stays from what it clears, summed over the notes and the two ends (the smaller the closer the bracket hugs the notes). */
+function fitTupletLine(f: TupletFrame, slope: number): { a: number; gap: number } {
+  const { above, evs, reach, stemXs, x0, x1 } = f;
+  let a = above ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+  evs.forEach((_, i) => {
+    const v = reach[i] - slope * (stemXs[i] - x0);
+    a = above ? Math.min(a, v) : Math.max(a, v);
+  });
+  const end = Math.min(...reach);
+  const pts = [...evs.map((_, i) => ({ x: stemXs[i], e: reach[i] })), { x: x0, e: end }, { x: x1, e: end }];
+  if (!above) for (const q of pts) q.e = Math.max(...reach);
+  let gap = 0;
+  for (const q of pts) gap += Math.abs(q.e - (a + slope * (q.x - x0)));
+  return { a, gap };
+}
+
+/**
+ * The bracket line (y at x0 and at x1) of a sloped tuplet: parallel to the beams when there are any;
+ * over a cross-staff beam it follows the heads, but only as far as keeps it close to them (ten
+ * slopes from the heads' slope down to flat are tried, the one with the smallest gap wins);
+ * otherwise through the reach of the first and last member.
+ */
+function slopedTupletLine(f: TupletFrame, clearance: number): { ya: number; yb: number } {
+  const { above, notes, reach, x0, x1, crossBeam } = f;
+  const m =
+    beamSlopeOf(notes) ??
+    (crossBeam ? crossBeamHeadSlope(notes, above) : (reach[reach.length - 1] - reach[0]) / (x1 - x0));
+  const headSlope = Math.max(-MAX_TUPLET_SLOPE, Math.min(MAX_TUPLET_SLOPE, m));
+  let slope = headSlope;
+  let best = fitTupletLine(f, slope);
+  if (crossBeam)
+    for (let k = 1; k <= 10; k++) {
+      const candidate = (headSlope * (10 - k)) / 10;
+      const fit = fitTupletLine(f, candidate);
+      if (fit.gap < best.gap - 1e-6) {
+        best = fit;
+        slope = candidate;
+      }
+    }
+  const ya = best.a + (above ? -clearance : clearance);
+  return { ya, yb: ya + slope * (x1 - x0) };
+}
+
+/**
+ * Works out where the bracket and number of a tuplet go, on `forceSide` if given. With `moveOffStaffLines`
+ * the bracket of a numbered tuplet is moved away from the notes until no staff line runs through the digit.
+ */
+function planTuplet(
   ctx: SysCtx,
   t: TupletGroup,
   evs: EvL[],
   s: number,
-  forceSide?: 'above' | 'below',
-  dry = false,
-): number | undefined {
+  forceSide: 'above' | 'below' | undefined,
+  moveOffStaffLines: boolean,
+): TupletPlan | undefined {
   if (!evs.length) return;
   const showNum = t.number !== 'none';
   const notes = evs.filter((e) => e.ev.kind === 'note');
@@ -975,189 +1149,102 @@ function drawTupletPrims(
   if (notes[0]?.beam?.cross) bracket = true; // the number alone is lost among the stems of a beam between the staves
   if (!(showNum || bracket)) return;
   const anchor = notes[0] ?? evs[0];
-  const crossY = notes[0]?.beam?.crossY; // a beam between two staves: number goes on top of it
-  const side: 'above' | 'below' =
-    forceSide ?? t.placement ?? (crossY ? 'above' : anchor.stem === 'down' ? 'below' : 'above');
+  const crossY = notes[0]?.beam?.crossY;
+  const side = forceSide ?? t.placement ?? (crossY ? 'above' : anchor.stem === 'down' ? 'below' : 'above');
   const above = side === 'above';
   // A number on the side away from the beams (where the heads are) always gets a bracket:
   // a bare number there would float among the heads and read as belonging to a single note.
   const beamDir = crossY ? undefined : (notes[0]?.beam?.dir ?? anchor.stem);
   if (showNum && notes.length && beamDir && above !== (beamDir === 'up')) bracket = true;
-  const label = String(t.label ?? t.actual);
   // Horizontal extent: from the first head's left to the last head's right. Rests have no
   // geometry and count as one space wide at their x.
-  const gAll = evs.map((e) => (e.ev.kind === 'note' ? must(geomOf.get(e)) : null));
-  const xa = Math.min(...evs.map((e, i) => (gAll[i] ? must(gAll[i]).headL : e.x)));
-  const xb = Math.max(...evs.map((e, i) => (gAll[i] ? must(gAll[i]).headR : e.x + 1)));
-  // Vertical extent on the chosen side: how far stems, beams and heads reach, and anything attached
-  // to the note (accidentals, articulations; only a note's own accidentals reach to its left).
-  const ext = (e: EvL, i: number): number => {
-    const g = gAll[i];
-    if (!g) return above ? 1.5 : 2.5;
-    const stemSide = e.stem === (above ? 'up' : 'down');
-    if (above) return stemSide ? Math.min(g.stemTip, g.yTop - 0.5) : g.yTop - 0.5;
-    return stemSide ? Math.max(g.stemTip, g.yBot + 0.5) : g.yBot + 0.5;
+  const geoms = evs.map((e) => (e.ev.kind === 'note' ? must(geomOf.get(e)) : null));
+  const bx0 = Math.min(...evs.map((e, i) => geoms[i]?.headL ?? e.x));
+  const bx1 = Math.max(...evs.map((e, i) => geoms[i]?.headR ?? e.x + 1));
+  const stemXs = evs.map((e, i) => geoms[i]?.stemX ?? e.x);
+  const frame: TupletFrame = {
+    above,
+    evs,
+    notes,
+    reach: tupletReach(ctx, evs, geoms, above, s),
+    stemXs,
+    x0: geoms[0] ? stemXs[0] : bx0,
+    x1: geoms[evs.length - 1] ? stemXs[evs.length - 1] : bx1,
+    crossBeam: !!crossY,
   };
-  const sky = ctx.sky[s];
-  const exts = evs.map((e, i) => {
-    const base = ext(e, i);
-    const g = gAll[i];
-    if (!g) return base;
-    // Whatever the skyline holds at this note's position (accidentals, articulations, ...),
-    // so that the bracket also clears what is attached to the note and not only the note.
-    const lx = g.headL - (e.heads.some((h) => h.acc) ? 1.6 : 0.2); // only a note's own accidentals reach to its left
-    const o = above
-      ? sky.top(lx, g.headR, Number.POSITIVE_INFINITY)
-      : sky.bottom(lx, g.headR, Number.NEGATIVE_INFINITY);
-    return above ? Math.min(base, o) : Math.max(base, o);
-  });
-  const hh = (sm.bbox('tuplet6').y1 - sm.bbox('tuplet6').y0) / 2;
-  const clearance = bracket ? 1.1 : hh + 0.5; // number sits clear of beams / stems
-  // Slope: follow the beam when the tuplet is fully beamed, or when a bracket is drawn. Otherwise
-  // (a bare number) the line is flat and only decides where the number goes.
-  const idxFirst = 0;
-  const idxLast = evs.length - 1;
-  let ya: number;
-  let yb: number;
-  const sx = (i: number) => (gAll[i] ? must(gAll[i]).stemX : evs[i].x);
-  const x0 = gAll[idxFirst] ? sx(idxFirst) : xa;
-  const x1 = gAll[idxLast] ? sx(idxLast) : xb;
-  const slopeOk = fullyBeamed || bracket;
-  if (slopeOk && x1 > x0 && notes.length > 1) {
-    // Parallel to the beams; with several beam groups their slopes are averaged, weighted by
-    // length, so a tuplet made of two beamed halves still gets one straight bracket.
-    const groups = new Map<object, EvL[]>();
-    for (const n of notes) {
-      const key = n.beam ?? (n.tremPair ? (n.tremIsFirst ? n : n.tremPair) : undefined);
-      if (key) {
-        if (!groups.has(key)) groups.set(key, []);
-        must(groups.get(key)).push(n);
-      }
-    }
-    let sl = 0;
-    let sw = 0;
-    for (const list of groups.values()) {
-      const ga = must(geomOf.get(list[0]));
-      const gb = must(geomOf.get(list[list.length - 1]));
-      const dx = gb.stemX - ga.stemX;
-      if (list.length > 1 && dx > 0.5 && !list[0].beam?.cross) {
-        sl += ((gb.stemTip - ga.stemTip) / dx) * dx;
-        sw += dx;
-      }
-    }
-    // Over a cross-staff beam the bracket rises or falls with the notes themselves, whatever else
-    // stands near its ends: `mHead` is the slope through the heads of the upper staff.
-    const headSlope = (): number => {
-      // The notes on the staff the bracket belongs to (the upper one) set the slope; the notes
-      // of the lower staff are on the other side of the beam and say nothing about it.
-      const topSt = Math.min(...notes.map((n) => n.staff));
-      const on = notes.filter((n) => n.staff === topSt);
-      const ga = must(geomOf.get(on[0]));
-      const gb = must(geomOf.get(on[on.length - 1]));
-      const dx = gb.x - ga.x;
-      return dx > 0.5 ? (above ? gb.yTop - ga.yTop : gb.yBot - ga.yBot) / dx : 0;
-    };
-    const m = sw > 0 ? sl / sw : crossY ? headSlope() : (exts[idxLast] - exts[idxFirst]) / (x1 - x0);
-    const mHead = Math.max(-0.5, Math.min(0.5, m));
-    const fit = (mm: number): { a: number; gap: number } => {
-      let a = above ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
-      evs.forEach((_, i) => {
-        const v = exts[i] - mm * (sx(i) - x0);
-        a = above ? Math.min(a, v) : Math.max(a, v);
-      });
-      // `gap`: how far the line stays from what it clears, summed over the notes and the two ends
-      // (the smaller the closer the bracket hugs the notes).
-      let gap = 0;
-      const pts = [
-        ...evs.map((_, i) => ({ x: sx(i), e: exts[i] })),
-        { x: x0, e: Math.min(...exts) },
-        { x: x1, e: Math.min(...exts) },
-      ];
-      if (!above)
-        pts.forEach((q) => {
-          q.e = Math.max(...exts);
-        });
-      for (const q of pts) gap += Math.abs(q.e - (a + mm * (q.x - x0)));
-      return { a, gap };
-    };
-    // Over a cross-staff beam the bracket follows the heads, but only as far as keeps it close to
-    // them: try ten slopes from the heads' slope down to flat and keep the one with the smallest gap.
-    let mm = mHead;
-    let best = fit(mm);
-    if (crossY)
-      for (let k = 1; k <= 10; k++) {
-        const c = (mHead * (10 - k)) / 10;
-        const f = fit(c);
-        if (f.gap < best.gap - 1e-6) {
-          best = f;
-          mm = c;
-        }
-      }
-    const a = best.a;
-    ya = a + (above ? -clearance : clearance);
-    yb = ya + mm * (x1 - x0);
-  } else {
-    const e0 = above ? Math.min(...exts) : Math.max(...exts);
-    ya = yb = e0 + (above ? -clearance : clearance);
-  }
-  const bx0 = xa;
-  const bx1 = xb;
+  const { x0, x1, reach } = frame;
+  const numberHalfHeight = (sm.bbox('tuplet6').y1 - sm.bbox('tuplet6').y0) / 2;
+  const clearance = bracket ? 1.1 : numberHalfHeight + 0.5; // number sits clear of beams / stems
+  // The line follows the beam when the tuplet is fully beamed, or when a bracket is drawn. Otherwise
+  // (a bare number) it is flat and only decides where the number goes.
+  const sloped = (fullyBeamed || bracket) && x1 > x0 && notes.length > 1;
+  const flatY = (above ? Math.min(...reach) : Math.max(...reach)) + (above ? -clearance : clearance);
+  let { ya, yb } = sloped ? slopedTupletLine(frame, clearance) : { ya: flatY, yb: flatY };
   // A bare number is centred over the beam (first to last stem), a bracketed one over the
   // whole group including the heads at either end.
   const cx = !bracket && x1 > x0 && notes.length > 1 ? (x0 + x1) / 2 : (bx0 + bx1) / 2;
   let cy = ya + ((yb - ya) * (cx - x0)) / Math.max(0.001, x1 - x0);
-  // The number of a bracket sits in a gap of the bracket line: move the bracket away from the notes
-  // until no staff line runs through the digit.
-  if (bracket && showNum && !dry) {
-    const onLine = (c: number) => [0, 1, 2, 3, 4].some((l) => Math.abs(l - c) < 0.7);
+  if (bracket && showNum && moveOffStaffLines) {
     // A digit is taller than a staff space, so only outside the staff is it clear of the lines. Give
     // up after 18 steps of a quarter space: it is not worth moving further than a few spaces.
     const d = above ? -0.25 : 0.25;
     let k = 0;
-    while (k < 18 && onLine(cy + k * d)) k++;
-    if (!onLine(cy + k * d)) {
+    while (k < 18 && touchesStaffLine(cy + k * d, 0.7)) k++;
+    if (!touchesStaffLine(cy + k * d, 0.7)) {
       ya += k * d;
       yb += k * d;
       cy += k * d;
     }
   }
-  const tw = label.length * 1.0;
-  if (dry) return cy;
-  // A bare number that would sit on staff lines moves to the other side of the group, if that is
-  // clear of them (found by drawing "dry", which only returns the number's y).
-  if (!bracket && showNum && !forceSide && !t.placement) {
-    const hitsLine = (c: number) => [0, 1, 2, 3, 4].some((l) => Math.abs(l - c) < 0.75);
-    if (hitsLine(cy)) {
-      const alt = drawTupletPrims(ctx, t, evs, s, above ? 'below' : 'above', true) as number;
-      if (!hitsLine(alt)) return drawTupletPrims(ctx, t, evs, s, above ? 'below' : 'above');
-    }
-  }
+  return { bracket, showNum, above, label: String(t.label ?? t.actual), ya, yb, x0, x1, bx0, bx1, cx, cy };
+}
+
+/** The tuplet's bracket (a line with a hook at each end, interrupted for the number) and number (plain italic text rather than Bravura's tuplet figures, which are bolder than the other numerals in the score), and their skyline boxes. */
+function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
+  const { bracket, showNum, above, ya, yb, x0, x1, bx0, bx1, cx, cy } = p;
+  const textWidth = p.label.length * 1.0;
   const hookLen = 0.75 * (above ? 1 : -1);
-  const lw = D.tupletBracketThickness as number;
+  const lineWidth = D.tupletBracketThickness as number;
   const yAt = (x: number) => ya + ((yb - ya) * (x - x0)) / Math.max(0.001, x1 - x0);
   if (bracket) {
-    const gap = showNum ? tw / 2 + 0.35 : 0;
-    const segs: [number, number][] = showNum
+    const gap = showNum ? textWidth / 2 + 0.35 : 0;
+    const segments: [number, number][] = showNum
       ? [
           [bx0, cx - gap],
           [cx + gap, bx1],
         ]
       : [[bx0, bx1]];
-    for (const [p, q] of segs) ctx.prims[s].push({ t: 'line', x1: p, y1: yAt(p), x2: q, y2: yAt(q), w: lw });
-    ctx.prims[s].push({ t: 'line', x1: bx0, y1: yAt(bx0), x2: bx0, y2: yAt(bx0) + hookLen, w: lw });
-    ctx.prims[s].push({ t: 'line', x1: bx1, y1: yAt(bx1), x2: bx1, y2: yAt(bx1) + hookLen, w: lw });
+    for (const [a, b] of segments) ctx.prims[s].push({ t: 'line', x1: a, y1: yAt(a), x2: b, y2: yAt(b), w: lineWidth });
+    ctx.prims[s].push({ t: 'line', x1: bx0, y1: yAt(bx0), x2: bx0, y2: yAt(bx0) + hookLen, w: lineWidth });
+    ctx.prims[s].push({ t: 'line', x1: bx1, y1: yAt(bx1), x2: bx1, y2: yAt(bx1) + hookLen, w: lineWidth });
   }
-  if (showNum) {
-    // Plain italic text rather than Bravura's tuplet figures, which are bolder than the other
-    // numerals in the score (measure numbers, tempo marks) and look heavy next to thin brackets.
-    const size = 1.8;
-    ctx.prims[s].push({ t: 'text', x: cx, y: cy + size * 0.3, s: label, size, italic: true, anchor: 'middle' });
-  }
+  if (showNum)
+    ctx.prims[s].push({
+      t: 'text',
+      x: cx,
+      y: cy + TUPLET_NUMBER_SIZE * 0.3,
+      s: p.label,
+      size: TUPLET_NUMBER_SIZE,
+      italic: true,
+      anchor: 'middle',
+    });
   const yLo = Math.min(ya, yb) - (above ? 1.0 : 0);
   const yHi = Math.max(ya, yb) + (above ? 0 : 1.0);
   if (bracket) pushBox(ctx, s, bx0, bx1, above ? yLo - 0.2 : yLo, above ? yHi : yHi + 0.2); // no bracket, no band
-  if (showNum) pushBox(ctx, s, cx - tw / 2, cx + tw / 2, cy - 0.9, cy + 0.9);
-  void isTuplet;
+  if (showNum) pushBox(ctx, s, cx - textWidth / 2, cx + textWidth / 2, cy - 0.9, cy + 0.9);
+}
+
+function drawTupletPrims(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): void {
+  let plan = planTuplet(ctx, t, evs, s, undefined, true);
+  if (!plan) return;
+  // A bare number that would sit on staff lines moves to the other side of the group, if that is
+  // clear of them (found by planning there without moving anything off the lines).
+  if (!plan.bracket && plan.showNum && !t.placement && touchesStaffLine(plan.cy, 0.75)) {
+    const other = plan.above ? 'below' : 'above';
+    const probe = planTuplet(ctx, t, evs, s, other, false);
+    if (probe && !touchesStaffLine(probe.cy, 0.75)) plan = planTuplet(ctx, t, evs, s, other, true) ?? plan;
+  }
+  paintTuplet(ctx, plan, s);
 }
 
 // ------------------------------------------------------------------ articulations

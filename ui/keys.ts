@@ -5,13 +5,13 @@
 import { eventOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import type { Event } from '../src/model.ts';
-import { flattenVoice, PPQ } from '../src/model.ts';
+import { flattenVoice } from '../src/model.ts';
 import { chooseDots, chooseDuration, flipStem, nudge, slurSelection, stepSelection, tieSelection } from './actions.ts';
 import { cancelDrag, deleteSelection, evRefs, menu, zoomBy } from './interact.ts';
 import { rewind, toggle } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
-import { dots, dur, redo, run, say, score, selection, showInspector, showText, tool, undo, voice } from './state.ts';
+import { dots, redo, run, say, score, selection, showInspector, showText, tool, undo, voice } from './state.ts';
 
 let clip: Event[] = [];
 
@@ -51,133 +51,152 @@ function paste(): void {
   run((s) => C.pasteEvents(s, r, te.start, clip));
 }
 
-export function installKeys(): () => void {
-  const onKey = (e: KeyboardEvent) => {
-    const mod = e.ctrlKey || e.metaKey;
-    if (mod && !typing(e)) {
-      const k = e.key.toLowerCase();
-      if (k === 'z') {
-        e.preventDefault();
-        e.shiftKey ? redo() : undo();
-        return;
-      }
-      if (k === 'y') {
-        e.preventDefault();
-        redo();
-        return;
-      }
-      if (k === 'c') {
-        if (copySel()) e.preventDefault();
-        return;
-      }
-      if (k === 'x') {
-        if (copySel()) {
-          e.preventDefault();
-          deleteSelection();
-        }
-        return;
-      }
-      if (k === 'v') {
-        e.preventDefault();
-        paste();
-        return;
-      }
-      if (k === 'a') {
-        e.preventDefault();
-        return;
-      }
-    }
-    if (mod && e.key.toLowerCase() === 'e') {
+const DURATION_KEYS = [1, 2, 4, 8, 16, 32, 64] as const;
+const TOOL_KEYS: Record<string, Tool> = { n: 'note', r: 'rest', v: 'select', l: 'slur' };
+const MAX_VOICE = 4;
+const ZOOM_STEP = 1.2;
+
+/** Edit shortcuts that must not fire while the user types (undo, redo, clipboard). Returns true if the key was one of them. */
+function onEditShortcut(e: KeyboardEvent): boolean {
+  switch (e.key.toLowerCase()) {
+    case 'z':
       e.preventDefault();
-      showText.value = !showText.value;
-      return;
-    }
-    if (mod && (e.key === '+' || e.key === '=')) {
+      if (e.shiftKey) redo();
+      else undo();
+      return true;
+    case 'y':
       e.preventDefault();
-      zoomBy(1.2);
-      return;
-    }
-    if (mod && e.key === '-') {
-      e.preventDefault();
-      zoomBy(1 / 1.2);
-      return;
-    }
-    if (mod && e.key.toLowerCase() === 'i') {
-      e.preventDefault();
-      showInspector.value = !showInspector.value;
-      return;
-    }
-    if (typing(e) || mod || (e.altKey && e.key.length > 1)) return;
-    const key = e.key;
-    const hasSel = selection.value.length > 0;
-    switch (key) {
-      case 'Escape':
-        showHelp.value = false;
-        menu.value = null;
-        cancelDrag();
-        if (tool.value !== 'select') tool.value = 'select';
-        else selection.value = [];
-        return;
-      case 'Delete':
-      case 'Backspace':
-        if (hasSel) {
-          e.preventDefault();
-          deleteSelection();
-        }
-        return;
-      case 'ArrowUp':
-      case 'ArrowDown': {
-        if (!evRefs().length) return;
+      redo();
+      return true;
+    case 'c':
+      if (copySel()) e.preventDefault();
+      return true;
+    case 'x':
+      if (copySel()) {
         e.preventDefault();
-        const d = key === 'ArrowUp' ? 1 : -1;
-        if (e.shiftKey) nudge(undefined, d);
-        else nudge(e.ctrlKey ? 12 * d : d);
-        return;
+        deleteSelection();
       }
-      case 'ArrowLeft':
-      case 'ArrowRight':
-        if (evRefs().length) {
-          e.preventDefault();
-          stepSelection(key === 'ArrowLeft' ? -1 : 1, e.shiftKey);
-        }
-        return;
-      case ' ':
-        if ((e.target as HTMLElement | null)?.closest?.('button, select, a')) return;
-        e.preventDefault();
-        toggle();
-        return;
-      case 'Home':
-        e.preventDefault();
-        rewind();
-        return;
-      case '?':
-        showHelp.value = !showHelp.value;
-        return;
-      case '.':
-        chooseDots((dots.value + 1) % 3);
-        return;
-      default:
-        break;
-    }
-    const digit = '1234567'.indexOf(key);
-    if (digit >= 0 && !e.shiftKey) {
-      chooseDuration([1, 2, 4, 8, 16, 32, 64][digit] as never);
-      return;
-    }
-    const toolKeys: Record<string, Tool> = { n: 'note', r: 'rest', v: 'select', l: 'slur' };
-    const lk = key.toLowerCase();
-    if (toolKeys[lk]) {
-      tool.value = toolKeys[lk];
-      return;
-    }
-    if (lk === 't') tieSelection();
-    else if (lk === 's') slurSelection();
-    else if (lk === 'x') flipStem();
-    else if (lk === 'q' || lk === 'w')
-      voice.value = lk === 'q' ? Math.max(1, voice.value - 1) : Math.min(4, voice.value + 1);
-    void dur;
-    void PPQ;
+      return true;
+    case 'v':
+      e.preventDefault();
+      paste();
+      return true;
+    case 'a':
+      e.preventDefault();
+      return true;
+    default:
+      return false;
+  }
+}
+
+/** View shortcuts (Ctrl/Cmd + key) that work everywhere. Returns true if the key was one of them. */
+function onViewShortcut(e: KeyboardEvent): boolean {
+  const toggleSignal = (flag: { value: boolean }) => {
+    flag.value = !flag.value;
   };
+  switch (e.key.toLowerCase()) {
+    case 'e':
+      toggleSignal(showText);
+      break;
+    case '+':
+    case '=':
+      zoomBy(ZOOM_STEP);
+      break;
+    case '-':
+      zoomBy(1 / ZOOM_STEP);
+      break;
+    case 'i':
+      toggleSignal(showInspector);
+      break;
+    default:
+      return false;
+  }
+  e.preventDefault();
+  return true;
+}
+
+function onEscape(): void {
+  showHelp.value = false;
+  menu.value = null;
+  cancelDrag();
+  if (tool.value !== 'select') tool.value = 'select';
+  else selection.value = [];
+}
+
+/** Keys with a fixed meaning, regardless of modifiers other than Alt. Returns true if the key was one of them. */
+function onNavigationKey(e: KeyboardEvent): boolean {
+  switch (e.key) {
+    case 'Escape':
+      onEscape();
+      return true;
+    case 'Delete':
+    case 'Backspace':
+      if (selection.value.length > 0) {
+        e.preventDefault();
+        deleteSelection();
+      }
+      return true;
+    case 'ArrowUp':
+    case 'ArrowDown': {
+      if (!evRefs().length) return true;
+      e.preventDefault();
+      const d = e.key === 'ArrowUp' ? 1 : -1;
+      if (e.shiftKey) nudge(undefined, d);
+      else nudge(e.ctrlKey ? 12 * d : d);
+      return true;
+    }
+    case 'ArrowLeft':
+    case 'ArrowRight':
+      if (evRefs().length) {
+        e.preventDefault();
+        stepSelection(e.key === 'ArrowLeft' ? -1 : 1, e.shiftKey);
+      }
+      return true;
+    case ' ':
+      if ((e.target as HTMLElement | null)?.closest?.('button, select, a')) return true;
+      e.preventDefault();
+      toggle();
+      return true;
+    case 'Home':
+      e.preventDefault();
+      rewind();
+      return true;
+    case '?':
+      showHelp.value = !showHelp.value;
+      return true;
+    case '.':
+      chooseDots((dots.value + 1) % 3);
+      return true;
+    default:
+      return false;
+  }
+}
+
+/** Single letter and digit keys: durations, tools, ties, slurs, stem flip and the voice. */
+function onToolKey(e: KeyboardEvent): void {
+  const digit = '1234567'.indexOf(e.key);
+  if (digit >= 0 && !e.shiftKey) {
+    chooseDuration(DURATION_KEYS[digit]);
+    return;
+  }
+  const letter = e.key.toLowerCase();
+  if (TOOL_KEYS[letter]) tool.value = TOOL_KEYS[letter];
+  else if (letter === 't') tieSelection();
+  else if (letter === 's') slurSelection();
+  else if (letter === 'x') flipStem();
+  else if (letter === 'q') voice.value = Math.max(1, voice.value - 1);
+  else if (letter === 'w') voice.value = Math.min(MAX_VOICE, voice.value + 1);
+}
+
+function onKey(e: KeyboardEvent): void {
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && !typing(e) && onEditShortcut(e)) return;
+  if (mod && onViewShortcut(e)) return;
+  if (typing(e) || mod || (e.altKey && e.key.length > 1)) return;
+  if (!onNavigationKey(e)) onToolKey(e);
+}
+
+export function installKeys(): () => void {
   addEventListener('keydown', onKey);
   return () => removeEventListener('keydown', onKey);
 }

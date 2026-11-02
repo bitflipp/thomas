@@ -14,6 +14,7 @@ import type {
   NoteEvent,
   Pitch,
   Score,
+  StaffMeasure,
   TimedEvent,
   TremoloGroup,
   TupletGroup,
@@ -136,245 +137,272 @@ function levels(base: number): number {
 
 export { levels as beamLevels };
 
-export function prepare(score: Score): Prepared {
-  const nS = score.staves.length;
-  const staffIdx = new Map(score.staves.map((s, i) => [s.id, i]));
-  const measureLen = score.measures.map((_, mi) => measureTicks(timeAt(score, mi)));
+type VoiceL = { id: number; evs: EvL[] };
 
-  // Clef timeline per staff: every clef change as {mi, tick, clef}, in score order. `clefAt`
-  // below starts from the staff's initial clef and applies the changes up to the position.
-  const clefChanges: { mi: number; tick: number; clef: Clef }[][] = score.staves.map(() => []);
+/** Calls `visit` for every mark of every staff-measure, with the staff index and measure index. */
+function forEachMark(score: Score, visit: (staff: number, mi: number, mark: Mark) => void): void {
+  const staffIdx = new Map(score.staves.map((s, i) => [s.id, i]));
   score.measures.forEach((m, mi) => {
     for (const [sid, sm] of Object.entries(m.staves))
-      for (const mk of marksOf(sm))
-        if (mk.type === 'clef') clefChanges[must(staffIdx.get(sid))].push({ mi, tick: mk.tick, clef: mk.clef });
+      for (const mk of marksOf(sm)) visit(must(staffIdx.get(sid)), mi, mk);
   });
-  const clefAt = (s: number, mi: number, tick: number): Clef => {
+}
+
+/** `clefAt(staff, mi, tick)`: starts from the staff's initial clef and applies the clef changes up to the position. */
+function clefTimeline(score: Score): Prepared['clefAt'] {
+  const changes: { mi: number; tick: number; clef: Clef }[][] = score.staves.map(() => []);
+  forEachMark(score, (s, mi, mk) => {
+    if (mk.type === 'clef') changes[s].push({ mi, tick: mk.tick, clef: mk.clef });
+  });
+  return (s, mi, tick) => {
     let c = score.staves[s].clef;
-    for (const ch of clefChanges[s])
+    for (const ch of changes[s])
       if (ch.mi < mi || (ch.mi === mi && ch.tick <= tick)) c = ch.clef;
       else break;
     return c;
   };
+}
 
-  // Ottava timeline per staff, built like the clef timeline. `shift` is -1 for 8va (written an
-  // octave lower than it sounds), +1 for 8vb and 0 where the line stops.
-  type Ott = { mi: number; tick: number; shift: number };
-  const ottChanges: Ott[][] = score.staves.map(() => []);
-  score.measures.forEach((m, mi) => {
-    for (const [sid, sm] of Object.entries(m.staves))
-      for (const mk of marksOf(sm)) {
-        if (mk.type === 'ottava')
-          ottChanges[must(staffIdx.get(sid))].push({ mi, tick: mk.tick, shift: mk.dir === 'up' ? -1 : 1 });
-        else if (mk.type === 'stop' && mk.of === 'ottava')
-          ottChanges[must(staffIdx.get(sid))].push({ mi, tick: mk.tick, shift: 0 });
-      }
+/**
+ * Ottava timeline per staff, built like the clef timeline: -1 for 8va (written an octave lower than
+ * it sounds), +1 for 8vb and 0 where the line stops.
+ */
+function ottavaTimeline(score: Score): (staff: number, mi: number, tick: number, startIncl: boolean) => number {
+  const changes: { mi: number; tick: number; shift: number }[][] = score.staves.map(() => []);
+  forEachMark(score, (s, mi, mk) => {
+    if (mk.type === 'ottava') changes[s].push({ mi, tick: mk.tick, shift: mk.dir === 'up' ? -1 : 1 });
+    else if (mk.type === 'stop' && mk.of === 'ottava') changes[s].push({ mi, tick: mk.tick, shift: 0 });
   });
-  const ottAt = (s: number, mi: number, tick: number, isStartIncl: boolean): number => {
-    let sh = 0;
-    for (const o of ottChanges[s]) {
+  return (s, mi, tick, startIncl) => {
+    let shift = 0;
+    for (const o of changes[s]) {
       const before =
-        o.mi < mi || (o.mi === mi && (o.tick < tick || (o.tick === tick && (isStartIncl ? o.shift !== 0 : true))));
-      if (before) sh = o.shift;
+        o.mi < mi || (o.mi === mi && (o.tick < tick || (o.tick === tick && (startIncl ? o.shift !== 0 : true))));
+      if (before) shift = o.shift;
       else break;
     }
-    return sh;
+    return shift;
   };
+}
 
+/** What the per-measure passes need to know about the score as a whole. */
+interface PrepEnv {
+  score: Score;
+  staffIdx: Map<string, number>;
+  clefAt: Prepared['clefAt'];
+  ottavaAt: ReturnType<typeof ottavaTimeline>;
+  /** Next event id. */
+  nextId: number;
+  /** Per display staff: voice|pitch keys of notes tied into the current measure. */
+  tiedFromPrev: Map<string, boolean>[];
+}
+
+const tieKey = (voice: number, p: Pitch) => `${voice}|${pitchStep(p)}|${p.alter}`;
+
+/** The layout record of one event of a voice of staff `home`. A cross-staff event takes the clef, octave shift and accidentals of the staff it is displayed on, not of its voice's staff. */
+function layoutEvent(
+  env: PrepEnv,
+  te: TimedEvent,
+  mi: number,
+  home: number,
+  voiceId: number,
+  rank: number,
+  nVoices: number,
+): EvL {
+  const crossTo = te.ev.kind === 'note' && te.ev.staff !== undefined ? env.staffIdx.get(te.ev.staff) : undefined;
+  const display = crossTo ?? home;
+  const clef = env.clefAt(display, mi, te.start);
+  const shift = env.ottavaAt(display, mi, te.start, true);
+  const e: EvL = {
+    id: env.nextId++,
+    mi,
+    staff: display,
+    home,
+    voice: voiceId,
+    voiceRank: Math.max(0, rank),
+    nVoices,
+    te,
+    ev: te.ev,
+    start: te.start,
+    ticks: te.ticks,
+    clef,
+    heads: [],
+    stem: null,
+    x: 0,
+    tupletKeys: te.tuplets,
+    ottavaShift: shift,
+    shiftDx: 0,
+  };
+  if (te.ev.kind === 'note') {
+    const mkHead = (np: NoteEvent['pitches'][number]): HeadL => ({
+      pitch: np.pitch,
+      tie: !!np.tie,
+      displaced: false,
+      dx: 0,
+      pos: staffPos({ ...np.pitch, octave: np.pitch.octave + shift }, clef),
+    });
+    e.heads = te.ev.pitches.map(mkHead);
+    if (te.ev.graces?.length) e.graces = te.ev.graces.map((g) => ({ g, heads: g.pitches.map(mkHead), dx: 0, hw: 0 }));
+  }
+  return e;
+}
+
+/** The layout records of every voice of the measure, per staff. */
+function layoutVoices(env: PrepEnv, mi: number): VoiceL[][] {
+  const m = env.score.measures[mi];
+  return env.score.staves.map((staff, si) => {
+    const voices = m.staves[staff.id]?.voices ?? [];
+    const sounding = voices.filter((v) =>
+      flattenVoice(v).some((e) => e.ev.kind === 'note' || (e.ev.kind === 'rest' && e.ev.style === 'normal')),
+    );
+    return voices.map((v) => {
+      const rank = sounding.findIndex((x) => x.id === v.id);
+      return { id: v.id, evs: flattenVoice(v).map((te) => layoutEvent(env, te, mi, si, v.id, rank, sounding.length)) };
+    });
+  });
+}
+
+/**
+ * Accidentals per display staff. The state is per staff for the whole measure, all voices together in
+ * time order (an accidental in one voice still applies to the same pitch in another).
+ */
+function assignAccidentals(env: PrepEnv, voicesOf: VoiceL[][], key: number): void {
+  for (let si = 0; si < env.score.staves.length; si++) {
+    /** Alteration in force per "step+octave" so far in this measure. */
+    const state = new Map<string, number>();
+    const shown = (np: NoteEvent['pitches'][number], head: HeadL, tiedIn: boolean | undefined, atStart: boolean) => {
+      const k = `${np.pitch.step}${np.pitch.octave}`;
+      const inForce = state.get(k) ?? keyAlter(key, np.pitch.step);
+      const cautionary = np.acc === 'cautionary';
+      let show = np.pitch.alter !== inForce || np.acc === 'force' || cautionary;
+      if (tiedIn && atStart && np.acc === undefined) show = false;
+      if (show) head.acc = { glyph: ACC_GLYPH[np.pitch.alter], cautionary };
+      state.set(k, np.pitch.alter);
+    };
+    const onStaff = voicesOf
+      .flatMap((vs) => vs.flatMap((v) => v.evs))
+      .filter((e) => e.staff === si)
+      .sort((a, b) => a.start - b.start || a.voice - b.voice);
+    for (const e of onStaff) {
+      if (e.ev.kind !== 'note') continue;
+      // grace notes come first
+      for (const gl of e.graces ?? [])
+        for (const [i, np] of gl.g.pitches.entries()) shown(np, gl.heads[i], false, e.start === 0);
+      for (const [i, np] of e.ev.pitches.entries())
+        shown(np, e.heads[i], env.tiedFromPrev[si].get(tieKey(e.voice, np.pitch)), e.start === 0);
+    }
+  }
+}
+
+/** Ties carry into the next measure: a tied note's pitch is not given an accidental again there. Keyed by the staff the tied note is drawn on. */
+function carryTies(env: PrepEnv, voicesOf: VoiceL[][]): void {
+  for (const t of env.tiedFromPrev) t.clear();
+  for (const voices of voicesOf)
+    for (const v of voices) {
+      const last = v.evs[v.evs.length - 1];
+      if (last && last.ev.kind === 'note')
+        for (const np of last.ev.pitches) if (np.tie) env.tiedFromPrev[last.staff].set(tieKey(v.id, np.pitch), true);
+    }
+}
+
+/** Links the two notes of a two-note tremolo group, so the stem direction and drawing can treat them as a pair (the first is flagged `tremIsFirst`). */
+function linkTremoloPairs(v: VoiceL): void {
+  const pairs = new Map<TremoloGroup, EvL[]>();
+  for (const e of v.evs) {
+    if (!e.te.tremolo || e.ev.kind !== 'note') continue;
+    const list = pairs.get(e.te.tremolo) ?? [];
+    list.push(e);
+    pairs.set(e.te.tremolo, list);
+  }
+  for (const [g, [a, b]] of pairs)
+    if (b) {
+      a.tremPair = b;
+      b.tremPair = a;
+      a.tremIsFirst = true;
+      a.tremBeams = b.tremBeams = g.beams;
+    }
+}
+
+/**
+ * Stem directions (`decideDir`): a beam group or tremolo pair shares one direction; with several
+ * voices on a staff the first points up and the others down; a lone voice goes by which side of the
+ * middle line its heads are farther from. An explicit `stem` on the event overrides afterwards.
+ */
+function decideStems(v: VoiceL): void {
+  const decidedBeams = new Set<BeamL>();
+  for (const e of v.evs) {
+    if (e.ev.kind !== 'note' || e.te.ev.dur.base === 1) continue;
+    if (e.beam) {
+      if (!decidedBeams.has(e.beam)) {
+        decidedBeams.add(e.beam);
+        e.beam.dir = decideDir(e.beam.notes, e.voiceRank, e.nVoices);
+      }
+      e.stem = e.beam.dir;
+    } else if (e.tremPair && !e.tremIsFirst) e.stem = e.tremPair.stem;
+    else if (e.tremPair) e.stem = decideDir([e, e.tremPair], e.voiceRank, e.nVoices);
+    else e.stem = decideDir([e], e.voiceRank, e.nVoices);
+  }
+  for (const e of v.evs) {
+    if (e.ev.kind !== 'note' || !e.ev.stem || e.te.ev.dur.base === 1) continue;
+    e.stem = e.ev.stem;
+    if (e.beam) e.beam.dir = e.ev.stem;
+  }
+}
+
+/** A beam over two staves lies between them: the stems of the upper staff's notes point down and those of the lower staff's up. */
+function markCrossStaffBeams(v: VoiceL): void {
+  const seen = new Set<BeamL>();
+  for (const e of v.evs) {
+    if (!e.beam || seen.has(e.beam)) continue;
+    seen.add(e.beam);
+    const staves = new Set(e.beam.notes.map((n) => n.staff));
+    if (staves.size < 2) continue;
+    e.beam.cross = true;
+    const top = Math.min(...staves);
+    for (const n of e.beam.notes) n.stem = n.staff === top ? 'down' : 'up';
+  }
+}
+
+/** Beams, tremolo pairs, stem directions and chord head displacement for the voices of one staff. */
+function prepareStaffVoices(voices: VoiceL[], sm: StaffMeasure, beatLen: number): void {
+  // Explicit groups plus the automatic grouping of src/beams.ts become `BeamL`s attached to their
+  // member events; direction and cross-staff handling come in the later steps.
+  for (const v of voices) assignBeams(v, must(sm.voices.find((x) => x.id === v.id)), beatLen);
+  for (const v of voices) linkTremoloPairs(v);
+  for (const v of voices) decideStems(v);
+  // A beam's direction wins over its notes' own.
+  for (const v of voices)
+    for (const e of v.evs) if (e.beam?.dir) e.stem = e.stem && e.ev.kind === 'note' ? e.beam.dir : e.stem;
+  for (const v of voices) markCrossStaffBeams(v);
+  // A second (heads on adjacent positions) cannot sit on one side of the stem, so one of the two
+  // moves to the other side. Needs the stem direction.
+  for (const v of voices) for (const e of v.evs) if (e.ev.kind === 'note') displaceHeads(e);
+}
+
+export function prepare(score: Score): Prepared {
+  const clefAt = clefTimeline(score);
+  const env: PrepEnv = {
+    score,
+    staffIdx: new Map(score.staves.map((s, i) => [s.id, i])),
+    clefAt,
+    ottavaAt: ottavaTimeline(score),
+    nextId: 0,
+    tiedFromPrev: score.staves.map(() => new Map()),
+  };
+  const measureLen = score.measures.map((_, mi) => measureTicks(timeAt(score, mi)));
   const measures: StaffMeasureL[][] = [];
   const allEvs: EvL[] = [];
-  let id = 0;
-  const tiedFromPrev: Map<string, boolean>[] = score.staves.map(() => new Map()); // key: voice|pitchstep+alter -> true if previous tied into this
-
   score.measures.forEach((m, mi) => {
-    const key = keyAt(score, mi);
-    const bt = beatTicks(timeAt(score, mi));
-    const row: StaffMeasureL[] = [];
-    const smOf = (si: number) => m.staves[score.staves[si].id] ?? { voices: [] };
-    // ----- Pass 1: the events of every voice. A cross-staff event takes the clef, octave shift and
-    // accidentals of the staff it is displayed on, not of its voice's staff.
-    const voicesOf: { id: number; evs: EvL[] }[][] = [];
-    for (let si = 0; si < nS; si++) {
-      const sm = smOf(si);
-      const voices: { id: number; evs: EvL[] }[] = [];
-      const soundingVoices = sm.voices.filter((v) =>
-        flattenVoice(v).some((e) => e.ev.kind === 'note' || (e.ev.kind === 'rest' && e.ev.style === 'normal')),
-      );
-      sm.voices.forEach((v) => {
-        const flat = flattenVoice(v);
-        const rank = soundingVoices.findIndex((x) => x.id === v.id);
-        const evs: EvL[] = flat.map((te) => {
-          const ds =
-            te.ev.kind === 'note' && te.ev.staff !== undefined && staffIdx.has(te.ev.staff)
-              ? must(staffIdx.get(te.ev.staff))
-              : si;
-          const clef = clefAt(ds, mi, te.start);
-          const shift = ottAt(ds, mi, te.start, true);
-          const e: EvL = {
-            id: id++,
-            mi,
-            staff: ds,
-            home: si,
-            voice: v.id,
-            voiceRank: Math.max(0, rank),
-            nVoices: soundingVoices.length,
-            te,
-            ev: te.ev,
-            start: te.start,
-            ticks: te.ticks,
-            clef,
-            heads: [],
-            stem: null,
-            x: 0,
-            tupletKeys: te.tuplets,
-            ottavaShift: shift,
-            shiftDx: 0,
-          };
-          if (te.ev.kind === 'note') {
-            const mkHead = (np: (typeof te.ev.pitches)[number]): HeadL => ({
-              pitch: np.pitch,
-              tie: !!np.tie,
-              displaced: false,
-              dx: 0,
-              pos: staffPos({ ...np.pitch, octave: np.pitch.octave + shift }, clef),
-            });
-            e.heads = te.ev.pitches.map(mkHead);
-            if (te.ev.graces?.length)
-              e.graces = te.ev.graces.map((g) => ({ g, heads: g.pitches.map(mkHead), dx: 0, hw: 0 }));
-          }
-          return e;
-        });
-        voices.push({ id: v.id, evs });
-      });
-      voicesOf.push(voices);
-    }
-
-    // ----- Pass 2: accidentals per display staff. The state is per staff for the whole measure, all voices
-    // together in time order (an accidental in one voice still applies to the same pitch in another).
-    for (let si = 0; si < nS; si++) {
-      /** Alteration in force per "step+octave" so far in this measure. */
-      const state = new Map<string, number>();
-      const all = voicesOf
-        .flatMap((vs) => vs.flatMap((v) => v.evs))
-        .filter((e) => e.staff === si)
-        .sort((a, b) => a.start - b.start || a.voice - b.voice);
-      for (const e of all) {
-        if (e.ev.kind !== 'note') continue;
-        const ne = e.ev as NoteEvent;
-        const accOf = (np: (typeof ne.pitches)[number], h: HeadL, tiedIn: boolean | undefined) => {
-          const k = `${np.pitch.step}${np.pitch.octave}`;
-          const cur = state.has(k) ? must(state.get(k)) : keyAlter(key, np.pitch.step);
-          let show = np.pitch.alter !== cur;
-          let caut = false;
-          if (np.acc === 'force') show = true;
-          if (np.acc === 'cautionary') {
-            show = true;
-            caut = true;
-          }
-          if (tiedIn && e.start === 0 && np.acc === undefined) show = false;
-          if (show) h.acc = { glyph: ACC_GLYPH[np.pitch.alter], cautionary: caut };
-          state.set(k, np.pitch.alter);
-        };
-        // grace notes come first
-        for (const gl of e.graces ?? []) {
-          for (const [i, np] of gl.g.pitches.entries()) accOf(np, gl.heads[i], false);
-        }
-        for (const [i, np] of ne.pitches.entries()) {
-          accOf(np, e.heads[i], tiedFromPrev[si].get(`${e.voice}|${pitchStep(np.pitch)}|${np.pitch.alter}`));
-        }
-      }
-    }
-    // Ties carry into the next measure: a tied note's pitch is not given an accidental again there.
-    // Keyed by the staff the tied note is drawn on.
-    for (const t of tiedFromPrev) t.clear();
-    for (const voices of voicesOf)
-      for (const v of voices) {
-        const last = v.evs[v.evs.length - 1];
-        if (last && last.ev.kind === 'note')
-          for (const np of last.ev.pitches)
-            if (np.tie) tiedFromPrev[last.staff].set(`${v.id}|${pitchStep(np.pitch)}|${np.pitch.alter}`, true);
-      }
-
-    for (let si = 0; si < nS; si++) {
-      const sm = smOf(si);
-      const voices = voicesOf[si];
-
-      // ----- Beams. Explicit groups plus the automatic grouping of src/beams.ts become `BeamL`s
-      // attached to their member events; direction and cross-staff handling come in the later steps.
-      for (const v of voices) assignBeams(v, must(sm.voices.find((x) => x.id === v.id)), bt);
-
-      // ----- Two-note tremolos. Link the two notes of a group to each other, so the stem direction
-      // and drawing can treat them as a pair (the first is flagged `tremIsFirst`).
-      for (const v of voices) {
-        const pairs = new Map<TremoloGroup, EvL[]>();
-        for (const e of v.evs)
-          if (e.te.tremolo && e.ev.kind === 'note')
-            (pairs.get(e.te.tremolo) ?? must(pairs.set(e.te.tremolo, []).get(e.te.tremolo))).push(e);
-        for (const [g, [a, b]] of pairs)
-          if (b) {
-            a.tremPair = b;
-            b.tremPair = a;
-            a.tremIsFirst = true;
-            a.tremBeams = b.tremBeams = g.beams;
-          }
-      }
-
-      // ----- Stem directions (`decideDir`): a beam group or tremolo pair shares one direction; with several
-      // voices on a staff the first points up and the others down; a lone voice goes by which side of
-      // the middle line its heads are farther from. An explicit `stem` on the event overrides afterwards.
-      for (const v of voices) {
-        const done = new Set<BeamL>();
-        for (const e of v.evs) {
-          if (e.ev.kind !== 'note' || e.te.ev.dur.base === 1) continue;
-          if (e.beam) {
-            if (done.has(e.beam)) {
-              e.stem = e.beam.dir;
-              continue;
-            }
-            done.add(e.beam);
-            e.beam.dir = decideDir(e.beam.notes, e.voiceRank, e.nVoices);
-            e.stem = e.beam.dir;
-          } else if (e.tremPair && !e.tremIsFirst) {
-            e.stem = e.tremPair.stem;
-          } else if (e.tremPair && e.tremIsFirst) {
-            e.stem = decideDir([e, e.tremPair], e.voiceRank, e.nVoices);
-          } else e.stem = decideDir([e], e.voiceRank, e.nVoices);
-        }
-        for (const e of v.evs)
-          if (e.ev.kind === 'note') {
-            const o = e.ev.stem;
-            if (o && e.te.ev.dur.base !== 1) {
-              e.stem = o;
-              if (e.beam) e.beam.dir = o;
-            }
-          }
-      }
-      for (const v of voices)
-        for (const e of v.evs) if (e.beam?.dir) e.stem = e.stem && e.ev.kind === 'note' ? e.beam.dir : e.stem;
-
-      // ----- Cross-staff beams: the beam lies between the staves, so the stems of the upper staff's notes
-      // point down and those of the lower staff's up.
-      for (const v of voices) {
-        const seen = new Set<BeamL>();
-        for (const e of v.evs)
-          if (e.beam && !seen.has(e.beam)) {
-            seen.add(e.beam);
-            const st = new Set(e.beam.notes.map((n) => n.staff));
-            if (st.size < 2) continue;
-            e.beam.cross = true;
-            const top = Math.min(...st);
-            for (const n of e.beam.notes) n.stem = n.staff === top ? 'down' : 'up';
-          }
-      }
-
-      // ----- Displaced heads in chords. A second (heads on adjacent positions) cannot sit on one
-      // side of the stem, so one of the two moves to the other side. Needs the stem direction.
-      for (const v of voices) for (const e of v.evs) if (e.ev.kind === 'note') displaceHeads(e);
-
-      for (const v of voices) allEvs.push(...v.evs);
-      row.push({ evs: [], voices, marks: marksOf(sm) });
-    }
-    for (const r of row) r.evs = [];
+    const voicesOf = layoutVoices(env, mi);
+    assignAccidentals(env, voicesOf, keyAt(score, mi));
+    carryTies(env, voicesOf);
+    const row: StaffMeasureL[] = score.staves.map((staff, si) => {
+      const sm = m.staves[staff.id] ?? { voices: [] };
+      prepareStaffVoices(voicesOf[si], sm, beatTicks(timeAt(score, mi)));
+      for (const v of voicesOf[si]) allEvs.push(...v.evs);
+      return { evs: [], voices: voicesOf[si], marks: marksOf(sm) };
+    });
+    // `evs` lists what is drawn on a staff, which for cross-staff notes is not the voice's staff.
     for (const r of row) for (const v of r.voices) for (const e of v.evs) row[e.staff].evs.push(e);
     for (const r of row) r.evs.sort((a, b) => a.start - b.start || a.voice - b.voice);
     measures.push(row);

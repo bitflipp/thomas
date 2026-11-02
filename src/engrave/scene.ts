@@ -156,3 +156,24 @@ export class Skyline {
     return { top, bottom };
   }
 }
+
+/** A copy of a primitive moved by (dx, dy). */
+export function shiftPrim(p: Prim, dx: number, dy: number): Prim {
+  switch (p.t) {
+    case 'glyph':
+      return { ...p, x: p.x + dx, y: p.y + dy };
+    case 'line':
+      return { ...p, x1: p.x1 + dx, x2: p.x2 + dx, y1: p.y1 + dy, y2: p.y2 + dy };
+    case 'text':
+      return { ...p, x: p.x + dx, y: p.y + dy };
+    case 'path':
+      return {
+        ...p,
+        d: p.d.replace(
+          /(-?\d*\.?\d+(?:e-?\d+)?)[ ,](-?\d*\.?\d+(?:e-?\d+)?)/gi,
+          (_m, a: string, b: string) =>
+            `${(Number.parseFloat(a) + dx).toFixed(3)} ${(Number.parseFloat(b) + dy).toFixed(3)}`,
+        ),
+      };
+  }
+}

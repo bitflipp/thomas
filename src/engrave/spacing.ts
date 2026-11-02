@@ -89,60 +89,61 @@ export interface MeasureSpacing {
   restOnly: boolean;
 }
 
-/**
- * Builds the columns of measure `mi` and measures it at minimum and compressed width. `skipClef0` is the
- * "first in system" variant, where a clef change at tick 0 is not drawn because the system's own clef
- * already shows it. Runs twice per measure, so everything it writes onto the `EvL`s must be idempotent.
- */
-export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): MeasureSpacing {
-  const nS = prep.score.staves.length;
-  const len = prep.measureLen[mi];
-  const colMap = new Map<number, Column>();
-  const mk = (tick: number): Column => {
-    let c = colMap.get(tick);
-    if (!c) {
-      c = {
-        tick,
-        evs: [],
-        ideal: 0,
-        L: new Array(nS).fill(0),
-        R: new Array(nS).fill(0),
-        has: new Array(nS).fill(false),
-        clefChange: new Array(nS).fill(false),
-        clefW: new Array(nS).fill(0),
-        minFrom: [],
-      };
-      colMap.set(tick, c);
-    }
+function newColumn(tick: number, nStaves: number): Column {
+  return {
+    tick,
+    evs: [],
+    ideal: 0,
+    L: new Array(nStaves).fill(0),
+    R: new Array(nStaves).fill(0),
+    has: new Array(nStaves).fill(false),
+    clefChange: new Array(nStaves).fill(false),
+    clefW: new Array(nStaves).fill(0),
+    minFrom: [],
+  };
+}
+
+/** Groups the visible events and clef changes of a measure into columns by tick, in time order. */
+function collectColumns(prep: Prepared, mi: number, skipClef0: boolean): { cols: Column[]; restOnly: boolean } {
+  const nStaves = prep.score.staves.length;
+  const byTick = new Map<number, Column>();
+  const columnAt = (tick: number): Column => {
+    const existing = byTick.get(tick);
+    if (existing) return existing;
+    const c = newColumn(tick, nStaves);
+    byTick.set(tick, c);
     return c;
   };
   let anyVisible = false;
-  for (let s = 0; s < nS; s++) {
+  for (let s = 0; s < nStaves; s++) {
     const sml = prep.measures[mi][s];
     for (const e of sml.evs) {
       if (e.ev.kind === 'rest' && e.ev.style === 'hidden') continue;
       if (e.ev.kind === 'rest' && e.ev.style === 'measure') {
-        mk(e.start).evs.push(e);
+        columnAt(e.start).evs.push(e);
         continue;
       }
       anyVisible = true;
-      const c = mk(e.start);
+      const c = columnAt(e.start);
       c.evs.push(e);
       c.has[s] = true;
     }
     for (const m of sml.marks)
       if (m.type === 'clef' && !(skipClef0 && m.tick === 0)) {
-        const c = mk(m.tick);
+        const c = columnAt(m.tick);
         c.clefChange[s] = true;
         c.has[s] = true;
       }
   }
-  const cols = [...colMap.values()].sort((a, b) => a.tick - b.tick);
-  const restOnly = !anyVisible;
+  return { cols: [...byTick.values()].sort((a, b) => a.tick - b.tick), restOnly: !anyVisible };
+}
 
-  // Extents: how far each column reaches left and right of its x on each staff (heads, accidentals,
-  // dots, graces, a clef change), which decides the minimum distance to its neighbours.
-  for (let s = 0; s < nS; s++) {
+/**
+ * How far each column reaches left and right of its x on each staff (heads, accidentals, dots,
+ * graces, a clef change), which decides the minimum distance to its neighbours.
+ */
+function measureColumnExtents(cols: Column[], nStaves: number): void {
+  for (let s = 0; s < nStaves; s++) {
     for (const c of cols) {
       const evs = c.evs.filter((e) => e.staff === s);
       if (c.clefChange[s]) c.clefW[s] = sm.adv('gClefChange') + 1.4; // clef, then clear space before the notes (and their accidentals)
@@ -150,26 +151,51 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
       c.L[s] += c.clefW[s];
     }
   }
-  // A cross-staff beam has up-stems on the right of their heads followed by down-stems on the left of
-  // theirs; the columns involved are pushed apart (`minFrom`) so the two stems do not merge.
-  {
-    const colAt = new Map(cols.map((c, j) => [c.tick, j]));
-    const seen = new Set<object>();
-    for (const c of cols)
-      for (const e of c.evs) {
-        if (!e.beam?.cross || seen.has(e.beam)) continue;
-        seen.add(e.beam);
-        const ns = e.beam.notes;
-        for (let k = 1; k < ns.length; k++) {
-          const a = ns[k - 1];
-          const b = ns[k];
-          const ja = colAt.get(a.start);
-          const jb = colAt.get(b.start);
-          if (a.stem === 'up' && b.stem === 'down' && ja !== undefined && jb !== undefined && ja < jb)
-            cols[jb].minFrom.push({ j: ja, d: headWidth(a.te.ev.dur.base) + CROSS_STEM_SEP });
-        }
+}
+
+/**
+ * A cross-staff beam has up-stems on the right of their heads followed by down-stems on the left of
+ * theirs; the columns involved are pushed apart (`minFrom`) so the two stems do not merge.
+ */
+function separateCrossStaffStems(cols: Column[]): void {
+  const colAt = new Map(cols.map((c, j) => [c.tick, j]));
+  const seen = new Set<object>();
+  for (const c of cols)
+    for (const e of c.evs) {
+      if (!e.beam?.cross || seen.has(e.beam)) continue;
+      seen.add(e.beam);
+      const ns = e.beam.notes;
+      for (let k = 1; k < ns.length; k++) {
+        const a = ns[k - 1];
+        const b = ns[k];
+        const ja = colAt.get(a.start);
+        const jb = colAt.get(b.start);
+        if (a.stem === 'up' && b.stem === 'down' && ja !== undefined && jb !== undefined && ja < jb)
+          cols[jb].minFrom.push({ j: ja, d: headWidth(a.te.ev.dur.base) + CROSS_STEM_SEP });
       }
-  }
+    }
+}
+
+/** Width taken at the start of a measure by a key change and a time signature change. */
+function measurePrefix(prep: Prepared, mi: number): { prefix: number; timeSig?: { beats: number; beatType: number } } {
+  const timeSig = mi > 0 && prep.score.measures[mi].time ? timeAt(prep.score, mi) : undefined;
+  const digitWidth = sm.adv('timeSig2');
+  const timeSigWidth = timeSig
+    ? Math.max(digitWidth * String(timeSig.beats).length, digitWidth * String(timeSig.beatType).length) + 1.2
+    : 0;
+  return { prefix: keyChangeWidth(prep.score, mi) + timeSigWidth, timeSig };
+}
+
+/**
+ * Builds the columns of measure `mi` and measures it at minimum and compressed width. `skipClef0` is the
+ * "first in system" variant, where a clef change at tick 0 is not drawn because the system's own clef
+ * already shows it. Runs twice per measure, so everything it writes onto the `EvL`s must be idempotent.
+ */
+export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): MeasureSpacing {
+  const nStaves = prep.score.staves.length;
+  const { cols, restOnly } = collectColumns(prep, mi, skipClef0);
+  measureColumnExtents(cols, nStaves);
+  separateCrossStaffStems(cols);
   // Ideal distances: from each column to the previous one by elapsed time. `endIdeal` is the
   // distance from the last column to the barline, by the time left in the measure.
   let prevTick = 0;
@@ -178,26 +204,15 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
     prevTick = c.tick;
   });
   const lastTick = cols.length ? cols[cols.length - 1].tick : 0;
-  const endIdeal = cols.length ? idealSpace(len - lastTick) : idealSpace(len);
-
-  const tsChanged = mi > 0 && prep.score.measures[mi].time;
-  const timeSig = tsChanged ? timeAt(prep.score, mi) : undefined;
-  const prefix =
-    keyChangeWidth(prep.score, mi) +
-    (timeSig
-      ? Math.max(
-          sm.adv('timeSig2') * String(timeSig.beats).length,
-          sm.adv('timeSig2') * String(timeSig.beatType).length,
-        ) + 1.2
-      : 0);
-  const lead = 0.9 + prefix + Math.max(0, ...cols.slice(0, 1).flatMap((c) => c.L));
-  const endReq: number[] = new Array(nS).fill(0);
-  for (let s = 0; s < nS; s++) for (const c of cols) if (c.has[s]) endReq[s] = c.R[s];
+  const endIdeal = idealSpace(prep.measureLen[mi] - lastTick);
+  const { prefix, timeSig } = measurePrefix(prep, mi);
+  const endReq: number[] = new Array(nStaves).fill(0);
+  for (let s = 0; s < nStaves; s++) for (const c of cols) if (c.has[s]) endReq[s] = c.R[s];
   const sp: MeasureSpacing = {
     mi,
     cols,
     endIdeal,
-    lead,
+    lead: 0.9 + prefix + Math.max(0, ...cols.slice(0, 1).flatMap((c) => c.L)),
     endTrail: 0.75,
     endReq,
     prefix,
@@ -211,11 +226,8 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
   return sp;
 }
 
-function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
-  let L = 0;
-  let R = 0;
-  // spaceMeasure runs more than once per measure and writes onto shared EvL/HeadL objects, so start
-  // from a clean state each time; everything below must be a pure function of the model.
+/** spaceMeasure runs more than once per measure and writes onto shared EvL/HeadL objects, so start from a clean state each time. */
+function resetColumnLayout(evs: EvL[]): void {
   for (const e of evs) {
     e.shiftDx = 0;
     for (const h of e.heads) {
@@ -226,161 +238,200 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
       h.sharers = undefined;
     }
   }
-  // --- Voice collisions. A head of a later voice that sits on the same position as one of the first
-  // voice (a unison) shares it when the two are indistinguishable or have opposite stems and the same
-  // head shape; other clashes (heads a step or less apart, or a head on the other voice's stem) shift
-  // the later voice to the right.
-  const notesEvs = evs.filter((e) => e.ev.kind === 'note');
-  if (notesEvs.length > 1) {
-    const first = notesEvs.filter((e) => e.voiceRank === 0);
-    for (const e of notesEvs.filter((x) => x.voiceRank > 0)) {
-      const d = e.te.ev.dur;
-      for (const h of e.heads)
-        for (const f of first) {
-          const fd = f.te.ev.dur;
-          const sameDur = fd.base === d.base && fd.dots === d.dots;
-          // Distinguishable by opposite stems and the same head shape: one head serves both voices
-          // (the two stems attach to it), which is how unisons between voices are usually written.
-          const distinct = !!f.stem && !!e.stem && f.stem !== e.stem && headGlyph(fd.base) === headGlyph(d.base);
-          const host =
-            sameDur || distinct
-              ? f.heads.find((g) => g.pos === h.pos && g.pitch.alter === h.pitch.alter && !g.shared)
-              : undefined;
-          if (host) {
-            h.shared = true;
-            h.skipDots = fd.dots >= d.dots;
-            host.sharers ??= [];
-            host.sharers.push(e);
-          }
-        }
-      let clash = false;
-      for (const h of e.heads)
-        if (!h.shared) for (const f of first) for (const g of f.heads) if (Math.abs(h.pos - g.pos) <= 1) clash = true;
-      // A head standing on the stem of the other voice (or the other way round): move this voice
-      // aside. `stemSpan` is the staff-position range a voice's heads and stem cover.
-      const stemSpan = (x: EvL): [number, number] => {
-        const ps = x.heads.map((q) => q.pos);
-        const lo = Math.min(...ps);
-        const hi = Math.max(...ps);
-        return x.stem === 'up' ? [lo, hi + 7] : x.stem === 'down' ? [lo - 7, hi] : [lo, hi];
-      };
-      for (const f of first) {
-        const [fl, fh] = stemSpan(f);
-        const [el, eh] = stemSpan(e);
-        if (e.heads.some((h) => !h.shared && h.pos > fl && h.pos <= fh && f.stem) && f.stem !== null) clash = true;
-        if (f.heads.some((g) => g.pos >= el && g.pos < eh && e.stem)) clash = true;
-      }
-      if (clash) {
-        e.shiftDx = headWidth(e.te.ev.dur.base);
-        for (const h of e.heads) if (!h.shared) h.dx += e.shiftDx;
+}
+
+/** The staff-position range a voice's heads and stem cover. */
+function stemSpan(x: EvL): [number, number] {
+  const ps = x.heads.map((q) => q.pos);
+  const lo = Math.min(...ps);
+  const hi = Math.max(...ps);
+  return x.stem === 'up' ? [lo, hi + 7] : x.stem === 'down' ? [lo - 7, hi] : [lo, hi];
+}
+
+/**
+ * A head of a later voice that sits on the same position as one of the first voice (a unison) shares
+ * it when the two are indistinguishable or have opposite stems and the same head shape.
+ */
+function shareUnisonHeads(e: EvL, first: EvL[]): void {
+  const d = e.te.ev.dur;
+  for (const h of e.heads)
+    for (const f of first) {
+      const fd = f.te.ev.dur;
+      const sameDur = fd.base === d.base && fd.dots === d.dots;
+      // Distinguishable by opposite stems and the same head shape: one head serves both voices
+      // (the two stems attach to it), which is how unisons between voices are usually written.
+      const distinct = !!f.stem && !!e.stem && f.stem !== e.stem && headGlyph(fd.base) === headGlyph(d.base);
+      const host =
+        sameDur || distinct
+          ? f.heads.find((g) => g.pos === h.pos && g.pitch.alter === h.pitch.alter && !g.shared)
+          : undefined;
+      if (host) {
+        h.shared = true;
+        h.skipDots = fd.dots >= d.dots;
+        host.sharers ??= [];
+        host.sharers.push(e);
       }
     }
+}
+
+/** Whether a later voice has heads a step or less from the first voice's, or heads on the other voice's stem (or the other way round). */
+function clashesWithFirstVoice(e: EvL, first: EvL[]): boolean {
+  for (const h of e.heads)
+    if (!h.shared) for (const f of first) for (const g of f.heads) if (Math.abs(h.pos - g.pos) <= 1) return true;
+  for (const f of first) {
+    const [fl, fh] = stemSpan(f);
+    const [el, eh] = stemSpan(e);
+    if (f.stem && e.heads.some((h) => !h.shared && h.pos > fl && h.pos <= fh)) return true;
+    if (e.stem && f.heads.some((g) => g.pos >= el && g.pos < eh)) return true;
   }
+  return false;
+}
+
+/** Voice collisions: shared unisons, and the later voice shifted to the right where it clashes with the first. */
+function resolveVoiceCollisions(evs: EvL[]): void {
+  const notes = evs.filter((e) => e.ev.kind === 'note');
+  if (notes.length < 2) return;
+  const first = notes.filter((e) => e.voiceRank === 0);
+  for (const e of notes.filter((x) => x.voiceRank > 0)) {
+    shareUnisonHeads(e, first);
+    if (!clashesWithFirstVoice(e, first)) continue;
+    e.shiftDx = headWidth(e.te.ev.dur.base);
+    for (const h of e.heads) if (!h.shared) h.dx += e.shiftDx;
+  }
+}
+
+const dotsWidth = (dots: number) => (dots ? 0.4 + DOT_STEP * dots : 0);
+
+/** The heads that take their own place in a column (not shared ones) with the extent to the left and right of the column x of all events. */
+function headExtents(evs: EvL[]): { heads: { h: HeadL; e: EvL }[]; L: number; R: number } {
   const heads: { h: HeadL; e: EvL }[] = [];
+  let L = 0;
+  let R = 0;
   for (const e of evs) {
-    if (e.ev.kind === 'note') {
-      const w = headWidth(e.te.ev.dur.base);
-      for (const h of e.heads) {
-        if (h.shared) continue;
-        if (h.displaced) h.dx += e.stem === 'down' ? -(w - STEM_T) : w - STEM_T;
-        heads.push({ h, e });
-        L = Math.max(L, -h.dx);
-        let r = h.dx + w;
-        if (h.pos <= -2 || h.pos >= 10) r += sm.def.legerLineExtension as number; // its ledger line reaches beyond the head
-        const dots = e.te.ev.dur.dots;
-        if (dots) r += 0.4 + DOT_STEP * dots;
-        R = Math.max(R, r);
-      }
-      if (e.stem === 'up' && e.te.ev.dur.base >= 8 && !e.beam && !e.tremPair)
-        R = Math.max(R, Math.max(...e.heads.map((h) => h.dx)) + w + 0.9);
-    } else if (e.ev.style !== 'hidden') {
-      const g = restGlyph(e.te.ev.dur.base, e.ev.style === 'measure');
-      R = Math.max(
-        R,
-        e.ev.style === 'measure' ? 0 : sm.adv(g) + (e.te.ev.dur.dots ? 0.4 + DOT_STEP * e.te.ev.dur.dots : 0),
-      );
+    if (e.ev.kind === 'rest') {
+      if (e.ev.style === 'hidden') continue;
+      const measureRest = e.ev.style === 'measure';
+      const glyph = restGlyph(e.te.ev.dur.base, measureRest);
+      R = Math.max(R, measureRest ? 0 : sm.adv(glyph) + dotsWidth(e.te.ev.dur.dots));
+      continue;
     }
+    const w = headWidth(e.te.ev.dur.base);
+    for (const h of e.heads) {
+      if (h.shared) continue;
+      if (h.displaced) h.dx += e.stem === 'down' ? -(w - STEM_T) : w - STEM_T;
+      heads.push({ h, e });
+      L = Math.max(L, -h.dx);
+      let r = h.dx + w;
+      if (h.pos <= -2 || h.pos >= 10) r += sm.def.legerLineExtension as number; // its ledger line reaches beyond the head
+      R = Math.max(R, r + dotsWidth(e.te.ev.dur.dots));
+    }
+    if (e.stem === 'up' && e.te.ev.dur.base >= 8 && !e.beam && !e.tremPair)
+      R = Math.max(R, Math.max(...e.heads.map((h) => h.dx)) + w + 0.9);
   }
-  // --- Accidental stacking: all heads of this staff column together. Accidentals are placed in columns
-  // to the left of the heads, the highest first, each in the first column where it does not overlap one
-  // already there (the usual zig-zag).
+  return { heads, L, R };
+}
+
+const ACCIDENTAL_GAP = 0.12;
+const hasLedgerLine = (pos: number) => pos <= -2 || pos >= 10;
+
+/** Width (with parentheses) and height (staff positions) of an accidental's glyph. */
+function accidentalSize(acc: { glyph: string; cautionary: boolean }): { w: number; hh: number } {
+  const w = sm.adv(acc.glyph) + (acc.cautionary ? sm.adv('accidentalParensLeft') + sm.adv('accidentalParensRight') : 0);
+  const hh =
+    acc.glyph === 'accidentalSharp' || acc.glyph === 'accidentalNatural'
+      ? 6
+      : acc.glyph === 'accidentalDoubleSharp'
+        ? 4
+        : 5;
+  return { w, hh };
+}
+
+/**
+ * Accidental stacking: all heads of this staff column together. Accidentals are placed in columns to
+ * the left of the heads, the highest first, each in the first column where it does not overlap one
+ * already there (the usual zig-zag). Returns how far the leftmost reaches left of the column x.
+ */
+function stackAccidentals(heads: { h: HeadL; e: EvL }[]): number {
   const accHeads = heads.filter((x) => x.h.acc).sort((a, b) => b.h.pos - a.h.pos);
-  if (accHeads.length) {
-    const leftEdge = Math.min(...heads.map((x) => x.h.dx));
-    const stacks: { pos: number; h: number; w: number }[][] = [];
-    const info = accHeads.map((x) => {
-      const g = must(x.h.acc).glyph;
-      const w =
-        sm.adv(g) + (must(x.h.acc).cautionary ? sm.adv('accidentalParensLeft') + sm.adv('accidentalParensRight') : 0);
-      const hh = g === 'accidentalSharp' || g === 'accidentalNatural' ? 6 : g === 'accidentalDoubleSharp' ? 4 : 5;
-      return { x, w, hh };
-    });
-    const colOf: number[] = [];
-    info.forEach((it, idx) => {
-      let k = 0;
-      for (; ; k++) {
-        const st = stacks[k] ?? [];
-        if (st.every((q) => Math.abs(q.pos - it.x.h.pos) >= (q.h + it.hh) / 2)) break;
-      }
-      stacks[k] ??= [];
-      stacks[k].push({ pos: it.x.h.pos, h: it.hh, w: it.w });
-      colOf[idx] = k;
-    });
-    const colW = stacks.map((st) => Math.max(...st.map((q) => q.w)));
-    const colRight: number[] = [];
-    // An accidental level with a ledger line must clear the line's extension as well: the ledger
-    // line sticks out to the left of the head by `legerLineExtension`, and the accidental would
-    // otherwise sit on it.
-    const own = heads.filter((x) => !x.h.shared);
-    const pMin = Math.min(...own.map((x) => x.h.pos));
-    const pMax = Math.max(...own.map((x) => x.h.pos));
-    const ledgerHit = info.some((it) => {
-      const half = it.hh / 2 + 0.3;
-      for (let p = -2; p >= pMin; p -= 2) if (Math.abs(p - it.x.h.pos) < half) return true;
-      for (let p = 10; p <= pMax; p += 2) if (Math.abs(p - it.x.h.pos) < half) return true;
-      return false;
-    });
-    let edge = leftEdge - 0.2 - (ledgerHit ? (sm.def.legerLineExtension as number) : 0);
-    stacks.forEach((_, k) => {
-      colRight[k] = edge;
-      edge -= colW[k] + 0.12;
-    });
-    info.forEach((it, idx) => {
-      const k = colOf[idx];
-      it.x.h.accX = colRight[k] - it.w; // left edge of the (possibly parenthesised) glyph
-    });
-    L = Math.max(L, -(edge + 0.12));
-  }
-  // --- The arpeggio wiggle sits left of everything, including accidentals, and takes a fixed
-  // width (wiggle plus the space between it and the accidentals).
-  if (evs.some((e) => e.ev.kind === 'note' && e.ev.arpeggio)) L += 0.5 + 0.9;
-  // --- Grace notes stand to the left of the note (and its accidentals) they belong to. This
-  // reserves their width in the column's left extent; `drawGraces` draws them at that place.
-  const L0 = L;
+  if (!accHeads.length) return 0;
+  const info = accHeads.map((x) => ({ head: x.h, ...accidentalSize(must(x.h.acc)) }));
+  const stacks: { pos: number; h: number; w: number }[][] = [];
+  const colOf = info.map((it) => {
+    let k = 0;
+    while (!(stacks[k] ?? []).every((q) => Math.abs(q.pos - it.head.pos) >= (q.h + it.hh) / 2)) k++;
+    stacks[k] ??= [];
+    stacks[k].push({ pos: it.head.pos, h: it.hh, w: it.w });
+    return k;
+  });
+  // An accidental level with a ledger line must clear the line's extension as well: the ledger
+  // line sticks out to the left of the head by `legerLineExtension`, and the accidental would
+  // otherwise sit on it.
+  const positions = heads.map((x) => x.h.pos);
+  const pMin = Math.min(...positions);
+  const pMax = Math.max(...positions);
+  const ledgerHit = info.some((it) => {
+    const half = it.hh / 2 + 0.3;
+    for (let p = -2; p >= pMin; p -= 2) if (Math.abs(p - it.head.pos) < half) return true;
+    for (let p = 10; p <= pMax; p += 2) if (Math.abs(p - it.head.pos) < half) return true;
+    return false;
+  });
+  let edge = Math.min(...heads.map((x) => x.h.dx)) - 0.2 - (ledgerHit ? (sm.def.legerLineExtension as number) : 0);
+  const colRight = stacks.map((st) => {
+    const right = edge;
+    edge -= Math.max(...st.map((q) => q.w)) + ACCIDENTAL_GAP;
+    return right;
+  });
+  info.forEach((it, idx) => {
+    it.head.accX = colRight[colOf[idx]] - it.w; // left edge of the (possibly parenthesised) glyph
+  });
+  return -(edge + ACCIDENTAL_GAP);
+}
+
+/** The arpeggio wiggle sits left of everything, including accidentals: a fixed width (wiggle plus the space between it and the accidentals). */
+const ARPEGGIO_WIDTH = 0.5 + 0.9;
+const GRACE_SPACING = 0.45;
+
+/**
+ * Grace notes stand to the left of the note (and its accidentals) they belong to. This reserves their
+ * width in the column's left extent (`L0` is the extent without them, returned is the extent with
+ * them); `drawGraces` draws them at that place.
+ */
+function placeGraces(evs: EvL[], L0: number): number {
+  let L = L0;
   for (const e of evs) {
     if (e.ev.kind !== 'note' || !e.graces?.length) continue;
-    const gls = e.graces;
-    let x = -(L0 + 0.3 + (gls.length === 1 && gls[0].g.base >= 8 ? 0.7 : 0)); // right edge of the nearest grace note (a lone flag reaches out to the right)
-    for (let k = gls.length - 1; k >= 0; k--) {
-      const gl = gls[k];
+    const graces = e.graces;
+    // right edge of the nearest grace note (a lone flag reaches out to the right)
+    let x = -(L0 + 0.3 + (graces.length === 1 && graces[0].g.base >= 8 ? 0.7 : 0));
+    for (let k = graces.length - 1; k >= 0; k--) {
+      const gl = graces[k];
       gl.hw = headWidth(gl.g.base) * GRACE_SCALE;
       gl.dx = x - gl.hw;
       let left = gl.dx;
       const accs = gl.heads.filter((h) => h.acc);
       if (accs.length) {
         const aw = Math.max(...accs.map((h) => sm.adv(must(h.acc).glyph))) * GRACE_SCALE;
-        const gap =
-          0.1 +
-          (gl.heads.some((h) => h.acc && (h.pos <= -2 || h.pos >= 10))
-            ? (sm.def.legerLineExtension as number) * GRACE_SCALE
-            : 0); // clear of a ledger line
-        for (const h of accs) h.accX = gl.dx - gap - aw;
-        left = gl.dx - gap - aw;
+        const clearOfLedgerLine = gl.heads.some((h) => h.acc && hasLedgerLine(h.pos))
+          ? (sm.def.legerLineExtension as number) * GRACE_SCALE
+          : 0;
+        left = gl.dx - (0.1 + clearOfLedgerLine) - aw;
+        for (const h of accs) h.accX = left;
       }
       L = Math.max(L, -left);
-      x = left - 0.45;
+      x = left - GRACE_SPACING;
     }
   }
+  return L;
+}
+
+/** The extent to the left and right of the column x that the events of one staff need (written onto `c`), and the offsets of their heads. */
+function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
+  resetColumnLayout(evs);
+  resolveVoiceCollisions(evs);
+  const { heads, L: headsL, R } = headExtents(evs);
+  let L = Math.max(headsL, stackAccidentals(heads));
+  if (evs.some((e) => e.ev.kind === 'note' && e.ev.arpeggio)) L += ARPEGGIO_WIDTH;
+  L = placeGraces(evs, L);
   c.L[s] = Math.max(c.L[s], L);
   c.R[s] = Math.max(c.R[s], R);
   c.has[s] = true;

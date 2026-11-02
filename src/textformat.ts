@@ -389,32 +389,250 @@ interface PendingEv {
   noBeam?: boolean;
   graces?: Grace[];
 }
+type Frame = { kind: 'root' | 'tuplet' | 'beam' | 'tremolo'; items: Item[] };
+
+/** The result of parsing one voice line. */
+interface VoiceLine {
+  items: Item[];
+  marks: TimedMark[];
+  end: MarkBody[];
+}
 
 /**
  * Parses the items of one voice line, or of a mark line (`markLine`: only marks, each placed by an `@position`).
  * A mark in a voice line belongs to the event that follows it (or to the end of the voice's measure: `end`).
+ * Brackets, commands and slur starts only set up state (`pendingEv`, `pendingSlurs`, `pending`) for the event that follows.
  */
-function parseVoiceLine(
-  line: string,
-  where: string,
-  home: string,
-  markLine = false,
-): { items: Item[]; marks: TimedMark[]; end: MarkBody[] } {
-  const sc = new Scanner(line, where);
-  type Frame = { kind: 'root' | 'tuplet' | 'beam' | 'tremolo'; items: Item[] };
-  const stack: Frame[] = [{ kind: 'root', items: [] }];
-  const top = () => stack[stack.length - 1];
-  let sticky: BaseDur = 4;
-  let at: number | null = markLine ? 0 : null; // explicit position (mark lines)
-  let pending: MarkBody[] = [];
-  let pendingSlurs: { id: number; side?: Side }[] = [];
-  let pendingEv: PendingEv = {};
-  let lastEv: Event | null = null;
-  let curStaff = home; // set by \staff, sticky within the line
-  const marks: TimedMark[] = [];
-  let end: MarkBody[] = [];
+class VoiceLineParser {
+  private sc: Scanner;
+  private markLine: boolean;
+  private home: string;
+  private stack: Frame[] = [{ kind: 'root', items: [] }];
+  private sticky: BaseDur = 4;
+  /** Explicit position (mark lines). */
+  private at: number | null;
+  private pending: MarkBody[] = [];
+  private pendingSlurs: { id: number; side?: Side }[] = [];
+  private pendingEv: PendingEv = {};
+  private lastEv: Event | null = null;
+  /** Set by \staff, sticky within the line. */
+  private curStaff: string;
+  private marks: TimedMark[] = [];
+  private end: MarkBody[] = [];
 
-  const readNP = (): NotePitch => {
+  constructor(line: string, where: string, home: string, markLine: boolean) {
+    this.sc = new Scanner(line, where);
+    this.markLine = markLine;
+    this.home = home;
+    this.curStaff = home;
+    this.at = markLine ? 0 : null;
+  }
+
+  parse(): VoiceLine {
+    while (!this.sc.eof()) this.readItem();
+    if (this.stack.length !== 1) this.sc.fail('unclosed group');
+    this.flush(null);
+    return { items: this.stack[0].items, marks: this.marks, end: this.end };
+  }
+
+  private get top(): Frame {
+    return this.stack[this.stack.length - 1];
+  }
+
+  private readItem(): void {
+    const sc = this.sc;
+    const c = sc.peek();
+    if (c === '[' || c === ']' || c === '}') this.readBracket(c);
+    else if (c === '@') this.readPosition();
+    else if (/\d/.test(c)) this.readTupletHeader();
+    else if (this.readTremoloOpen()) return;
+    else if (c === '(') this.readSlurStart();
+    else if (c === ')') this.readSlurStop();
+    else if (c === '\\') this.readCommand();
+    else this.readEvent(c);
+  }
+
+  private open(kind: Frame['kind'], node: TupletGroup | BeamGroup | TremoloGroup): void {
+    this.top.items.push(node);
+    this.stack.push({ kind, items: node.items });
+  }
+
+  private close(kind: Frame['kind'], ch: string): void {
+    this.sc.i++;
+    if (this.top.kind !== kind) this.sc.fail(`unmatched ${ch}`);
+    this.stack.pop();
+  }
+
+  private readBracket(c: string): void {
+    if (c === '[') {
+      this.sc.i++;
+      this.open('beam', { kind: 'beam', items: [] });
+    } else if (c === ']') this.close('beam', ']');
+    else if (this.top.kind !== 'tremolo')
+      this.close('tuplet', '}'); // '}' closes a tuplet or a tremolo
+    else this.close('tremolo', '}');
+  }
+
+  private readPosition(): void {
+    if (!this.markLine) this.sc.fail('@ only valid in mark lines');
+    this.sc.i++;
+    this.at = fracParse(this.sc.take(/[\d/]+/y) ?? this.sc.fail('position expected'));
+  }
+
+  /** Tuplet header  a:b(opts){ */
+  private readTupletHeader(): void {
+    const sc = this.sc;
+    const [actual, normal] = must(sc.take(/(\d+):(\d+)/y))
+      .split(':')
+      .map(Number);
+    const g: TupletGroup = { kind: 'tuplet', actual, normal, items: [] };
+    if (sc.peek() === '(') {
+      const options = must(sc.take(/\([^)]*\)/y))
+        .slice(1, -1)
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean);
+      for (const x of options) this.applyTupletOption(g, x);
+    }
+    if (sc.take(/\{/y) === null) sc.fail('{ expected after tuplet');
+    this.open('tuplet', g);
+  }
+
+  private applyTupletOption(g: TupletGroup, x: string): void {
+    if (x === 'bracket') g.bracket = true;
+    else if (x === 'nobracket') g.bracket = false;
+    else if (x === 'nonum') g.number = 'none';
+    else if (x === 'above' || x === 'below') g.placement = x;
+    else if (x.startsWith('label=')) g.label = Number(x.slice(6));
+    else this.sc.fail(`bad tuplet option ${x}`);
+  }
+
+  private readTremoloOpen(): boolean {
+    const trem = this.sc.take(/trem(\d+)\{/y);
+    if (!trem) return false;
+    this.open('tremolo', { kind: 'tremolo', beams: Number(trem.slice(4, -1)), items: [] });
+    return true;
+  }
+
+  private num(): number {
+    const n = this.sc.take(/\d+/y);
+    return n ? Number(n) : 1;
+  }
+
+  private placement(): Side | undefined {
+    const c = this.sc.peek();
+    if (c === '^') {
+      this.sc.i++;
+      return 'above';
+    }
+    if (c === '_') {
+      this.sc.i++;
+      return 'below';
+    }
+    return undefined;
+  }
+
+  private readSlurStart(): void {
+    this.sc.i++;
+    const id = this.num();
+    const side = this.placement();
+    this.pendingSlurs.push({ id, ...(side ? { side } : {}) });
+  }
+
+  private readSlurStop(): void {
+    this.sc.i++;
+    const id = this.num();
+    const last = this.lastEv;
+    if (!last) this.sc.fail(') without event');
+    const ev = must(last);
+    ev.slurStop ??= [];
+    ev.slurStop.push(id);
+  }
+
+  /** A mark belongs to the next event (or the end of the measure), or in a mark line to its position. */
+  private addMark(body: MarkBody): void {
+    if (this.at !== null) this.marks.push({ ...body, tick: this.at } as TimedMark);
+    else this.pending.push(body);
+  }
+
+  private addMarkWithSide<T extends MarkBody>(body: T): void {
+    const side = this.placement();
+    this.addMark(side ? ({ ...body, placement: side } as MarkBody) : body);
+  }
+
+  /** Hands the pending marks to the event, or to the end of the measure if there is none. */
+  private flush(ev: Event | null): void {
+    if (ev) {
+      if (this.pending.length) ev.marks = [...(ev.marks ?? []), ...this.pending];
+    } else this.end = this.pending;
+    this.pending = [];
+  }
+
+  private readCommand(): void {
+    const sc = this.sc;
+    sc.i++;
+    const name = sc.take(/[A-Za-z0-9]+|[<>!]/y) ?? sc.fail('command expected');
+    if (this.readMarkCommand(name)) return;
+    switch (name) {
+      case 'clef':
+        sc.ws();
+        this.addMark({ type: 'clef', clef: parseClef(must(sc.take(/\S+/y))) });
+        break;
+      case 'tempo':
+        this.readTempo();
+        break;
+      case 'text':
+        sc.ws();
+        this.addMarkWithSide({ type: 'text', text: readString(sc) });
+        break;
+      case 'grace':
+      case 'acc':
+        this.readGraceBlock(name);
+        break;
+      case 'arp':
+        this.pendingEv.arpeggio = true;
+        break;
+      case 'staff':
+        sc.ws();
+        this.curStaff = sc.take(/\w+/y) ?? sc.fail('staff id expected');
+        break;
+      case 'nobeam':
+        this.pendingEv.noBeam = true;
+        break;
+      case 'stemup':
+        this.pendingEv.stem = 'up';
+        break;
+      case 'stemdown':
+        this.pendingEv.stem = 'down';
+        break;
+      default:
+        sc.fail(`unknown command \\${name}`);
+    }
+  }
+
+  /** Commands that are marks without further syntax: dynamics, hairpins, the simple table. Returns false for other commands. */
+  private readMarkCommand(name: string): boolean {
+    if (DYNAMICS.has(name)) this.addMarkWithSide({ type: 'dynamic', text: name });
+    else if (name === '<' || name === '>')
+      this.addMarkWithSide({ type: 'hairpin', kind: name === '<' ? 'cresc' : 'dim', id: this.num() });
+    else if (name === '!') this.addMark({ type: 'stop', of: 'hairpin', id: this.num() });
+    else if (Object.hasOwn(SIMPLE, name)) this.addMark(SIMPLE[name]);
+    else return false;
+    return true;
+  }
+
+  private readTempo(): void {
+    const sc = this.sc;
+    sc.ws();
+    const m = must(/(\d+)(\.*)=(\d+)/.exec(sc.take(/(\d+)(\.*)=(\d+)/y) ?? sc.fail('tempo like 4=115 expected')));
+    const tempo: MarkBody = { type: 'tempo', unit: Number(m[1]) as BaseDur, dots: m[2].length, bpm: Number(m[3]) };
+    sc.ws();
+    if (sc.peek() === '"') tempo.text = readString(sc);
+    this.addMark(tempo);
+  }
+
+  private readNotePitch(): NotePitch {
+    const sc = this.sc;
     const np: NotePitch = { pitch: parsePitch(sc) };
     if (sc.peek() === '!') {
       sc.i++;
@@ -428,248 +646,114 @@ function parseVoiceLine(
       np.tie = true;
     }
     return np;
-  };
-  const flush = (ev: Event | null) => {
-    if (ev) {
-      if (pending.length) ev.marks = [...(ev.marks ?? []), ...pending];
-    } else end = pending;
-    pending = [];
-  };
-  const num = () => {
-    const n = sc.take(/\d+/y);
-    return n ? Number(n) : 1;
-  };
-  const placement = (): Side | undefined => {
-    const c = sc.peek();
-    if (c === '^') {
-      sc.i++;
-      return 'above';
-    }
-    if (c === '_') {
-      sc.i++;
-      return 'below';
-    }
-    return undefined;
-  };
-  const withSide = <T extends object>(o: T, side?: Side): T & { placement?: Side } =>
-    side ? { ...o, placement: side } : o;
-  const addMark = (body: MarkBody) => {
-    if (at !== null) marks.push({ ...body, tick: at } as TimedMark);
-    else pending.push(body);
-  };
-  const open = (kind: Frame['kind'], node: TupletGroup | BeamGroup | TremoloGroup) => {
-    top().items.push(node);
-    stack.push({ kind, items: node.items });
-  };
-  const close = (kind: Frame['kind'], ch: string) => {
-    sc.i++;
-    if (top().kind !== kind) sc.fail(`unmatched ${ch}`);
-    stack.pop();
-  };
-
-  while (!sc.eof()) {
-    const c = sc.peek();
-    if (c === '[') {
-      sc.i++;
-      open('beam', { kind: 'beam', items: [] });
-      continue;
-    }
-    if (c === ']') {
-      close('beam', ']');
-      continue;
-    }
-    if (c === '}') {
-      // closes a tuplet or a tremolo
-      if (top().kind !== 'tremolo') close('tuplet', '}');
-      else close('tremolo', '}');
-      continue;
-    }
-    if (c === '@') {
-      if (!markLine) sc.fail('@ only valid in mark lines');
-      sc.i++;
-      at = fracParse(sc.take(/[\d/]+/y) ?? sc.fail('position expected'));
-      continue;
-    }
-    if (/\d/.test(c)) {
-      // tuplet header  a:b(opts){
-      const [a, b] = must(sc.take(/(\d+):(\d+)/y))
-        .split(':')
-        .map(Number);
-      const g: TupletGroup = { kind: 'tuplet', actual: a, normal: b, items: [] };
-      if (sc.peek() === '(') {
-        for (const x of must(sc.take(/\([^)]*\)/y))
-          .slice(1, -1)
-          .split(',')
-          .map((x) => x.trim())
-          .filter(Boolean)) {
-          if (x === 'bracket') g.bracket = true;
-          else if (x === 'nobracket') g.bracket = false;
-          else if (x === 'nonum') g.number = 'none';
-          else if (x === 'above' || x === 'below') g.placement = x;
-          else if (x.startsWith('label=')) g.label = Number(x.slice(6));
-          else sc.fail(`bad tuplet option ${x}`);
-        }
-      }
-      if (sc.take(/\{/y) === null) sc.fail('{ expected after tuplet');
-      open('tuplet', g);
-      continue;
-    }
-    const trem = sc.take(/trem(\d+)\{/y);
-    if (trem) {
-      open('tremolo', { kind: 'tremolo', beams: Number(trem.slice(4, -1)), items: [] });
-      continue;
-    }
-    if (c === '(') {
-      sc.i++;
-      const id = num();
-      const side = placement();
-      pendingSlurs.push({ id, ...(side ? { side } : {}) });
-      continue;
-    }
-    if (c === ')') {
-      sc.i++;
-      const id = num();
-      if (!lastEv) sc.fail(') without event');
-      must(lastEv).slurStop ??= [];
-      must(lastEv).slurStop.push(id);
-      continue;
-    }
-    if (c === '\\') {
-      sc.i++;
-      const name = sc.take(/[A-Za-z0-9]+|[<>!]/y);
-      if (!name) sc.fail('command expected');
-      if (DYNAMICS.has(must(name))) addMark(withSide({ type: 'dynamic', text: must(name) }, placement()));
-      else if (name === '<' || name === '>')
-        addMark(withSide({ type: 'hairpin', kind: name === '<' ? 'cresc' : 'dim', id: num() }, placement()));
-      else if (name === '!') addMark({ type: 'stop', of: 'hairpin', id: num() });
-      else if (Object.hasOwn(SIMPLE, must(name))) addMark(SIMPLE[must(name)]);
-      else if (name === 'clef') {
-        sc.ws();
-        addMark({ type: 'clef', clef: parseClef(must(sc.take(/\S+/y))) });
-      } else if (name === 'tempo') {
-        sc.ws();
-        const m = must(/(\d+)(\.*)=(\d+)/.exec(sc.take(/(\d+)(\.*)=(\d+)/y) ?? sc.fail('tempo like 4=115 expected')));
-        const tm: MarkBody = { type: 'tempo', unit: Number(m[1]) as BaseDur, dots: m[2].length, bpm: Number(m[3]) };
-        sc.ws();
-        if (sc.peek() === '"') tm.text = readString(sc);
-        addMark(tm);
-      } else if (name === 'text') {
-        sc.ws();
-        addMark(withSide({ type: 'text', text: readString(sc) }, placement()));
-      } else if (name === 'grace' || name === 'acc') {
-        sc.ws();
-        if (sc.take(/\{/y) === null) sc.fail(`{ expected after \\${name}`);
-        for (;;) {
-          sc.ws();
-          if (sc.peek() === '}') {
-            sc.i++;
-            break;
-          }
-          const pitches: NotePitch[] = [];
-          if (sc.peek() === '<') {
-            sc.i++;
-            for (;;) {
-              sc.ws();
-              if (sc.peek() === '>') {
-                sc.i++;
-                break;
-              }
-              pitches.push(readNP());
-            }
-            if (!pitches.length) sc.fail('empty chord');
-          } else pitches.push(readNP());
-          if (sc.take(/:/y) === null) sc.fail('grace note duration expected, like d5:8');
-          const d = parseDur(sc);
-          if (d.dots) sc.fail('grace notes cannot be dotted');
-          pendingEv.graces ??= [];
-          pendingEv.graces.push({ pitches, base: d.base, ...(name === 'acc' ? { slash: true } : {}) });
-        }
-      } else if (name === 'arp') pendingEv.arpeggio = true;
-      else if (name === 'staff') {
-        sc.ws();
-        curStaff = sc.take(/\w+/y) ?? sc.fail('staff id expected');
-      } else if (name === 'nobeam') pendingEv.noBeam = true;
-      else if (name === 'stemup') pendingEv.stem = 'up';
-      else if (name === 'stemdown') pendingEv.stem = 'down';
-      else sc.fail(`unknown command \\${name}`);
-      continue;
-    }
-
-    // ---- event. Whatever is left is a note, chord or rest; the prefixes handled above were
-    // commands and brackets, which only set up state (`pendingEv`, `pendingSlurs`) for the event.
-    if (markLine) sc.fail('events not allowed in mark lines');
-    let ev: Event;
-    const readDur = (): Dur => {
-      if (sc.peek() === ':') {
-        sc.i++;
-        const d = parseDur(sc);
-        sticky = d.base;
-        return d;
-      }
-      return { base: sticky, dots: 0 };
-    };
-    if (c === 'r' || c === 's' || c === 'R') {
-      sc.i++;
-      const rest: RestEvent = {
-        kind: 'rest',
-        style: c === 's' ? 'hidden' : c === 'R' ? 'measure' : 'normal',
-        dur: { base: 4, dots: 0 },
-      };
-      if (c === 'r' && sc.peek() === '@') {
-        sc.i++;
-        rest.display = parsePitch(sc);
-      }
-      if (pendingEv.graces) sc.fail('grace notes belong in front of a note, not a rest');
-      rest.dur = readDur();
-      ev = rest;
-    } else {
-      const ne: NoteEvent = { kind: 'note', dur: { base: 4, dots: 0 }, pitches: [] };
-      if (c === '<') {
-        sc.i++;
-        for (;;) {
-          sc.ws();
-          if (sc.peek() === '>') {
-            sc.i++;
-            break;
-          }
-          ne.pitches.push(readNP());
-        }
-        if (!ne.pitches.length) sc.fail('empty chord');
-      } else ne.pitches.push(readNP());
-      ne.dur = readDur();
-      if (sc.peek() === '~') {
-        if (ne.pitches.length !== 1) sc.fail('tie the pitches of a chord inside <>');
-        sc.i++;
-        ne.pitches[0].tie = true;
-      }
-      for (;;) {
-        const art = sc.take(/->/y) ? 'accent' : sc.take(/-\^/y) ? 'marcato' : sc.take(/-\./y) ? 'staccato' : undefined;
-        if (!art) break;
-        ne.art ??= [];
-        ne.art.push(art);
-      }
-      if (ne.art) {
-        const side = placement();
-        if (side) ne.artSide = side;
-      }
-      if (pendingEv.graces) ne.graces = pendingEv.graces;
-      if (pendingEv.arpeggio) ne.arpeggio = true;
-      if (pendingEv.noBeam) ne.noBeam = true;
-      ev = ne;
-    }
-    if (pendingSlurs.length) ev.slurStart = pendingSlurs;
-    pendingSlurs = [];
-    if (pendingEv.stem) ev.stem = pendingEv.stem;
-    if (curStaff !== home) ev.staff = curStaff;
-    pendingEv = {};
-    flush(ev);
-    top().items.push(ev);
-    lastEv = ev;
   }
-  if (stack.length !== 1) sc.fail('unclosed group');
-  flush(null);
-  const items = stack[0].items;
-  return { items, marks, end };
+
+  /** A single pitch, or a chord <...> of pitches. */
+  private readPitches(): NotePitch[] {
+    const sc = this.sc;
+    if (sc.peek() !== '<') return [this.readNotePitch()];
+    sc.i++;
+    const pitches: NotePitch[] = [];
+    for (;;) {
+      sc.ws();
+      if (sc.peek() === '>') {
+        sc.i++;
+        break;
+      }
+      pitches.push(this.readNotePitch());
+    }
+    if (!pitches.length) sc.fail('empty chord');
+    return pitches;
+  }
+
+  /** \grace{...} and \acc{...} (slashed): grace notes for the next note. */
+  private readGraceBlock(name: 'grace' | 'acc'): void {
+    const sc = this.sc;
+    sc.ws();
+    if (sc.take(/\{/y) === null) sc.fail(`{ expected after \\${name}`);
+    for (;;) {
+      sc.ws();
+      if (sc.peek() === '}') {
+        sc.i++;
+        return;
+      }
+      const pitches = this.readPitches();
+      if (sc.take(/:/y) === null) sc.fail('grace note duration expected, like d5:8');
+      const d = parseDur(sc);
+      if (d.dots) sc.fail('grace notes cannot be dotted');
+      this.pendingEv.graces ??= [];
+      this.pendingEv.graces.push({ pitches, base: d.base, ...(name === 'acc' ? { slash: true } : {}) });
+    }
+  }
+
+  /** An explicit duration (which becomes the new default), else the last one used. */
+  private readDur(): Dur {
+    if (this.sc.peek() !== ':') return { base: this.sticky, dots: 0 };
+    this.sc.i++;
+    const d = parseDur(this.sc);
+    this.sticky = d.base;
+    return d;
+  }
+
+  private readRest(c: string): RestEvent {
+    const sc = this.sc;
+    sc.i++;
+    const rest: RestEvent = {
+      kind: 'rest',
+      style: c === 's' ? 'hidden' : c === 'R' ? 'measure' : 'normal',
+      dur: { base: 4, dots: 0 },
+    };
+    if (c === 'r' && sc.peek() === '@') {
+      sc.i++;
+      rest.display = parsePitch(sc);
+    }
+    if (this.pendingEv.graces) sc.fail('grace notes belong in front of a note, not a rest');
+    rest.dur = this.readDur();
+    return rest;
+  }
+
+  private readNoteEvent(): NoteEvent {
+    const sc = this.sc;
+    const note: NoteEvent = { kind: 'note', dur: { base: 4, dots: 0 }, pitches: this.readPitches() };
+    note.dur = this.readDur();
+    if (sc.peek() === '~') {
+      if (note.pitches.length !== 1) sc.fail('tie the pitches of a chord inside <>');
+      sc.i++;
+      note.pitches[0].tie = true;
+    }
+    for (;;) {
+      const art = sc.take(/->/y) ? 'accent' : sc.take(/-\^/y) ? 'marcato' : sc.take(/-\./y) ? 'staccato' : undefined;
+      if (!art) break;
+      note.art ??= [];
+      note.art.push(art);
+    }
+    if (note.art) {
+      const side = this.placement();
+      if (side) note.artSide = side;
+    }
+    if (this.pendingEv.graces) note.graces = this.pendingEv.graces;
+    if (this.pendingEv.arpeggio) note.arpeggio = true;
+    if (this.pendingEv.noBeam) note.noBeam = true;
+    return note;
+  }
+
+  /** Whatever is left is a note, chord or rest; the prefixes handled before were commands and brackets. */
+  private readEvent(c: string): void {
+    if (this.markLine) this.sc.fail('events not allowed in mark lines');
+    const ev: Event = c === 'r' || c === 's' || c === 'R' ? this.readRest(c) : this.readNoteEvent();
+    if (this.pendingSlurs.length) ev.slurStart = this.pendingSlurs;
+    this.pendingSlurs = [];
+    if (this.pendingEv.stem) ev.stem = this.pendingEv.stem;
+    if (this.curStaff !== this.home) ev.staff = this.curStaff;
+    this.pendingEv = {};
+    this.flush(ev);
+    this.top.items.push(ev);
+    this.lastEv = ev;
+  }
+}
+
+function parseVoiceLine(line: string, where: string, home: string, markLine = false): VoiceLine {
+  return new VoiceLineParser(line, where, home, markLine).parse();
 }
 
 function readString(sc: Scanner): string {
@@ -691,82 +775,104 @@ function tokens(line: string): string[] {
   return line.match(/(?:[^\s"]|"(?:[^"\\]|\\.)*")+/g) ?? [];
 }
 
+/** The state of reading a text file line by line. */
+interface TextState {
+  score: Score;
+  /** The measure being read; voice lines belong to it. */
+  cur: Measure | null;
+  /** Positioned marks (mark lines), hung on events once the voices are known. */
+  timed: Map<StaffMeasure, TimedMark[]>;
+}
+
+/** An indented line: the voice (`s1.1: ...`) or mark line (`s1@: ...`) of a staff in the current measure. */
+function parseVoiceStatement(st: TextState, raw: string, where: string): void {
+  if (!st.cur) throw new Error('voice line outside measure');
+  const m = /^\s+(\w+)(?:\.(\d+)|@):\s*(.*)$/.exec(raw);
+  if (!m) throw new Error('bad voice line');
+  const sid = m[1];
+  if (!st.score.staves.some((s) => s.id === sid)) throw new Error(`unknown staff ${sid}`);
+  st.cur.staves[sid] ??= { voices: [] };
+  const sm = st.cur.staves[sid];
+  const markLine = m[2] === undefined;
+  const { items, marks, end } = parseVoiceLine(m[3], where, sid, markLine);
+  if (!markLine) sm.voices.push({ id: Number(m[2]), items, ...(end.length ? { end } : {}) });
+  if (marks.length) st.timed.set(sm, [...(st.timed.get(sm) ?? []), ...marks]);
+}
+
+/** `m<N> time=3/4 key=2 break=system barline=final`: starts a measure. */
+function parseMeasureStatement(st: TextState, t: string[]): void {
+  const o = kv(t.slice(1));
+  const measure: Measure = { staves: {} }; // the number in `m<N>` is only a label
+  if (o.time) {
+    const [beats, beatType] = o.time.split('/').map(Number);
+    measure.time = { beats, beatType };
+  }
+  if (o.key !== undefined) measure.key = Number(o.key);
+  if (o.break) measure.breakBefore = o.break as 'system' | 'page';
+  if (o.barline) measure.barline = o.barline as Measure['barline'];
+  st.score.measures.push(measure);
+  st.cur = measure;
+}
+
+/** An unindented line: a header statement (title, page, staff, group) or a measure start. */
+function parseStatement(st: TextState, t: string[]): void {
+  const { score } = st;
+  const head = t[0];
+  if (head === 'title' || head === 'subtitle' || head === 'composer' || head === 'rights')
+    score.meta[head] = JSON.parse(t[1]);
+  else if (head === 'page') {
+    const [w, h] = t[1].split('x').map(Number);
+    const o = kv(t.slice(2));
+    score.page = {
+      width: w,
+      height: h,
+      margin: Number(o.margin ?? 10),
+      staffSpace: Number(o.space ?? 1.91),
+      ...(o.numbers === 'all' || o.numbers === 'none' ? { measureNumbers: o.numbers } : {}),
+    };
+  } else if (head === 'staff') {
+    const o = kv(t.slice(2));
+    score.staves.push({
+      id: t[1],
+      clef: parseClef(o.clef ?? 'G2'),
+      ...(o.name ? { name: JSON.parse(o.name) } : {}),
+    });
+  } else if (head === 'brace' || head === 'bracket') score.groups.push({ kind: head, staves: t.slice(1) });
+  else if (/^m\d+$/.test(head)) parseMeasureStatement(st, t);
+  else throw new Error(`unknown statement ${head}`);
+}
+
 export function parseText(src: string): Score {
-  const score: Score = {
-    meta: {},
-    page: { width: 210, height: 297, margin: 10, staffSpace: 1.91 },
-    staves: [],
-    groups: [],
-    measures: [],
+  const st: TextState = {
+    score: {
+      meta: {},
+      page: { width: 210, height: 297, margin: 10, staffSpace: 1.91 },
+      staves: [],
+      groups: [],
+      measures: [],
+    },
+    cur: null,
+    timed: new Map(),
   };
-  let cur: Measure | null = null;
-  const timed = new Map<StaffMeasure, TimedMark[]>(); // positioned marks (mark lines), hung on events once the voices are known
-  const lines = src.split(/\r?\n/);
-  lines.forEach((raw, ln) => {
+  src.split(/\r?\n/).forEach((raw, ln) => {
     const where = `line ${ln + 1}`;
     if (!raw.trim() || raw.trim().startsWith('#')) return;
     try {
-      if (/^\s/.test(raw)) {
-        if (!cur) throw new Error('voice line outside measure');
-        const m = /^\s+(\w+)(?:\.(\d+)|@):\s*(.*)$/.exec(raw);
-        if (!m) throw new Error('bad voice line');
-        const sid = m[1];
-        if (!score.staves.some((s) => s.id === sid)) throw new Error(`unknown staff ${sid}`);
-        cur.staves[sid] ??= { voices: [] };
-        const sm = cur.staves[sid];
-        const markLine = m[2] === undefined;
-        const { items, marks, end } = parseVoiceLine(m[3], where, sid, markLine);
-        if (!markLine) sm.voices.push({ id: Number(m[2]), items, ...(end.length ? { end } : {}) });
-        if (marks.length) (timed.get(sm) ?? must(timed.set(sm, []).get(sm))).push(...marks);
-        return;
-      }
-      const t = tokens(raw.trim());
-      const head = t[0];
-      if (head === 'title' || head === 'subtitle' || head === 'composer' || head === 'rights')
-        score.meta[head] = JSON.parse(t[1]);
-      else if (head === 'page') {
-        const [w, h] = t[1].split('x').map(Number);
-        const o = kv(t.slice(2));
-        score.page = {
-          width: w,
-          height: h,
-          margin: Number(o.margin ?? 10),
-          staffSpace: Number(o.space ?? 1.91),
-          ...(o.numbers === 'all' || o.numbers === 'none' ? { measureNumbers: o.numbers } : {}),
-        };
-      } else if (head === 'staff') {
-        const o = kv(t.slice(2));
-        score.staves.push({
-          id: t[1],
-          clef: parseClef(o.clef ?? 'G2'),
-          ...(o.name ? { name: JSON.parse(o.name) } : {}),
-        });
-      } else if (head === 'brace' || head === 'bracket') score.groups.push({ kind: head, staves: t.slice(1) });
-      else if (/^m\d+$/.test(head)) {
-        const o = kv(t.slice(1));
-        cur = { staves: {} }; // the number in `m<N>` is only a label
-        if (o.time) {
-          const [b, bt] = o.time.split('/').map(Number);
-          cur.time = { beats: b, beatType: bt };
-        }
-        if (o.key !== undefined) cur.key = Number(o.key);
-        if (o.break) cur.breakBefore = o.break as 'system' | 'page';
-        if (o.barline) cur.barline = o.barline as Measure['barline'];
-        score.measures.push(cur);
-      } else throw new Error(`unknown statement ${head}`);
+      if (/^\s/.test(raw)) parseVoiceStatement(st, raw, where);
+      else parseStatement(st, tokens(raw.trim()));
     } catch (e) {
       throw new Error(`${where}: ${(e as Error).message}`);
     }
   });
-  for (const m of score.measures)
+  for (const m of st.score.measures)
     for (const sm of Object.values(m.staves)) {
       sm.voices.sort((a, b) => a.id - b.id);
-      const tm = timed.get(sm);
-      if (tm)
+      const marks = st.timed.get(sm);
+      if (marks)
         anchorMarks(
           sm,
-          tm.sort((a, b) => a.tick - b.tick),
+          marks.sort((a, b) => a.tick - b.tick),
         );
     }
-  return score;
+  return st.score;
 }
