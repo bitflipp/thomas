@@ -460,6 +460,16 @@ export function prepare(score: Score, cache?: PrepCache): Prepared {
   return { score, measures, clefAt, measureLen, keyOf, timeOf, entries: cache ? entries : undefined };
 }
 
+/** The clef change at tick 0 of measure `mi` on staff `si`, if any. It is drawn at the end of the previous measure (as a small clef), not at the start of its own. */
+export function clefAtStart(score: Score, mi: number): (Clef | undefined)[] {
+  const m = score.measures[mi];
+  return score.staves.map((st) => {
+    if (!m) return undefined;
+    const mk = marksOf(m.staves[st.id] ?? { voices: [] }).find((x) => x.type === 'clef' && x.tick === 0);
+    return mk?.type === 'clef' ? mk.clef : undefined;
+  });
+}
+
 /** The key and time signature in force at every measure (what `keyAt` and `timeAt` return, without searching back each time). */
 function signaturesOf(score: Score): { keyOf: number[]; timeOf: TimeSig[] } {
   const keyOf: number[] = [];
@@ -485,6 +495,7 @@ function measureSignature(env: PrepEnv, mi: number): string {
     mi > 0 ? env.keyOf[mi - 1] : 0,
     env.timeOf[mi],
     staves.map((si) => env.clefAt(si, mi, -1)),
+    clefAtStart(score, mi + 1),
     staves.map((si) => env.ottavaAt(si, mi, -1, false)),
     env.tiedFromPrev.map((t) => [...t.keys()].sort()),
   ]);

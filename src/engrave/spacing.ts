@@ -11,6 +11,7 @@ import { keyAt, PPQ, timeAt } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
 import type { EvL, HeadL, Prepared } from './prep.ts';
+import { clefAtStart } from './prep.ts';
 
 const sm = loadSmufl();
 
@@ -62,6 +63,9 @@ export function keyChangeWidth(score: Score, mi: number): number {
   return n * (sm.adv(kc.add ? (kc.to > 0 ? 'accidentalSharp' : 'accidentalFlat') : 'accidentalNatural') + 0.12) + 0.6;
 }
 
+/** Clear space on each side of a small clef at the end of a measure. */
+export const END_CLEF_GAP = 0.5;
+
 export interface Column {
   tick: number;
   evs: EvL[]; // events starting here (all staves)
@@ -82,6 +86,7 @@ export interface MeasureSpacing {
   lead: number; // x of first column at minimum
   endTrail: number; // required distance from last column to barline (per staff max)
   endReq: number[]; // per-staff: R of last occupied col
+  endClef: boolean[]; // per-staff: the next measure starts with a clef change, drawn small before the barline
   prefix: number; // extra leading width (time signature change)
   timeSig?: { beats: number; beatType: number };
   minWidth: number;
@@ -104,7 +109,7 @@ function newColumn(tick: number, nStaves: number): Column {
 }
 
 /** Groups the visible events and clef changes of a measure into columns by tick, in time order. */
-function collectColumns(prep: Prepared, mi: number, skipClef0: boolean): { cols: Column[]; restOnly: boolean } {
+function collectColumns(prep: Prepared, mi: number): { cols: Column[]; restOnly: boolean } {
   const nStaves = prep.score.staves.length;
   const byTick = new Map<number, Column>();
   const columnAt = (tick: number): Column => {
@@ -129,7 +134,7 @@ function collectColumns(prep: Prepared, mi: number, skipClef0: boolean): { cols:
       c.has[s] = true;
     }
     for (const m of sml.marks)
-      if (m.type === 'clef' && !(skipClef0 && m.tick === 0)) {
+      if (m.type === 'clef' && m.tick > 0) {
         const c = columnAt(m.tick);
         c.clefChange[s] = true;
         c.has[s] = true;
@@ -187,13 +192,13 @@ function measurePrefix(prep: Prepared, mi: number): { prefix: number; timeSig?: 
 }
 
 /**
- * Builds the columns of measure `mi` and measures it at minimum and compressed width. `skipClef0` is the
- * "first in system" variant, where a clef change at tick 0 is not drawn because the system's own clef
- * already shows it. Runs twice per measure, so everything it writes onto the `EvL`s must be idempotent.
+ * Builds the columns of measure `mi` and measures it at minimum and compressed width. A clef change at
+ * tick 0 takes no column: it is a small clef at the end of the previous measure (`endClef`). May run more
+ * than once per measure, so everything it writes onto the `EvL`s must be idempotent.
  */
-export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): MeasureSpacing {
+export function spaceMeasure(prep: Prepared, mi: number): MeasureSpacing {
   const nStaves = prep.score.staves.length;
-  const { cols, restOnly } = collectColumns(prep, mi, skipClef0);
+  const { cols, restOnly } = collectColumns(prep, mi);
   measureColumnExtents(cols, nStaves);
   separateCrossStaffStems(cols);
   // Ideal distances: from each column to the previous one by elapsed time. `endIdeal` is the
@@ -215,6 +220,7 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
     lead: 0.9 + prefix + Math.max(0, ...cols.slice(0, 1).flatMap((c) => c.L)),
     endTrail: 0.75,
     endReq,
+    endClef: clefAtStart(prep.score, mi + 1).map((c) => c !== undefined),
     prefix,
     timeSig,
     minWidth: 0,
@@ -499,6 +505,10 @@ export function placeMeasure(sp: MeasureSpacing, f: number, z = 1): PlacedMeasur
   if (sp.cols.length === 0 || sp.restOnly) endX = Math.max(endX, sp.lead + 5.5 * Math.min(1.5, f));
   for (let s = 0; s < nS; s++)
     if (lastOcc[s] >= 0) endX = Math.max(endX, xs[lastOcc[s]] + z * (sp.cols[lastOcc[s]].R[s] + sp.endTrail));
+  const clefW = sm.adv('gClefChange') + 2 * END_CLEF_GAP;
+  for (let s = 0; s < nS; s++)
+    if (sp.endClef[s])
+      endX = Math.max(endX, (lastOcc[s] >= 0 ? xs[lastOcc[s]] + z * sp.cols[lastOcc[s]].R[s] : sp.lead) + z * clefW);
   return { xs, width: endX, endX };
 }
 

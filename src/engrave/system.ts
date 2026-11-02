@@ -132,11 +132,11 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   // Both variants of a measure's spacing are made together (they write onto the same records), and kept with its cache entry.
   const spacing = (mi: number): [MeasureSpacing, MeasureSpacing] => {
     const e = prep.entries?.[mi];
-    if (!e) return [spaceMeasure(prep, mi, false), spaceMeasure(prep, mi, true)];
-    if (!(e.spN && e.spF)) {
-      e.spN = spaceMeasure(prep, mi, false);
-      e.spF = spaceMeasure(prep, mi, true);
+    if (!e) {
+      const sp = spaceMeasure(prep, mi);
+      return [sp, sp];
     }
+    if (!(e.spN && e.spF)) e.spN = e.spF = spaceMeasure(prep, mi);
     return [e.spN, e.spF];
   };
   const spacings = score.measures.map((_, mi) => spacing(mi));

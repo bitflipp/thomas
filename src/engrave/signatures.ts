@@ -9,7 +9,7 @@ import type { Prepared } from './prep.ts';
 import { clefBottomStep, posToY } from './prep.ts';
 import type { Prim } from './scene.ts';
 import { oid, tagFrom } from './scene.ts';
-import { keyChange } from './spacing.ts';
+import { END_CLEF_GAP, keyChange } from './spacing.ts';
 
 const sm = loadSmufl();
 
@@ -137,13 +137,23 @@ function drawKeyChange(P: Prim[], ctx: SysCtx, mi: number, s: number, y0: number
 function drawClefChanges(P: Prim[], ctx: SysCtx, mi: number, s: number, y0: number): void {
   for (const mk of ctx.prep.measures[mi][s].marks) {
     if (mk.type !== 'clef') continue;
-    if (mk.tick === 0 && mi === ctx.a) continue;
+    if (mk.tick === 0) continue; // drawn at the end of the previous measure
     const g = clefGlyph(mk.clef, true);
     const cx = xAtTick(ctx, mi, mk.tick);
     const col = ctx.spacing[mi].cols.find((c) => c.tick === mk.tick);
     const L = col ? col.L[s] : 0;
     P.push({ t: 'glyph', name: g.name, x: cx - L + 0.5, y: y0 + g.y, k: 'clef', o: oid(mk), r: mk });
   }
+}
+
+/** A clef change at the start of the next measure, drawn small before this measure's barline. */
+function drawEndClef(P: Prim[], ctx: SysCtx, mi: number, s: number, y0: number): void {
+  const next = ctx.prep.measures[mi + 1]?.[s];
+  const mk = next?.marks.find((m) => m.type === 'clef' && m.tick === 0);
+  if (mk?.type !== 'clef') return;
+  const g = clefGlyph(mk.clef, true);
+  const x = ctx.mx[mi] + ctx.placed[mi].endX - END_CLEF_GAP - sm.adv(g.name);
+  P.push({ t: 'glyph', name: g.name, x, y: y0 + g.y, k: 'clef', o: oid(mk), r: mk });
 }
 
 /** Changes inside a system: key and time signature at the start of a measure, and clef changes at their column. */
@@ -155,5 +165,6 @@ export function drawMidSystemChanges(P: Prim[], ctx: SysCtx, s: number, y0: numb
       if (score.measures[mi].time) drawTimeSig(P, x, y0, timeAt(score, mi));
     }
     drawClefChanges(P, ctx, mi, s, y0);
+    drawEndClef(P, ctx, mi, s, y0);
   }
 }
