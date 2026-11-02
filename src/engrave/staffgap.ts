@@ -6,7 +6,7 @@ import type { SysCtx } from './draw.ts';
 import { drawSystemNotes } from './draw.ts';
 import { resetDrawing } from './justify.ts';
 import type { Prim } from './scene.ts';
-import { drawSpanners } from './spanners.ts';
+import { drawStaffMarks, planSpanners } from './spanners.ts';
 
 const sm = loadSmufl();
 
@@ -45,7 +45,7 @@ function hasCrossStaffNotes(ctx: SysCtx): boolean {
  */
 export function drawNotesFixingCrossStaffGap(ctx: SysCtx): void {
   drawFixingGap(ctx);
-  ctx.base = { prims: ctx.prims.map((p) => p.length), sky: ctx.sky.map((k) => k.boxes.length) };
+  markNotes(ctx);
 }
 
 /** Empties a system of everything added after its notes (spanners, marks) so that those can be drawn again. */
@@ -79,31 +79,76 @@ function drawFixingGap(ctx: SysCtx): void {
   ctx.pinned = true;
 }
 
+/** Where the notes alone end, and where the notes with their ties and slurs do. */
+function markNotes(ctx: SysCtx): void {
+  ctx.base = { prims: ctx.prims.map((p) => p.length), sky: ctx.sky.map((k) => k.boxes.length) };
+}
+function markSpanners(ctx: SysCtx): void {
+  ctx.ts = { prims: ctx.prims.map((p) => p.length), sky: ctx.sky.map((k) => k.boxes.length) };
+}
+
+/** Removes the marks of a system (what came after its ties and slurs) so that they can be drawn again. */
+function rewindToSpanners(ctx: SysCtx): void {
+  const ts = must(ctx.ts);
+  ctx.prims.forEach((p, s) => {
+    p.length = ts.prims[s];
+  });
+  ctx.sky.forEach((k, s) => {
+    k.boxes.length = ts.sky[s];
+  });
+}
+
+/**
+ * Draws the ties and slurs that `dirty` systems (whose notes were just drawn) and changes since the last drawing make
+ * necessary, then all marks. A system that is not affected (see `planSpanners`) still holds its notes with their ties
+ * and slurs from before; only its marks, which come last, are taken off to be drawn again.
+ */
+function drawSpannersFor(systems: SysCtx[], dirty: Set<number>): void {
+  const plan = planSpanners(
+    systems,
+    dirty,
+    systems.map((ctx) => ctx.spanSig),
+  );
+  systems.forEach((ctx, i) => {
+    if (dirty.has(i)) return;
+    if (plan.affected.has(i)) rewindToNotes(ctx);
+    else rewindToSpanners(ctx);
+  });
+  plan.draw();
+  systems.forEach((ctx, i) => {
+    if (!plan.affected.has(i)) return;
+    markSpanners(ctx);
+    ctx.spanSig = plan.sigs[i];
+  });
+  drawStaffMarks(systems);
+}
+
 /**
  * Slurs and marks may need more room between the staves of a system whose gap was pinned for its
- * cross-staff beams: widen it and redraw (notes and spanners).
+ * cross-staff beams: widen it and draw it again (notes, then the ties and slurs connected to it, then all marks).
  */
-export function widenPinnedGaps(systems: SysCtx[]): void {
+function widenPinnedGaps(systems: SysCtx[]): void {
   for (let it = 0; it < 4; it++) {
-    let changed = false;
-    for (const ctx of systems) {
-      if (!ctx.pinned) continue;
+    const changed = new Set<number>();
+    systems.forEach((ctx, i) => {
+      if (!ctx.pinned) return;
       for (let s = 1; s < ctx.prep.score.staves.length; s++) {
         const want = staffGap(ctx, s);
         if (want > ctx.gap[s] + 0.01) {
           ctx.gap[s] = want;
-          changed = true;
+          changed.add(i);
         }
       }
-    }
-    if (!changed) break;
-    for (const ctx of systems) {
+    });
+    if (!changed.size) break;
+    for (const i of changed) {
+      const ctx = systems[i];
       ctx.widened = true;
-      ctx.base = undefined;
       resetDrawing(ctx);
       drawSystemNotes(ctx);
+      markNotes(ctx);
     }
-    drawSpanners(systems);
+    drawSpannersFor(systems, changed);
   }
 }
 
@@ -185,14 +230,16 @@ function alignDynamicsBetween(ctx: SysCtx, s: number): void {
 }
 
 /**
- * Runs the notes of all systems through their cross-staff gaps, then the spanners, then widens gaps the spanners need.
- * The notes of the systems in `kept` were drawn by an earlier run and are still good: they only lose what came after.
+ * Draws the notes of the systems that need it, then the spanners, then widens gaps the spanners need. The systems
+ * in `kept` were drawn by an earlier run and their notes are still good (`drawSpannersFor` sees what else needs doing).
  */
 export function drawNotesAndSpanners(systems: SysCtx[], kept?: Set<SysCtx>): void {
-  for (const ctx of systems) {
-    if (kept?.has(ctx)) rewindToNotes(ctx);
-    else drawNotesFixingCrossStaffGap(ctx);
-  }
-  drawSpanners(systems);
+  const dirty = new Set<number>();
+  systems.forEach((ctx, i) => {
+    if (kept?.has(ctx)) return;
+    drawNotesFixingCrossStaffGap(ctx);
+    dirty.add(i);
+  });
+  drawSpannersFor(systems, dirty);
   widenPinnedGaps(systems);
 }

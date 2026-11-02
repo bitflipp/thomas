@@ -4,7 +4,7 @@
 // highlight) cannot hold on to events or marks themselves. It holds a `Ref` instead: measure index,
 // staff id, voice id and the flat event index within the voice, which survive an edit that does not
 // restructure that voice. `indexScore` goes from objects to addresses and the `*Of` functions back.
-import type { Event, Mark, Score, TupletGroup, Voice } from '../model.ts';
+import type { Event, Mark, Measure, Score, TupletGroup, Voice } from '../model.ts';
 import { flattenVoice, marksOf } from '../model.ts';
 
 /** An event: measure, staff id, voice id and its index in the voice's flattened event order. */
@@ -60,23 +60,50 @@ export interface ScoreIndex {
   tuplet: Map<TupletGroup, EvAddr & { depth: number }>;
 }
 
+/** What one measure contributes to the index. */
+interface Fragment {
+  mi: number;
+  evs: [Event, EvAddr][];
+  marks: [Mark, MarkAddr][];
+  tuplets: [TupletGroup, EvAddr & { depth: number }][];
+}
+
+/** The fragment of each measure object (kept for as long as the measure is: edits leave most measures untouched), valid for one measure index. */
+const fragments = new WeakMap<Measure, Fragment>();
+
+function fragmentOf(m: Measure, mi: number): Fragment {
+  const old = fragments.get(m);
+  if (old && old.mi === mi) return old;
+  const frag: Fragment = { mi, evs: [], marks: [], tuplets: [] };
+  const seen = new Set<TupletGroup>();
+  for (const [staff, sm] of Object.entries(m.staves)) {
+    for (const mk of marksOf(sm)) frag.marks.push([mk, { mi, staff, voice: mk.voice, idx: mk.idx, k: mk.k }]);
+    for (const v of sm.voices) {
+      for (const te of flattenVoice(v)) {
+        const a = { mi, staff, voice: v.id, idx: te.index };
+        frag.evs.push([te.ev, a]);
+        for (let depth = 0; depth < te.tuplets.length; depth++) {
+          const t = te.tuplets[depth];
+          if (seen.has(t)) continue;
+          seen.add(t);
+          frag.tuplets.push([t, { ...a, depth }]);
+        }
+      }
+    }
+  }
+  fragments.set(m, frag);
+  return frag;
+}
+
 export function indexScore(score: Score): ScoreIndex {
   const ev = new Map<Event, EvAddr>();
   const mark = new Map<Mark, MarkAddr>();
   const tuplet = new Map<TupletGroup, EvAddr & { depth: number }>();
   score.measures.forEach((m, mi) => {
-    for (const [staff, sm] of Object.entries(m.staves)) {
-      for (const mk of marksOf(sm)) mark.set(mk, { mi, staff, voice: mk.voice, idx: mk.idx, k: mk.k });
-      for (const v of sm.voices) {
-        for (const te of flattenVoice(v)) {
-          const a = { mi, staff, voice: v.id, idx: te.index };
-          ev.set(te.ev, a);
-          te.tuplets.forEach((t, depth) => {
-            if (!tuplet.has(t)) tuplet.set(t, { ...a, depth });
-          });
-        }
-      }
-    }
+    const frag = fragmentOf(m, mi);
+    for (const [k, v] of frag.evs) ev.set(k, v);
+    for (const [k, v] of frag.marks) mark.set(k, v);
+    for (const [k, v] of frag.tuplets) if (!tuplet.has(k)) tuplet.set(k, v);
   });
   return { ev, mark, tuplet };
 }

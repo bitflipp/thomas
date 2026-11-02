@@ -57,13 +57,14 @@ function findTieTarget(evs: EvL[], i: number, head: EvL['heads'][number]): { nex
 }
 
 /**
- * Ties of one voice. The tie of a note whose successor is in another system is drawn in two halves.
+ * Ties of one voice, one unit per tied head. The tie of a note whose successor is in another system is drawn in two halves.
  * Nested ties of a chord are drawn from the inside out: the arc nearest the chord first, the outer
  * ones around it, so each can clear the previous one through the skyline.
  */
-function drawVoiceTies(systems: SysCtx[], evs: EvL[]): void {
+function tieUnits(systems: SysCtx[], sysOf: number[], evs: EvL[]): SpannerUnit[] {
+  const out: SpannerUnit[] = [];
   evs.forEach((e, i) => {
-    if (e.ev.kind !== 'note') return;
+    if (e.ev.kind !== 'note' || !e.heads.some((h) => h.tie)) return;
     const order = e.heads
       .map((_, hi) => hi)
       .sort((p, q) => {
@@ -75,19 +76,21 @@ function drawVoiceTies(systems: SysCtx[], evs: EvL[]): void {
     for (const hi of order) {
       if (!e.heads[hi].tie) continue;
       const { next, nh } = findTieTarget(evs, i, e.heads[hi]);
-      drawTie(systems, e, hi, next, nh);
+      const second = next && nh >= 0 ? sysOf[next.mi] : sysOf[e.mi];
+      out.push({
+        sys: [sysOf[e.mi], second],
+        key: `t${e.id}.${hi}>${next ? next.id : -1}.${nh}`,
+        cross: false,
+        draw: () => drawTie(systems, e, hi, next, nh),
+      });
     }
   });
+  return out;
 }
 
-/** Slurs of one staff, matched start to stop by voice and id; each is returned as a drawing function, tagged with whether it crosses staves. */
-function matchSlurs(
-  systems: SysCtx[],
-  sysOf: number[],
-  timeOrder: EvL[],
-  voiceEvs: Map<number, EvL[]>,
-): { draw: () => void; cross: boolean }[] {
-  const out: { draw: () => void; cross: boolean }[] = [];
+/** Slurs of one staff, matched start to stop by voice and id; each is a unit that draws it, tagged with whether it crosses staves. */
+function matchSlurs(systems: SysCtx[], sysOf: number[], timeOrder: EvL[], voiceEvs: Map<number, EvL[]>): SpannerUnit[] {
+  const out: SpannerUnit[] = [];
   const open = new Map<string, { ev: EvL; side?: Side; id: number }>();
   for (const e of timeOrder) {
     for (const id of e.ev.slurStop ?? []) {
@@ -95,7 +98,11 @@ function matchSlurs(
       const start = open.get(key);
       if (!start) continue;
       const voice = must(voiceEvs.get(e.voice));
+      // The side is part of the key: it depends on the stems of every note between the ends, which may lie in other systems.
+      const side = start.ev.ev.kind === 'note' && e.ev.kind === 'note' ? slurSide(start.ev, e, start.side, voice) : '-';
       out.push({
+        sys: [sysOf[start.ev.mi], sysOf[e.mi]],
+        key: `s${start.ev.id}>${e.id}.${start.id}.${side}`,
         draw: () => drawSlur(systems, sysOf, start.ev, e, start.side, voice, start.id),
         cross: start.ev.staff !== start.ev.home || e.staff !== start.ev.home,
       });
@@ -106,17 +113,42 @@ function matchSlurs(
   return out;
 }
 
-export function drawSpanners(systems: SysCtx[]): void {
-  if (!systems.length) return;
+/** One tie or slur to draw: the systems it puts primitives into, what identifies it (its ends and whatever else it depends on beyond those systems), and how to draw it. */
+interface SpannerUnit {
+  sys: number[];
+  key: string;
+  cross: boolean;
+  draw: () => void;
+}
+
+/**
+ * What the ties and slurs of the next drawing will be: `affected` are the systems that must be rewound and drawn
+ * again and `draw` draws the units touching them, in the order a full drawing would. `sigs` identifies the units
+ * of each system.
+ *
+ * A system is affected when it is in `dirty`, when its units differ from `prevSigs` (the ones drawn before), and
+ * when a unit touching it also touches an affected system (the pieces of one tie or slur are drawn together).
+ * What is not affected has its previous ties and slurs still right: they depend only on the system's own
+ * notes and on the notes at the ends of the units.
+ */
+export interface SpannerPlan {
+  affected: Set<number>;
+  sigs: string[];
+  draw: () => void;
+}
+
+export function planSpanners(
+  systems: SysCtx[],
+  dirty: Set<number>,
+  prevSigs: (string | undefined)[] = [],
+): SpannerPlan {
   const prep = systems[0].prep;
   const nStaves = prep.score.staves.length;
-  const sysOf: number[] = [];
-  systems.forEach((s, i) => {
-    for (let m = s.a; m <= s.b; m++) sysOf[m] = i;
-  });
-  const slurs: { draw: () => void; cross: boolean }[] = [];
+  const sysOf = sysOfMeasures(systems);
+  const ties: SpannerUnit[] = [];
+  const slurs: SpannerUnit[] = [];
   // Per staff: gather each voice's events over the whole piece (ties and slurs run across measures
-  // and systems), then draw this staff's ties and queue its slurs.
+  // and systems), then plan this staff's ties and slurs.
   for (let s = 0; s < nStaves; s++) {
     const voiceEvs = new Map<number, EvL[]>();
     const timeOrder: EvL[] = [];
@@ -128,16 +160,56 @@ export function drawSpanners(systems: SysCtx[]): void {
       }
       // Slurs belong to the voice, wherever its (cross-staff) notes are drawn; `timeOrder` is the staff's
       // events by time so that stops can be matched to starts.
-      timeOrder.push(...measure[s].voices.flatMap((v) => v.evs).sort((p, q) => p.start - q.start || p.voice - q.voice));
+      for (const e of measure[s].byTime) timeOrder.push(e);
     }
-    for (const evs of voiceEvs.values()) drawVoiceTies(systems, evs);
+    for (const evs of voiceEvs.values()) ties.push(...tieUnits(systems, sysOf, evs));
     slurs.push(...matchSlurs(systems, sysOf, timeOrder, voiceEvs));
   }
   // Slurs between staves go first so that the others nest around them.
-  for (const sl of slurs.filter((q) => q.cross)) sl.draw();
-  for (const sl of slurs.filter((q) => !q.cross)) sl.draw();
-  // Marks come last so that they see the skylines of the slurs and ties and are stacked outside them.
-  for (let s = 0; s < nStaves; s++) drawMarks(systems, sysOf, s);
+  const units = [...ties, ...slurs.filter((q) => q.cross), ...slurs.filter((q) => !q.cross)];
+  const keys: string[][] = systems.map(() => []);
+  for (const u of units) for (const i of new Set(u.sys)) keys[i].push(u.key);
+  const sigs = keys.map((k) => k.join(','));
+  const affected = new Set<number>(dirty);
+  systems.forEach((_, i) => {
+    if (prevSigs[i] !== sigs[i]) affected.add(i);
+  });
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const u of units) {
+      if (!u.sys.some((i) => affected.has(i))) continue;
+      for (const i of u.sys)
+        if (!affected.has(i)) {
+          affected.add(i);
+          grew = true;
+        }
+    }
+  }
+  return {
+    affected,
+    sigs,
+    draw: () => {
+      for (const u of units) if (u.sys.some((i) => affected.has(i))) u.draw();
+    },
+  };
+}
+
+/** System index of each measure. */
+function sysOfMeasures(systems: SysCtx[]): number[] {
+  const sysOf: number[] = [];
+  systems.forEach((s, i) => {
+    for (let m = s.a; m <= s.b; m++) sysOf[m] = i;
+  });
+  return sysOf;
+}
+
+/**
+ * Marks come after the ties and slurs so that they see their skylines and are stacked outside them. They are cheap
+ * and depend on spans that run across many systems, so they are always drawn for every system.
+ */
+export function drawStaffMarks(systems: SysCtx[]): void {
+  const sysOf = sysOfMeasures(systems);
+  for (let s = 0; s < systems[0].prep.score.staves.length; s++) drawMarks(systems, sysOf, s);
 }
 
 /** The point where a slur on `side` attaches to `e`: at the stem tip when the stem is on that side, else beyond the outermost head; beyond any articulations on that side. */

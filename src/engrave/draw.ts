@@ -44,6 +44,10 @@ export interface SysCtx {
   overflow?: boolean;
   /** What the notes alone occupy, recorded when they are drawn (before spanners and marks are added): `rewindToNotes` returns to it. */
   base?: { prims: number[]; sky: number[] };
+  /** What the notes with their ties and slurs occupy (marks come after): where `rewindToSpanners` goes back to. */
+  ts?: { prims: number[]; sky: number[] };
+  /** Identifies the ties and slurs this system was drawn with (see `planSpanners`). */
+  spanSig?: string;
   /** The gap was widened after the notes were drawn (for slurs and marks), so `base` no longer applies. */
   widened?: boolean;
 }

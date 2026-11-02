@@ -109,6 +109,7 @@ export interface BeamL {
 export interface StaffMeasureL {
   evs: EvL[]; // events drawn on this staff (all voices, incl. cross-staff arrivals), sorted by (start, voice)
   voices: { id: number; evs: EvL[] }[]; // the voices of this staff, with all their events wherever drawn
+  byTime: EvL[]; // the events of the voices of this staff (wherever drawn) by start, then voice
   marks: Mark[];
 }
 
@@ -498,7 +499,8 @@ function prepareMeasure(env: PrepEnv, m: Measure, mi: number): StaffMeasureL[] {
   const row: StaffMeasureL[] = score.staves.map((staff, si) => {
     const sm = m.staves[staff.id] ?? { voices: [] };
     prepareStaffVoices(voicesOf[si], sm, beatTicks(env.timeOf[mi]));
-    return { evs: [], voices: voicesOf[si], marks: marksOf(sm) };
+    const byTime = voicesOf[si].flatMap((v) => v.evs).sort((p, q) => p.start - q.start || p.voice - q.voice);
+    return { evs: [], voices: voicesOf[si], byTime, marks: marksOf(sm) };
   });
   // `evs` lists what is drawn on a staff, which for cross-staff notes is not the voice's staff.
   for (const r of row) for (const v of r.voices) for (const e of v.evs) row[e.staff].evs.push(e);

@@ -69,7 +69,7 @@ function randomEdit(score: Score, rand: () => number): { score: Score; what: str
   const evs = events(score);
   const pick = <T>(xs: T[]): T => xs[Math.floor(rand() * xs.length)];
   const notes = evs.filter((e) => e.note);
-  const kind = Math.floor(rand() * 9);
+  const kind = Math.floor(rand() * 13);
   switch (kind) {
     case 0: {
       const e = pick(notes);
@@ -106,6 +106,29 @@ function randomEdit(score: Score, rand: () => number): { score: Score; what: str
       const mi = 1 + Math.floor(rand() * (score.measures.length - 1));
       return { score: C.setBreak(score, mi, rand() < 0.5 ? 'system' : undefined), what: `break ${mi}` };
     }
+    case 9: {
+      // a slur between two notes of one voice, close enough to cross a barline or a system break now and then
+      const a = pick(notes);
+      const same = notes.filter(
+        (e) =>
+          e.a.staff === a.a.staff && e.a.voice === a.a.voice && e.a.mi >= a.a.mi && e.a.mi <= a.a.mi + 3 && e !== a,
+      );
+      const b = pick(same.length ? same : notes);
+      return { score: C.addSlur(score, a.a, b.a), what: `slur ${JSON.stringify(a.a)} ${JSON.stringify(b.a)}` };
+    }
+    case 10: {
+      const a = pick(notes);
+      return { score: C.deleteEvents(score, [a.a]), what: `delete ${JSON.stringify(a.a)}` };
+    }
+    case 11: {
+      const a = pick(notes);
+      const same = notes.filter((e) => e.a.staff === a.a.staff && e.a.mi >= a.a.mi && e.a.mi <= a.a.mi + 4);
+      const b = pick(same);
+      return {
+        score: C.addSpanOver(score, 'cresc', a.a, b.a),
+        what: `hairpin ${JSON.stringify(a.a)} ${JSON.stringify(b.a)}`,
+      };
+    }
     default: {
       const e = pick(evs);
       return { score: C.addMark(score, e.a, { type: 'pedal' }), what: `pedal ${JSON.stringify(e.a)}` };
@@ -121,7 +144,7 @@ for (const name of ['gewitter', 'tango']) {
     same(score, cache, 'initial');
     same(score, cache, 'same score again');
     let applied = 0;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 60; i++) {
       let next: { score: Score; what: string };
       try {
         next = randomEdit(score, rand);
