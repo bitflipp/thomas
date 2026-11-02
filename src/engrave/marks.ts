@@ -509,15 +509,18 @@ function placeGroup(ctx: SysCtx, s: number, group: Item[], side: Side): void {
   for (const it of group) {
     const y = it.kind === 'hair' ? ref - HAIRPIN_OFFSET : ref;
     const kind: Kind = it.kind === 'hair' ? 'hairpin' : it.kind === 'ott' ? 'ottava' : it.kind;
+    const owner = it.src ? pieceOwner(it.src, ctx.a) : oid(it);
     for (const p of it.draw(y)) {
       p.k = kind;
-      p.o = it.src ? pieceOwner(it.src, ctx.a) : oid(it);
+      p.o = owner;
       p.r = it.src;
       if (it.kind === 'dyn' || it.kind === 'hair') p.a = ref;
       ctx.prims[s].push(p);
     }
     sky.add(it.x0, it.x1, y - it.up, y + it.down);
-    if (it.between) sky.boxes[sky.boxes.length - 1].btw = true;
+    const box = sky.boxes[sky.boxes.length - 1];
+    if (it.between) box.btw = true;
+    if (it.kind === 'dyn' || it.kind === 'hair') box.o = owner;
   }
 }
 

@@ -125,8 +125,17 @@ export interface Page {
 
 /** Occupied regions, used to place marks without collisions (y down). */
 export class Skyline {
-  /** `btw`: a dynamic or hairpin placed between the staves, which is centred in the gap later (`centreBetweenMarks`). */
-  boxes: { x0: number; x1: number; y0: number; y1: number; spanner?: boolean; acc?: boolean; btw?: boolean }[] = [];
+  /** `btw`: a dynamic or hairpin placed between the staves, which is centred in the gap later (`centreBetweenMarks`). `o`: the owner tag of a dynamic or hairpin's primitives. */
+  boxes: {
+    x0: number;
+    x1: number;
+    y0: number;
+    y1: number;
+    spanner?: boolean;
+    acc?: boolean;
+    btw?: boolean;
+    o?: number;
+  }[] = [];
   /** `spanner`: a slur/tie box (a long rectangle over a curve), ignored when only the notation itself matters. `acc`: an accidental, which ties may cross. */
   add(x0: number, x1: number, y0: number, y1: number, spanner = false, acc = false): void {
     if (x1 < x0) [x0, x1] = [x1, x0];

@@ -221,8 +221,26 @@ function verticalSpan(p: Prim): [number, number] {
  * between staff s and s+1. Content in the way of the move (what hangs into the gap, other marks of the staves)
  * limits it; a mark with content on both sides is left alone.
  */
-function centreGroup(ctx: SysCtx, s: number, owner: number, marks: Prim[]): void {
-  if (!marks.length) return;
+interface CentrePlan {
+  marks: Prim[];
+  /** The range of moves that keep the marks clear of the content, and the move that centres them. */
+  dyMin: number;
+  dyMax: number;
+  dy: number;
+  /** Vertical middle of the marks' ink before the move. */
+  mid: number;
+}
+
+function planCentre(
+  ctx: SysCtx,
+  s: number,
+  owner: number,
+  first: Prim[],
+  sameSide: (p: Prim) => boolean,
+): CentrePlan | undefined {
+  if (!first.length) return;
+  const marks = [...first, ...attachedMarks(ctx, owner, first, sameSide)]; // the attached marks move along, so they are limited by the content too
+  const moving = new Set(marks.map((p) => p.o));
   let x0 = Number.POSITIVE_INFINITY;
   let x1 = Number.NEGATIVE_INFINITY;
   let top = Number.POSITIVE_INFINITY;
@@ -239,7 +257,18 @@ function centreGroup(ctx: SysCtx, s: number, owner: number, marks: Prim[]): void
   let hi = ctx.staffY[s + 1];
   for (const k of [s, s + 1])
     for (const b of ctx.sky[k].boxes) {
-      if (b.btw || (b.spanner && k !== owner) || !(b.x1 > x0 - 0.3 && b.x0 < x1 + 0.3)) continue;
+      if (
+        b.btw ||
+        (b.o !== undefined && moving.has(b.o)) ||
+        (b.spanner && k !== owner) ||
+        !(b.x1 > x0 - 0.3 && b.x0 < x1 + 0.3)
+      )
+        continue;
+      // A slur's box is as deep as its middle; its ends are thin, so only the middle half blocks.
+      if (b.spanner) {
+        const w = b.x1 - b.x0;
+        if (!(b.x1 - w / 4 > x0 - 0.3 && b.x0 + w / 4 < x1 + 0.3)) continue;
+      }
       const by0 = ctx.staffY[k] + b.y0;
       const by1 = ctx.staffY[k] + b.y1;
       if (by1 <= top + 0.01) lo = Math.max(lo, by1);
@@ -251,22 +280,60 @@ function centreGroup(ctx: SysCtx, s: number, owner: number, marks: Prim[]): void
   const dyMax = hi - clearance - bottom;
   if (dyMin > dyMax) return;
   const dy = Math.min(dyMax, Math.max(dyMin, (lo + hi) / 2 - (top + bottom) / 2));
-  if (Math.abs(dy) > 0.001) moveMarks(marks, dy);
+  return { marks, dyMin, dyMax, dy, mid: (top + bottom) / 2 };
+}
+
+/** Horizontal distance up to which a plain dynamic or hairpin counts as continuing a `between` mark. */
+const ATTACH_DIST = 10;
+
+/** The dynamics and hairpins of `owner` on the same side that are not `between` but chain up to `marks` (a hairpin ending at a dynamic): they follow it so that the row stays one line. */
+function attachedMarks(ctx: SysCtx, owner: number, marks: Prim[], sameSide: (p: Prim) => boolean): Prim[] {
+  const rest = ctx.prims[owner].filter((p) => isDynamicsMark(p) && sameSide(p));
+  const taken: Prim[] = [];
+  const spans = marks.map(horizontalSpan);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const p of rest) {
+      if (taken.includes(p)) continue;
+      const [a, b] = horizontalSpan(p);
+      if (!spans.some(([c, d]) => b > c - ATTACH_DIST && a < d + ATTACH_DIST)) continue;
+      taken.push(p);
+      spans.push([a, b]);
+      grew = true;
+    }
+  }
+  return taken;
 }
 
 function centreBetweenMarks(ctx: SysCtx, s: number): void {
-  centreGroup(
-    ctx,
-    s,
-    s,
-    ctx.prims[s].filter((p) => isBetweenMark(p) && must(p.a) > STAFF_HEIGHT),
-  );
-  centreGroup(
-    ctx,
-    s,
-    s + 1,
-    ctx.prims[s + 1].filter((p) => isBetweenMark(p) && must(p.a) < 0),
-  );
+  const plans = [
+    planCentre(
+      ctx,
+      s,
+      s,
+      ctx.prims[s].filter((p) => isBetweenMark(p) && must(p.a) > STAFF_HEIGHT),
+      (p) => must(p.a) > STAFF_HEIGHT,
+    ),
+    planCentre(
+      ctx,
+      s,
+      s + 1,
+      ctx.prims[s + 1].filter((p) => isBetweenMark(p) && must(p.a) < 0),
+      (p) => must(p.a) < 0,
+    ),
+  ].filter((p) => p !== undefined);
+  // Both rows sit on one line when the content allows it: the line nearest to where each would be centred alone.
+  if (plans.length === 2) {
+    const [a, b] = plans;
+    const lo = Math.max(a.mid + a.dyMin, b.mid + b.dyMin);
+    const hi = Math.min(a.mid + a.dyMax, b.mid + b.dyMax);
+    if (lo <= hi) {
+      const line = Math.min(hi, Math.max(lo, (a.mid + a.dy + b.mid + b.dy) / 2));
+      a.dy = line - a.mid;
+      b.dy = line - b.mid;
+    }
+  }
+  for (const p of plans) if (Math.abs(p.dy) > 0.001) moveMarks(p.marks, p.dy);
 }
 
 /**
