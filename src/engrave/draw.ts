@@ -40,6 +40,12 @@ export interface SysCtx {
   /** per staff: gap required by the cross-staff beams drawn with `gap` (may be smaller than `gap`) */
   gapNeed: number[];
   pinned?: boolean; // gap[] is final (the system has cross-staff beams)
+  /** The system's content exceeds the line even at the tightest spacing (a warning is due). */
+  overflow?: boolean;
+  /** What the notes alone occupy, recorded when they are drawn (before spanners and marks are added): `rewindToNotes` returns to it. */
+  base?: { prims: number[]; sky: number[] };
+  /** The gap was widened after the notes were drawn (for slurs and marks), so `base` no longer applies. */
+  widened?: boolean;
 }
 export const CROSS_GAP0 = 6;
 

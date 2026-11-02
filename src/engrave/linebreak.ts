@@ -77,11 +77,19 @@ export function planSystems(
   forced: Set<number>,
 ): SysPlan[] {
   const n = spN.length;
+  // Width of measures a..b as the first of a system is a's own variant, the rest the normal ones: prefix sums make a range O(1).
+  const prefixOf = Array.from({ length: n }, (_, a) => prefixWidth(prep, a, a === 0));
+  const sums = (pick: (sp: MeasureSpacing) => number): number[] => {
+    const out = [0];
+    for (let k = 0; k < n; k++) out.push(out[k] + pick(spN[k]));
+    return out;
+  };
+  const sumMin = sums((sp) => sp.minWidth);
+  const sumComp = sums((sp) => sp.compWidth);
   const rangeWidth = (a: number, b: number, compressed: boolean) => {
-    const pick = (sp: MeasureSpacing) => (compressed ? sp.compWidth : sp.minWidth);
-    let w = prefixWidth(prep, a, a === 0) + pick(spF[a]);
-    for (let k = a + 1; k <= b; k++) w += pick(spN[k]);
-    return w;
+    const sum = compressed ? sumComp : sumMin;
+    const first = compressed ? spF[a].compWidth : spF[a].minWidth;
+    return prefixOf[a] + first + sum[b + 1] - sum[a + 1];
   };
   const plans: SysPlan[] = [];
   const starts = [0, ...[...forced].filter((i) => i > 0).sort((x, y) => x - y)];

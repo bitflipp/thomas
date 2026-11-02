@@ -418,6 +418,25 @@ interface SlurPiece {
   draw: (h: number) => void;
 }
 
+/**
+ * The owner tag shared by the pieces of one slur. It is looked up by the slur's first event, not made up on
+ * the spot, so that drawing the same slur again gives its primitives the same tag (see `FinalSnapshot`).
+ */
+const slurOwners = new WeakMap<EvL, Map<number, number>>();
+function slurOwner(a: EvL, id: number): number {
+  let m = slurOwners.get(a);
+  if (!m) {
+    m = new Map();
+    slurOwners.set(a, m);
+  }
+  let o = m.get(id);
+  if (o === undefined) {
+    o = oid({});
+    m.set(id, o);
+  }
+  return o;
+}
+
 /** What a slur piece needs to draw itself. */
 interface SlurStyle {
   above: boolean;
@@ -493,7 +512,7 @@ function drawSlur(
   // (a stem end that is already in those coordinates is not).
   if (a.staff !== a.home && !(pa.stemSide && pa.homed)) pa.y += staffOffset(sa, a.home, a.staff);
   if (b.staff !== a.home && !(pb.stemSide && pb.homed)) pb.y += staffOffset(sb, a.home, b.staff);
-  const style: SlurStyle = { above, thick: D.slurMidpointThickness as number, id, slurId: oid({}), from: a };
+  const style: SlurStyle = { above, thick: D.slurMidpointThickness as number, id, slurId: slurOwner(a, id), from: a };
   if (sa === sb) {
     const p = planSlurPiece(sa, style, b, [pa.x, pa.y, pb.x, pb.y], a.home, false, false);
     p?.draw(p.h);

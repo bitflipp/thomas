@@ -3,7 +3,7 @@
 import type { Score } from '../model.ts';
 import type { SysCtx } from './draw.ts';
 import type { FinalizedSystem } from './finalize.ts';
-import type { Page } from './scene.ts';
+import type { Page, Prim } from './scene.ts';
 import { shiftPrim } from './scene.ts';
 
 /** Where a measure of a staff sits on its page (staff spaces); `cols` are the x positions of its rhythmic columns, which the editor snaps to. */
@@ -190,6 +190,19 @@ function drawFooter(page: Page, score: Score, frame: PageFrame, pageIdx: number)
     });
 }
 
+const placedCache = new WeakMap<FinalizedSystem, { x0: number; y: number; prims: Prim[] }>();
+
+/** The primitives of a finished system moved to its place on the page; remembered, since an unchanged system often lands at the same place again. */
+function placedPrims(sys: FinalizedSystem, x0: number, y: number): Prim[] {
+  const c = placedCache.get(sys);
+  if (c && c.x0 === x0 && c.y === y) return c.prims;
+  const prims: Prim[] = [];
+  for (const p of sys.prims) prims.push(shiftPrim(p, x0, y));
+  for (const sp of sys.staffPrims) for (const p of sp.prims) prims.push(shiftPrim(p, x0, y + sp.dy));
+  placedCache.set(sys, { x0, y, prims });
+  return prims;
+}
+
 /** Lays the finished systems out on pages. */
 export function paginate(
   score: Score,
@@ -206,11 +219,7 @@ export function paginate(
   const x0 = frame.margin + opts.braceRoom;
   const pages = place.pageSystems.map((list, pi) => {
     const page = pi === 0 ? firstPage : { width: frame.width, height: frame.height, prims: [] };
-    for (const si of list) {
-      const y = place.placeY[si];
-      for (const p of done[si].prims) page.prims.push(shiftPrim(p, x0, y));
-      for (const sp of done[si].staffPrims) for (const p of sp.prims) page.prims.push(shiftPrim(p, x0, y + sp.dy));
-    }
+    for (const si of list) for (const p of placedPrims(done[si], x0, place.placeY[si])) page.prims.push(p);
     for (const si of list) recordLayout(layout, systems[si], pi, x0, place.placeY[si]);
     drawFooter(page, score, frame, pi);
     return page;

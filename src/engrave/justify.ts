@@ -81,9 +81,10 @@ export function justifySystem(
     mx[mi] = x;
     x += p.width;
   }
-  if (widthAt(f, z) > W * 1.001)
-    opts.warn(`system ${index + 1}: content ${widthAt(1).toFixed(1)} exceeds width ${W.toFixed(1)}`);
+  const overflow = widthAt(f, z) > W * 1.001;
+  if (overflow) opts.warn(`system ${index + 1}: content ${widthAt(1).toFixed(1)} exceeds width ${W.toFixed(1)}`);
   return {
+    overflow,
     prep,
     index,
     a: plan.a,

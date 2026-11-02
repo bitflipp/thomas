@@ -44,6 +44,22 @@ function hasCrossStaffNotes(ctx: SysCtx): boolean {
  * both, then pin it so later phases may widen but never shrink it.
  */
 export function drawNotesFixingCrossStaffGap(ctx: SysCtx): void {
+  drawFixingGap(ctx);
+  ctx.base = { prims: ctx.prims.map((p) => p.length), sky: ctx.sky.map((k) => k.boxes.length) };
+}
+
+/** Empties a system of everything added after its notes (spanners, marks) so that those can be drawn again. */
+export function rewindToNotes(ctx: SysCtx): void {
+  const base = must(ctx.base);
+  ctx.prims.forEach((p, s) => {
+    p.length = base.prims[s];
+  });
+  ctx.sky.forEach((k, s) => {
+    k.boxes.length = base.sky[s];
+  });
+}
+
+function drawFixingGap(ctx: SysCtx): void {
   const nStaves = ctx.prep.score.staves.length;
   drawSystemNotes(ctx);
   if (!hasCrossStaffNotes(ctx)) return;
@@ -82,6 +98,8 @@ export function widenPinnedGaps(systems: SysCtx[]): void {
     }
     if (!changed) break;
     for (const ctx of systems) {
+      ctx.widened = true;
+      ctx.base = undefined;
       resetDrawing(ctx);
       drawSystemNotes(ctx);
     }
@@ -166,9 +184,15 @@ function alignDynamicsBetween(ctx: SysCtx, s: number): void {
   if (deficit > 0.01) moveMarks(below, deficit);
 }
 
-/** Runs the notes of all systems through their cross-staff gaps, then the spanners, then widens gaps the spanners need. */
-export function drawNotesAndSpanners(systems: SysCtx[]): void {
-  for (const ctx of systems) drawNotesFixingCrossStaffGap(ctx);
+/**
+ * Runs the notes of all systems through their cross-staff gaps, then the spanners, then widens gaps the spanners need.
+ * The notes of the systems in `kept` were drawn by an earlier run and are still good: they only lose what came after.
+ */
+export function drawNotesAndSpanners(systems: SysCtx[], kept?: Set<SysCtx>): void {
+  for (const ctx of systems) {
+    if (kept?.has(ctx)) rewindToNotes(ctx);
+    else drawNotesFixingCrossStaffGap(ctx);
+  }
   drawSpanners(systems);
   widenPinnedGaps(systems);
 }

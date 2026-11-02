@@ -11,9 +11,11 @@ import type {
   Event,
   Grace,
   Mark,
+  Measure,
   NoteEvent,
   Pitch,
   Score,
+  StaffDef,
   StaffMeasure,
   TimedEvent,
   TremoloGroup,
@@ -22,6 +24,7 @@ import type {
 } from '../model.ts';
 import { flattenVoice, keyAt, marksOf, measureTicks, pitchStep, STEPS, timeAt } from '../model.ts';
 import { must } from '../util.ts';
+import type { MeasureSpacing } from './spacing.ts';
 
 export const HALF = 1; // staff positions are in half spaces above the bottom line
 
@@ -113,6 +116,31 @@ export interface Prepared {
   measures: StaffMeasureL[][]; // [measure][staff]
   clefAt: (staff: number, mi: number, tick: number) => Clef;
   measureLen: number[];
+  /** The cache entry of every measure when `prepare` ran with a cache (see `PrepCache`). */
+  entries?: MeasureEntry[];
+}
+
+/**
+ * Everything computed for one measure that depends only on the measure itself and on what is carried
+ * into it (`sig`): its layout records and, once asked for, its spacing. An entry is valid as long as the
+ * `Measure` object is the same (the editor's commands keep untouched measures identical) and `sig` matches.
+ */
+export interface MeasureEntry {
+  mi: number;
+  m: Measure;
+  sig: string;
+  row: StaffMeasureL[];
+  /** Per staff: the tie keys carried into the next measure. */
+  tiedOut: string[][];
+  spN?: MeasureSpacing;
+  spF?: MeasureSpacing;
+}
+
+/** Results kept from one engraving to the next; passed to `prepare` (and `engrave`) to redo only what an edit touched. */
+export interface PrepCache {
+  staves?: StaffDef[];
+  entries: MeasureEntry[];
+  nextId: number;
 }
 
 const ACC_GLYPH: Record<number, string> = {
@@ -378,33 +406,78 @@ function prepareStaffVoices(voices: VoiceL[], sm: StaffMeasure, beatLen: number)
   for (const v of voices) for (const e of v.evs) if (e.ev.kind === 'note') displaceHeads(e);
 }
 
-export function prepare(score: Score): Prepared {
+export function prepare(score: Score, cache?: PrepCache): Prepared {
   const clefAt = clefTimeline(score);
+  if (cache && cache.staves !== score.staves) {
+    cache.entries = [];
+    cache.staves = score.staves;
+  }
   const env: PrepEnv = {
     score,
     staffIdx: new Map(score.staves.map((s, i) => [s.id, i])),
     clefAt,
     ottavaAt: ottavaTimeline(score),
-    nextId: 0,
+    nextId: cache?.nextId ?? 0,
     tiedFromPrev: score.staves.map(() => new Map()),
   };
   const measureLen = score.measures.map((_, mi) => measureTicks(timeAt(score, mi)));
   const measures: StaffMeasureL[][] = [];
+  const entries: MeasureEntry[] = [];
   score.measures.forEach((m, mi) => {
-    const voicesOf = layoutVoices(env, mi);
-    assignAccidentals(env, voicesOf, keyAt(score, mi));
-    carryTies(env, voicesOf);
-    const row: StaffMeasureL[] = score.staves.map((staff, si) => {
-      const sm = m.staves[staff.id] ?? { voices: [] };
-      prepareStaffVoices(voicesOf[si], sm, beatTicks(timeAt(score, mi)));
-      return { evs: [], voices: voicesOf[si], marks: marksOf(sm) };
-    });
-    // `evs` lists what is drawn on a staff, which for cross-staff notes is not the voice's staff.
-    for (const r of row) for (const v of r.voices) for (const e of v.evs) row[e.staff].evs.push(e);
-    for (const r of row) r.evs.sort((a, b) => a.start - b.start || a.voice - b.voice);
-    measures.push(row);
+    // What the measure's records depend on besides the measure itself: the state carried into it.
+    const sig = cache ? measureSignature(env, mi) : '';
+    const old = cache?.entries[mi];
+    let entry: MeasureEntry;
+    if (old && old.m === m && old.sig === sig) {
+      entry = old;
+      for (let si = 0; si < env.tiedFromPrev.length; si++) {
+        env.tiedFromPrev[si].clear();
+        for (const k of old.tiedOut[si]) env.tiedFromPrev[si].set(k, true);
+      }
+    } else {
+      const row = prepareMeasure(env, m, mi);
+      entry = { mi, m, sig, row, tiedOut: env.tiedFromPrev.map((t) => [...t.keys()]) };
+    }
+    entries.push(entry);
+    measures.push(entry.row);
   });
-  return { score, measures, clefAt, measureLen };
+  if (cache) {
+    cache.entries = entries;
+    cache.nextId = env.nextId;
+  }
+  return { score, measures, clefAt, measureLen, entries: cache ? entries : undefined };
+}
+
+/** The state carried into measure `mi` that its layout records depend on: clefs, octave lines, ties, key and time. */
+function measureSignature(env: PrepEnv, mi: number): string {
+  const { score } = env;
+  const staves = score.staves.map((_, si) => si);
+  return JSON.stringify([
+    mi,
+    keyAt(score, mi),
+    mi > 0 ? keyAt(score, mi - 1) : 0,
+    timeAt(score, mi),
+    staves.map((si) => env.clefAt(si, mi, -1)),
+    staves.map((si) => env.ottavaAt(si, mi, -1, false)),
+    env.tiedFromPrev.map((t) => [...t.keys()].sort()),
+  ]);
+}
+
+/** The layout records of one measure, per staff; leaves the ties it carries on to the next measure in `env`. */
+function prepareMeasure(env: PrepEnv, m: Measure, mi: number): StaffMeasureL[] {
+  const { score } = env;
+  const voicesOf = layoutVoices(env, mi);
+  assignAccidentals(env, voicesOf, keyAt(score, mi));
+  carryTies(env, voicesOf);
+  const row: StaffMeasureL[] = score.staves.map((staff, si) => {
+    const sm = m.staves[staff.id] ?? { voices: [] };
+    prepareStaffVoices(voicesOf[si], sm, beatTicks(timeAt(score, mi)));
+    return { evs: [], voices: voicesOf[si], marks: marksOf(sm) };
+  });
+  // `evs` lists what is drawn on a staff, which for cross-staff notes is not the voice's staff.
+  for (const r of row) for (const v of r.voices) for (const e of v.evs) row[e.staff].evs.push(e);
+  for (const r of row) r.evs.sort((a, b) => a.start - b.start || a.voice - b.voice);
+  return row;
 }
 
 function decideDir(notes: EvL[], rank: number, nVoices: number): 'up' | 'down' {

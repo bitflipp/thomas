@@ -38,7 +38,8 @@ export function finalizeSystem(ctx: SysCtx, numbering: MeasureNumbering): Finali
   const bottom = ctx.staffY[nStaves - 1] + STAFF_HEIGHT;
   return {
     prims: P,
-    staffPrims: ctx.prims.map((prims, s) => ({ dy: ctx.staffY[s], prims })),
+    // copies: the lists in `ctx` are rewound and refilled when the system is drawn again, but this result may be kept
+    staffPrims: ctx.prims.map((prims, s) => ({ dy: ctx.staffY[s], prims: [...prims] })),
     top: Math.min(0, ...extents.map((e, s) => ctx.staffY[s] + e.top)),
     bottom: Math.max(bottom, ...extents.map((e, s) => ctx.staffY[s] + e.bottom)),
   };

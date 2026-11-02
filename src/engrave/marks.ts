@@ -452,6 +452,22 @@ function baselineGroups(list: Item[]): Item[][] {
   return groups;
 }
 
+/** Owner tags of mark pieces by (mark, first measure of the system), so that drawing a mark again tags its primitives the same. */
+const pieceOwners = new WeakMap<object, Map<number, number>>();
+function pieceOwner(src: Mark, systemStart: number): number {
+  let m = pieceOwners.get(src);
+  if (!m) {
+    m = new Map();
+    pieceOwners.set(src, m);
+  }
+  let o = m.get(systemStart);
+  if (o === undefined) {
+    o = oid({});
+    m.set(systemStart, o);
+  }
+  return o;
+}
+
 /** Puts one group on a common baseline just clear of the skyline and draws it. */
 function placeGroup(ctx: SysCtx, s: number, group: Item[], side: Side): void {
   const sky = ctx.sky[s];
@@ -470,7 +486,7 @@ function placeGroup(ctx: SysCtx, s: number, group: Item[], side: Side): void {
     const kind: Kind = it.kind === 'hair' ? 'hairpin' : it.kind === 'ott' ? 'ottava' : it.kind;
     for (const p of it.draw(y)) {
       p.k = kind;
-      p.o = oid(it);
+      p.o = it.src ? pieceOwner(it.src, ctx.a) : oid(it);
       p.r = it.src;
       if (it.kind === 'dyn' || it.kind === 'hair') p.a = ref;
       ctx.prims[s].push(p);
