@@ -141,25 +141,31 @@ export function primRef(index: ScoreIndex, p: Prim): Ref | undefined {
   return undefined;
 }
 
+const isCurveKind = (k: string | undefined) => k === 'slur' || k === 'tie';
+
+/** The key under which a prim joins a target: one target per model object and page (heads of an event are one each; slurs and ties are told apart from other prims of the same object). */
+function targetKey(page: number, p: Prim, ref: Ref): { key: string; head: boolean } {
+  const head = ref.t === 'ev' && ref.pi !== undefined;
+  const kind = isCurveKind(p.k) ? `${p.k}|` : '';
+  return { key: `${page}|${kind}${refKey(ref)}${head ? '|h' : ''}`, head };
+}
+
 export function buildHitIndex(score: Score, res: Engraved): HitIndex {
   const index = indexScore(score);
   const byKey = new Map<string, Target>();
-  const refOf = (p: Prim) => primRef(index, p);
   res.pages.forEach((page, pi) => {
     for (const p of page.prims) {
       if (!p.k || p.k === 'beam') continue;
-      const ref = refOf(p);
-      if (!ref) continue;
-      const bb = primBox(p);
-      if (!bb) continue;
-      const head = ref.t === 'ev' && ref.pi !== undefined;
-      const key = `${pi}|${p.k === 'slur' || p.k === 'tie' ? `${p.k}|` : ''}${refKey(ref)}${head ? '|h' : ''}`;
+      const ref = primRef(index, p);
+      const bb = ref && primBox(p);
+      if (!(ref && bb)) continue;
+      const { key, head } = targetKey(pi, p, ref);
       let t = byKey.get(key);
       if (!t) {
         t = { page: pi, ref, k: head ? 'head' : p.k, boxes: [], bbox: bb, prio: PRIO[head ? 'head' : p.k] ?? 3 };
         byKey.set(key, t);
       }
-      if (p.k === 'slur' || p.k === 'tie') {
+      if (isCurveKind(p.k)) {
         t.pts ??= [];
         t.pts.push(...curvePts(p.t === 'path' ? p.d : ''));
       } else t.boxes.push(bb);
@@ -178,21 +184,22 @@ function distBox(b: Box, x: number, y: number): number {
   const dy = Math.max(b.y0 - y, 0, y - b.y1);
   return Math.hypot(dx, dy);
 }
+
+/** Distance from (x, y) to the segment a-b. */
+function distSegment(a: { x: number; y: number }, b: { x: number; y: number }, x: number, y: number): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const l2 = dx * dx + dy * dy;
+  const u = l2 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2)) : 0;
+  return Math.hypot(a.x + u * dx - x, a.y + u * dy - y);
+}
+
 function distTarget(t: Target, x: number, y: number): number {
   if (t.pts) {
     // Distance to the polyline through the samples, not to the samples themselves: those are far
     // apart on a long slur and a point between two of them would otherwise miss.
-    let m = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < t.pts.length; i++) {
-      const a = t.pts[i];
-      const b = t.pts[i + 1] ?? a;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const l2 = dx * dx + dy * dy;
-      const u = l2 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2)) : 0;
-      m = Math.min(m, Math.hypot(a.x + u * dx - x, a.y + u * dy - y));
-    }
-    return m;
+    const pts = t.pts;
+    return pts.reduce((m, a, i) => Math.min(m, distSegment(a, pts[i + 1] ?? a, x, y)), Number.POSITIVE_INFINITY);
   }
   return t.boxes.reduce((m, b) => Math.min(m, distBox(b, x, y)), Number.POSITIVE_INFINITY);
 }
