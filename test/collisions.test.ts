@@ -8,7 +8,6 @@ import { parseText } from '../src/textformat.ts';
 // Known engraver limitations on the reference piece: "kindA x kindB" (sorted) -> how many are tolerated.
 // Fix one, lower the number; nothing outside this table may collide (allowlist: src/engrave/collide.ts).
 const KNOWN: Record<string, number> = {
-  'acc x slur': 1, // a slur grazes a flat under its arc (tighter spacing)
   'ledger x tie': 1,
 };
 

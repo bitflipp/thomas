@@ -41,6 +41,34 @@ function crescent(
   return `M${x0.toFixed(3)} ${y0.toFixed(3)}C${cx(a, k)} ${cx(1 - a, k)} ${x1.toFixed(3)} ${y1.toFixed(3)}L${x1.toFixed(3)} ${iy1.toFixed(3)}C${cx(1 - a, k2)} ${cx(a, k2)} ${x0.toFixed(3)} ${iy0.toFixed(3)}Z`;
 }
 
+/** The y of the outer edge of `crescent(x0, y0, x1, y1, h, ..., a)` at `x` (the curve is a cubic whose control points follow the chord, so it differs from a parabola over a sloped chord). */
+function crescentY(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  h: number,
+  above: boolean,
+  x: number,
+  a = 0.2,
+): number {
+  const s = above ? -1 : 1;
+  const L = x1 - x0;
+  const k = h / 0.75;
+  const ys = [y0, y0 + (y1 - y0) * 0.3 + s * k, y0 + (y1 - y0) * 0.7 + s * k, y1];
+  const xs = [x0, x0 + L * a, x0 + L * (1 - a), x1];
+  const at = (t: number, v: number[]) =>
+    (1 - t) ** 3 * v[0] + 3 * (1 - t) ** 2 * t * v[1] + 3 * (1 - t) * t * t * v[2] + t ** 3 * v[3];
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (at(mid, xs) < x) lo = mid;
+    else hi = mid;
+  }
+  return at((lo + hi) / 2, ys);
+}
+
 /** The tied head of `e` connects to the same pitch in the next event of the voice, unless a rest stands in between. */
 function findTieTarget(evs: EvL[], i: number, head: EvL['heads'][number]): { next?: EvL; nh: number } {
   for (let k = i + 1; k < evs.length && k <= i + 2; k++) {
@@ -578,6 +606,8 @@ function cheapestEndLift(
 /** A slur piece laid out but not yet drawn: its natural height, and a function drawing it at a (possibly shared) height. */
 interface SlurPiece {
   h: number;
+  /** The least height at which the arc still clears what is under it. */
+  hMin: number;
   L: number;
   draw: (h: number) => void;
 }
@@ -627,8 +657,20 @@ function planSlurPiece(
   const dir = st.above ? -1 : 1;
   const y0 = y0Start + dir * lift.d0;
   const y1 = y1Start + dir * lift.d1;
+  // The arc model of `cheapestEndLift` is a parabola; the drawn curve differs over a sloped chord, so raise the
+  // height until the curve itself clears every obstacle under it.
+  const samples = sampleObstacles(frame, x0, x1);
+  const clears = (h: number) =>
+    samples.every(({ t, o }) => {
+      const y = crescentY(x0, y0, x1, y1, h, st.above, x0 + t * L, 0.2);
+      return st.above ? y + st.thick <= o - 0.15 : y - st.thick >= o + 0.15; // outer edge plus the slur's own thickness
+    });
+  let hMin = 0.3;
+  while (hMin < 8 && !clears(hMin)) hMin += 0.1;
+  const h0 = Math.max(Math.min(lift.h, Math.max(7, 0.12 * L)), hMin);
   return {
-    h: Math.min(lift.h, Math.max(7, 0.12 * L)),
+    h: h0,
+    hMin,
     L,
     draw: (h) => {
       ctx.prims[staff].push({
@@ -689,7 +731,8 @@ function drawSlur(
   const hh = Math.max(p1?.h ?? 0, p2?.h ?? 0);
   // ... but a short half must not become a bowl just because the other one is long. `cap`
   // limits a half's height to a multiple of its own length (or its own natural height).
-  const cap = (p: SlurPiece | undefined) => (p ? Math.min(hh, Math.max(0.12 * p.L + 0.35, Math.min(p.h, 0.7))) : hh);
+  const cap = (p: SlurPiece | undefined) =>
+    p ? Math.min(hh, Math.max(0.12 * p.L + 0.35, Math.min(p.h, 0.7), p.hMin)) : hh;
   p1?.draw(cap(p1));
   p2?.draw(cap(p2));
 }
