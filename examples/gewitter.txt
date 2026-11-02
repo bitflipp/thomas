@@ -2,13 +2,13 @@
 title "Gewitter"
 composer "Philipp Naumann (2026)"
 rights "© Philipp Naumann, licensed under CC BY-SA 4.0"
-page 210.1x296.9 margin=10 space=1.6
+page 210.1x296.9 margin=10 space=1.83
 staff s1 clef=F4 name="Piano"
 staff s2 clef=F4 name="Piano"
 brace s1 s2
 
 m1 time=2/4 key=0
-  s1.1: 12:4(above,label=6){trem2{\tempo 4=115 \p g#3:4. a3:4.}} 12:4(nobracket,nonum,below,label=6){trem2{g#3:4. a3:4.}}
+  s1.1: 12:4(above,label=6){trem2{\tempo 4=115 \p= g#3:4. a3:4.}} 12:4(nobracket,nonum,below,label=6){trem2{g#3:4. a3:4.}}
   s2.1: \ped (d3:2~
 m2
   s1.1: 12:4(nobracket,nonum,below,label=6){trem2{g#3:4. a3:4.}} 12:4(nobracket,nonum,below,label=6){trem2{g#3:4. a3:4.}}
@@ -49,7 +49,7 @@ m13
   s1.1: 12:4(nobracket,nonum,below,label=6){trem2{a#3:4. b3:4.}} 12:4(nobracket,nonum,below,label=6){trem2{a#3:4. b3:4.}}
   s2.1: gb2:4-^_) r:16 \< (^abb2 gb2 abb2
 m14
-  s1.1: 12:4(nobracket,nonum,below,label=6){trem2{a#3:4. b3:4.}} 5:4{\<2 a#3:16 b3 a#3 b3 bb3}
+  s1.1: 12:4(nobracket,nonum,below,label=6){trem2{a#3:4. b3:4.}} 5:4(bracket,above){\<2 a#3:16 b3 a#3 b3 bb3}
   s2.1: gb2:16 abb2 gb2 abb2 \! \> f#2 g2 f#2 g#2) \unped \!
 m15
   s1.1: \clef G2 (a3:16 b3 c4 e4 a4 b4 c5 e5
@@ -58,7 +58,7 @@ m16
   s1.1: a5:16 c6 cb6 bb5 a5 ab5 g5 gb5) \!2
   s2.1: c4:16 e4 c4 a3 e3 c3 a2 e2)2 \! \unped
 m17
-  s1.1: \f (f5:4. d5:8~
+  s1.1: \f= (f5:4. d5:8~
   s1.2: f5:16 e5 a4 d5 c#5 a4 d5 a4
   s2.1: \ped (2d2:16 a2 f3 a2 \unped e3 a2)2 (2_f3 f#3
 m18
@@ -102,7 +102,7 @@ m28
   s1.1: 6:4(nonum){\clef F4 eb4:16 cb4 gb3 c4 g3 eb3} 6:4(nonum){a3 f3 c3 f#3 c#3 a2)} \!
   s2.1: R:2 \unped
 m29
-  s1.1: 12:4(above,label=6){trem2{\p eb3:4. fb3:4.}} 12:4(nobracket,nonum,below,label=6){trem2{eb3:4. fb3:4.}}
+  s1.1: 12:4(above,label=6){trem2{\p= eb3:4. fb3:4.}} 12:4(nobracket,nonum,below,label=6){trem2{eb3:4. fb3:4.}}
   s2.1: \clef F4 \ped (^f#2:2~
 m30
   s1.1: 12:4(nobracket,nonum,below,label=6){trem2{eb3:4. fb3:4.}} 12:4(nobracket,nonum,below,label=6){trem2{eb3:4. fb3:4.}}
@@ -126,7 +126,7 @@ m36
   s1.1: \> bb5:32 fb5 g5 db5 fb5 bb4 db5 g4 bb4 fb4 g4 db4 fb4 bb3 db4 g3) \!
   s2.1: 6:4(nonum){eb2:16 eb1 eb2 eb1 eb2 eb1} 5:4{eb2 eb1 eb2 eb1 d#2~} \unped
 m37
-  s1.1: 12:4(above,label=6){trem2{b3:4. c4:4.}} 12:4(nobracket,nonum,below,label=6){trem2{b3:4. c4:4.}}
+  s1.1: 12:4(below,label=6){trem2{b3:4. c4:4.}} 12:4(nobracket,nonum,below,label=6){trem2{b3:4. c4:4.}}
   s2.1: \ped (^<d#1~ d#2~>:2
 m38
   s1.1: 12:4(nobracket,nonum,below,label=6){trem2{b3:4. c4:4.}} 12:4(nobracket,nonum,below,label=6){trem2{b3:4. c4:4.}}
@@ -162,7 +162,7 @@ m48
   s1.1: R:2 \!
   s2.1: db3:16 c3 cb3 bb2 a2 ab2 g2 gb2 \unped
 m49
-  s1.1: \p R:2
+  s1.1: \p= R:2
   s2.1: 2:1(nobracket,nonum){trem2{\ped f2:2 gb2}}
 m50
   s1.1: R:2
@@ -177,7 +177,7 @@ m53
   s1.1: \clef F4 \< R:2 \!
   s2.1: (^f2:16 e2 db2 c2 b1 ab1 g1 gb1) \unped
 m54
-  s1.1: \f (c2:16 cb2 bb1 a1) (c2 cb2 bb1 a1)
+  s1.1: \f= (c2:16 cb2 bb1 a1) (c2 cb2 bb1 a1)
   s2.1: \ped <f1~ ab1~>:2
 m55
   s1.1: (c2:16 cb2 bb1 a1) (c2 cb2 bb1 a1)
@@ -192,7 +192,7 @@ m58
   s1.1: \< r:8 c2:16 db3 \! \> r:8 \clef G2 c4:16 db3 \!
   s2.1: \ped c1:16 db2 \8off r:8 c3:16 db4 r:8 \unped
 m59
-  s1.1: \p R:2
+  s1.1: \p= R:2
   s2.1: 2:1(nobracket,nonum){trem2{\clef F4 \ped c3:2 db3}}
 m60
   s1.1: r:16. \f^ (c4:32 d4 ab4 f#4 c5 d5 ab5 f#5 c6 f#5:8)
@@ -201,16 +201,16 @@ m61
   s1.1: \< R:2 \!
   s2.1: \ped (^c3:16 b2 ab2 g2 f#2 eb2 d2 db2) \unped
 m62
-  s1.1: \clef F4 \f (g2:16 gb2 f2 e2) (g2 gb2 f2 e2)
+  s1.1: \clef F4 \f= (g2:16 gb2 f2 e2) (g2 gb2 f2 e2)
   s2.1: \ped <c2~ eb2~>:2
 m63
   s1.1: (g2:16 gb2 f2 e2) (g2 gb2 f2 e2)
   s2.1: <c2 eb2>:2 \unped
 m64
   s1.1: <eb2 ab2>:2
-  s2.1: \>^ \ped (cb2:16 dbb2 cb2 dbb2) \! \<^ (bb1 cb2 bb1 cb2) \unped \!
+  s2.1: \>= \ped (cb2:16 dbb2 cb2 dbb2) \! \<= (bb1 cb2 bb1 cb2) \unped \!
 m65
-  s1.1: \f r:16. \clef G2 (ab4:32 bb4 fb5 d5 ab5 bb5 fb6 d6 ab6 d6:8)
+  s1.1: \f= r:16. \clef G2 (ab4:32 bb4 fb5 d5 ab5 bb5 fb6 d6 ab6 d6:8)
   s2.1: 2:1(nobracket,nonum){trem2{\ped ab1:2 bbb1}} \unped
 m66
   s1.1: R:2
@@ -328,7 +328,7 @@ m98
   s1.1: d6:16 eb7 d7 d#6 e6 f7 e7 e#6
   s2.1: \ped e5:16 e4-> f5 f#5 \unped \ped g5 g4-> \arp <c#5 g#5 b5>:8 \unped
 m99
-  s1.1: 6:4{\> (<f#6 b#6 f#7>:16 c#7 d7 c#7 a6 g#6} 6:4(nonum){a6 f#6 g#6 f#6 c#6 d6} \8off
+  s1.1: 6:4(bracket,below){\> (<f#6 b#6 f#7>:16 c#7 d7 c#7 a6 g#6} 6:4(nonum){a6 f#6 g#6 f#6 c#6 d6} \8off
   s2.1: \ped \arp <c#5 a5>:8 \arp <a4 f#5> \arp <f#4 c#5> \arp <c#4 a4>
 m100
   s1.1: 6:4(nonum){c#6:16 a5 b5 a5 f#5 g#5} 6:4(nonum){f#5 c#5 d5 c#5 a4 b4}
@@ -337,7 +337,7 @@ m101
   s1.1: 6:4(nonum){a4:16 f#4 g#4 f#4 c#4 d4} 6:4(nonum){\clef F4 c#4 a3 b3 a3 f#3 g#3)} \!
   s2.1: \arp <f#2 c#3>:8 \arp <c#2 a2> \arp <a1 f#2> \arp <f#1 c#2> \unped
 m102
-  s1.1: \mp (f#3:2~
+  s1.1: \mp= (f#3:2~
   s2.1: 2:1(nobracket,nonum){trem2{\ped f#1:2 c#2}}
 m103
   s1.1: f#3:2~
