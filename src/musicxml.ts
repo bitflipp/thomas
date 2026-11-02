@@ -7,11 +7,12 @@
 // reproduces left out again; (4) timed marks are hung on events (`anchorMarks`).
 // Everything MuseScore-specific that is only a position or an automatic break is dropped on purpose.
 import { beatTicks, simplifyBeams, simplifyTupletBrackets } from './beams.ts';
-import type { Measure, Score, StaffDef, TimedMark, TimeSig } from './model.ts';
-import { anchorMarks, measureTicks } from './model.ts';
+import type { Measure, NoteEvent, Score, StaffDef, TimedMark, TimeSig } from './model.ts';
+import { anchorMarks, baseTicks, measureTicks } from './model.ts';
 import type { MeasureSink, PartState, RawMark, ReadEnv } from './musicxml-measure.ts';
 import { readPartMeasure } from './musicxml-measure.ts';
-import { buildVoice } from './musicxml-voice.ts';
+import type { RawNote } from './musicxml-raw.ts';
+import { buildVoice, decomposeGap } from './musicxml-voice.ts';
 import { must } from './util.ts';
 import type { XNode } from './xml.ts';
 import { child, children, parseXml, text } from './xml.ts';
@@ -163,11 +164,98 @@ function anchorTimedMarks(measure: Measure, rawMarks: RawMark[]): void {
       );
 }
 
+/** A note that crosses a cut becomes tied notes (rests: several rests), each inside one measure. */
+function cutAcross(n: RawNote, mlen: number, number: number, warn: (msg: string) => void): RawNote[] {
+  const cut = (Math.floor(n.tick / mlen) + 1) * mlen;
+  if (n.tick + n.ticks <= cut) return [n];
+  if (n.tmRatio || n.tupStart?.length || n.tupStop || n.trem) {
+    warn(`m${number}: tuplet or tremolo note at tick ${n.tick} crosses the cut at ${cut}`);
+    return [n];
+  }
+  const pieces: RawNote[] = [];
+  let tick = n.tick;
+  const end = n.tick + n.ticks;
+  while (tick < end) {
+    const len = Math.min(end, (Math.floor(tick / mlen) + 1) * mlen) - tick;
+    for (const dur of decomposeGap(len)) {
+      const first = tick === n.tick;
+      const ticks = baseTicks(dur);
+      const last = tick + ticks === end;
+      const ev = structuredClone(n.ev);
+      ev.dur = dur;
+      if (!first) {
+        delete ev.marks;
+        delete ev.slurStart;
+        delete ev.graces;
+        delete (ev as { art?: unknown }).art;
+        delete (ev as { arpeggio?: unknown }).arpeggio;
+      }
+      if (!last) delete ev.slurStop;
+      if (ev.kind === 'note') {
+        if (!last) for (const p of ev.pitches) p.tie = true;
+        else if (!first)
+          for (let i = 0; i < ev.pitches.length; i++) ev.pitches[i].tie = (n.ev as NoteEvent).pitches[i].tie;
+      }
+      const beam1 = first && n.beam1 === 'continue' ? 'end' : undefined;
+      const piece: RawNote = { ...n, tick, ticks, ev };
+      delete piece.tupStart;
+      if (beam1) piece.beam1 = beam1;
+      else delete piece.beam1;
+      pieces.push(piece);
+      tick += ticks;
+    }
+  }
+  return pieces;
+}
+
+/**
+ * A source measure longer than its time signature (an irregular bar, e.g. MuseScore's "actual duration")
+ * cannot be a single model measure: it is cut into several at the nominal length. Notes must not cross
+ * a cut; one that does is reported and dropped from the later piece.
+ */
+function splitOverfull(sink: MeasureSink, mlen: number, number: number, warn: (msg: string) => void): MeasureSink[] {
+  let end = 0;
+  for (const notes of sink.raws.values()) for (const n of notes) end = Math.max(end, n.tick + n.ticks);
+  if (end <= mlen) return [sink];
+  const count = Math.ceil(end / mlen);
+  warn(`m${number}: ${end} ticks in a ${mlen}-tick measure, split into ${count} measures`);
+  const parts: MeasureSink[] = Array.from({ length: count }, (_x, k) => ({
+    measure: k === 0 ? sink.measure : { staves: {} },
+    raws: new Map(),
+    marks: [],
+  }));
+  // The barline belongs to the end of the source measure.
+  const last = parts[count - 1].measure;
+  if (sink.measure.barline) {
+    last.barline = sink.measure.barline;
+    delete sink.measure.barline;
+  }
+  for (const [key, notes] of sink.raws)
+    for (const n of notes)
+      for (const piece of cutAcross(n, mlen, number, warn)) {
+        const k = Math.floor(piece.tick / mlen);
+        const list = parts[k].raws.get(key) ?? [];
+        parts[k].raws.set(key, list);
+        list.push({ ...piece, tick: piece.tick - k * mlen });
+      }
+  for (const m of sink.marks) {
+    const k = Math.min(Math.floor(m.mark.tick / mlen), count - 1);
+    parts[k].marks.push({ ...m, mark: { ...m.mark, tick: m.mark.tick - k * mlen } });
+  }
+  return parts;
+}
+
 /** Raw notes become item trees, then the timed marks are hung on events. */
 function buildMeasures(read: ReadMeasures, warn: (msg: string) => void): Measure[] {
   const numbers = voiceNumbers(read.sinks);
   let timeNow: TimeSig = { beats: 4, beatType: 4 };
-  const measures = read.sinks.map(({ measure, raws, marks }, mi) => {
+  const sinks: MeasureSink[] = [];
+  for (const sink of read.sinks) {
+    if (sink.measure.time) timeNow = sink.measure.time;
+    sinks.push(...splitOverfull(sink, measureTicks(timeNow), sinks.length + 1, warn));
+  }
+  timeNow = { beats: 4, beatType: 4 };
+  const measures = sinks.map(({ measure, raws, marks }, mi) => {
     if (measure.time) timeNow = measure.time;
     const mlen = measureTicks(timeNow);
     for (const [key, notes] of raws) {

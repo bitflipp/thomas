@@ -14,7 +14,7 @@ import { beamLevels, posToY, staffPos } from './prep.ts';
 import type { Prim, Skyline } from './scene.ts';
 import { oid, tagFrom } from './scene.ts';
 import type { MeasureSpacing, PlacedMeasure } from './spacing.ts';
-import { DOT_STEP, GRACE_SCALE, HEAD_SCALE, headGlyph, headWidth, restGlyph, STEM_T } from './spacing.ts';
+import { DOT_STEP, flagGlyph, GRACE_SCALE, HEAD_SCALE, headGlyph, headWidth, restGlyph, STEM_T } from './spacing.ts';
 
 const sm = loadSmufl();
 export const D = new Proxy({} as typeof sm.def, { get: (_, k) => sm.def[k as string] }); // lazy: the font may not be loaded yet
@@ -419,7 +419,7 @@ function drawStem(ctx: SysCtx, e: EvL, g: Geom, s: number, flag: boolean, noSky 
   const base = e.te.ev.dur.base;
   if (flag && base >= 8 && !e.beam) {
     const n = beamLevels(base);
-    const name = `flag${n === 1 ? '8th' : n === 2 ? '16th' : n === 3 ? '32nd' : '64th'}${up ? 'Up' : 'Down'}`;
+    const name = flagGlyph(n, up);
     ctx.prims[s].push({ t: 'glyph', name, x: g.stemX - STEM_T / 2, y: g.stemTip });
     tagFrom(ctx.prims[s], ctx.prims[s].length - 1, 'flag', e, stemGroups(e));
     const b = sm.bbox(name);
@@ -691,7 +691,7 @@ function drawGraceWithFlag(d: GraceDrawing, geo: GraceGeom[], i: number): void {
   drawGraceStem(d, geo, i, geo[i].tip);
   if (base < 8) return;
   const n = beamLevels(base);
-  const name = `flag${n === 1 ? '8th' : n === 2 ? '16th' : n === 3 ? '32nd' : '64th'}Up`;
+  const name = flagGlyph(n, true);
   const prims = d.ctx.prims[d.s];
   const n0 = prims.length;
   prims.push({ t: 'glyph', name, x: geo[i].stemX - GRACE_STEM / 2, y: geo[i].tip, sx: GRACE_SCALE, sy: GRACE_SCALE });

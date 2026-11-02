@@ -10,10 +10,12 @@ import { baseTicks, isBeam, isEvent, isTuplet } from '../model.ts';
 /** A refusal with a message fit for the user; the UI shows it in the status line instead of changing anything. */
 export class EditError extends Error {}
 
-const BASES: BaseDur[] = [1, 2, 4, 8, 16, 32, 64];
+const BASES: BaseDur[] = [1, 2, 4, 8, 16, 32, 64, 128];
 /** Every plain or single-dotted note value with its length, longest first (double dots are never produced). */
 const CANDS = BASES.flatMap((base) =>
-  [0, 1].map((dots) => ({ dur: { base, dots } as Dur, ticks: baseTicks({ base, dots }) })),
+  [0, 1]
+    .filter((dots) => !(base === 128 && dots))
+    .map((dots) => ({ dur: { base, dots } as Dur, ticks: baseTicks({ base, dots }) })),
 ).sort((a, b) => b.ticks - a.ticks);
 
 export function durOfTicks(t: number): Dur | undefined {

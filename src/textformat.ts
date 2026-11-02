@@ -390,7 +390,8 @@ function parseDur(sc: Scanner): Dur {
   if (!m) sc.fail('duration expected');
   const dots = (must(m).match(/\./g) ?? []).length;
   const base = Number(must(m).replace(/\./g, ''));
-  if (![1, 2, 4, 8, 16, 32, 64].includes(base)) sc.fail(`bad duration ${base}`);
+  if (![1, 2, 4, 8, 16, 32, 64, 128].includes(base)) sc.fail(`bad duration ${base}`);
+  if (base === 128 && dots) sc.fail('a 128th cannot be dotted');
   return { base: base as BaseDur, dots };
 }
 

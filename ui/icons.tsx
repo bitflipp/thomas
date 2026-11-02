@@ -93,6 +93,7 @@ export const CPS = {
   sixteenth: 0xe1d9,
   thirty2: 0xe1db,
   sixty4: 0xe1dd,
+  hundred28: 0xe1df,
   restQuarter: 0xe4e5,
   flat: 0xe260,
   natural: 0xe261,

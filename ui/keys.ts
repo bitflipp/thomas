@@ -51,7 +51,7 @@ function paste(): void {
   run((s) => C.pasteEvents(s, r, te.start, clip));
 }
 
-const DURATION_KEYS = [1, 2, 4, 8, 16, 32, 64] as const;
+const DURATION_KEYS = [1, 2, 4, 8, 16, 32, 64, 128] as const;
 const TOOL_KEYS: Record<string, Tool> = { n: 'note', r: 'rest', v: 'select', l: 'slur' };
 const MAX_VOICE = 4;
 const ZOOM_STEP = 1.2;
@@ -174,7 +174,7 @@ function onNavigationKey(e: KeyboardEvent): boolean {
 
 /** Single letter and digit keys: durations, tools, ties, slurs, stem flip and the voice. */
 function onToolKey(e: KeyboardEvent): void {
-  const digit = '1234567'.indexOf(e.key);
+  const digit = '12345678'.indexOf(e.key);
   if (digit >= 0 && !e.shiftKey) {
     chooseDuration(DURATION_KEYS[digit]);
     return;

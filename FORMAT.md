@@ -39,7 +39,7 @@ Voice numbers are local to a staff (`s1.1`, `s1.2`, `s2.1`, ...). Every voice of
 | Element | Syntax | Example |
 |---|---|---|
 | Pitch | step, accidentals, octave (`c4` = middle C). `#` sharp, `b` flat, repeatable | `g#3` `eb5` `f##2` `bbb4` (b double-flat) |
-| Duration | `:` + base (1 2 4 8 16 32 64) + dots. The base is *sticky* within a line, dots are not | `c4:8. d4 e4:4` |
+| Duration | `:` + base (1 2 4 8 16 32 64 128) + dots (not on 128). The base is *sticky* within a line, dots are not | `c4:8. d4 e4:4` |
 | Rest | `r` (visible), `s` (invisible spacer), `R` (whole-measure rest) | `r:8` `s:4` `R:2` |
 | Displaced rest | `r@<pitch>` | `r@b4:4` |
 | Chord | `<pitches>` then duration | `<c4 e4 g4>:2` |

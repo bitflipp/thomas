@@ -11,6 +11,7 @@ export const DURS: [BaseDur, number, string][] = [
   [16, CPS.sixteenth, '5'],
   [32, CPS.thirty2, '6'],
   [64, CPS.sixty4, '7'],
+  [128, CPS.hundred28, '8'],
 ];
 export const ACCS: [number, number, string][] = [
   [-2, CPS.dflat, 'Double flat'],

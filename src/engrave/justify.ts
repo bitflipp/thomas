@@ -8,7 +8,7 @@ import type { Prepared } from './prep.ts';
 import { Skyline } from './scene.ts';
 import { prefixWidth } from './signatures.ts';
 import type { MeasureSpacing, PlacedMeasure } from './spacing.ts';
-import { placeMeasure } from './spacing.ts';
+import { MIN_CLEARANCE, placeMeasure } from './spacing.ts';
 
 export interface JustifyOptions {
   /** Justify the last system however short it is. */
@@ -52,22 +52,36 @@ export function justifySystem(
   const prefix = prefixWidth(prep, plan.a, plan.a === 0);
   const spacing: MeasureSpacing[] = [];
   for (let mi = plan.a; mi <= plan.b; mi++) spacing[mi] = mi === plan.a ? spF[mi] : spN[mi];
-  const widthAt = (f: number) => {
+  const widthAt = (f: number, z = 1) => {
     let w = prefix;
-    for (let mi = plan.a; mi <= plan.b; mi++) w += placeMeasure(spacing[mi], f).width;
+    for (let mi = plan.a; mi <= plan.b; mi++) w += placeMeasure(spacing[mi], f, z).width;
     return w;
   };
   const f = stretchFactor(widthAt, W, plan.last, opts.fillLast ?? false);
+  // Too dense even at the least stretch: shrink the clearances between columns as far as needed (down to MIN_CLEARANCE).
+  let z = 1;
+  if (widthAt(f) > W * 1.001) {
+    let lo = MIN_CLEARANCE;
+    let hi = 1;
+    if (widthAt(f, lo) <= W) {
+      for (let it = 0; it < 40; it++) {
+        const mid = (lo + hi) / 2;
+        if (widthAt(f, mid) > W) hi = mid;
+        else lo = mid;
+      }
+    }
+    z = lo;
+  }
   const placed: PlacedMeasure[] = [];
   const mx: number[] = [];
   let x = prefix;
   for (let mi = plan.a; mi <= plan.b; mi++) {
-    const p = placeMeasure(spacing[mi], f);
+    const p = placeMeasure(spacing[mi], f, z);
     placed[mi] = p;
     mx[mi] = x;
     x += p.width;
   }
-  if (widthAt(f) > W * 1.001)
+  if (widthAt(f, z) > W * 1.001)
     opts.warn(`system ${index + 1}: content ${widthAt(1).toFixed(1)} exceeds width ${W.toFixed(1)}`);
   return {
     prep,

@@ -437,6 +437,12 @@ function layoutColumnStaff(c: Column, s: number, evs: EvL[]): void {
   c.has[s] = true;
 }
 
+/** The flag glyph for `levels` flags (1 = eighth ... 5 = 128th). */
+export function flagGlyph(levels: number, up: boolean): string {
+  const n = ['8th', '16th', '32nd', '64th', '128th'][Math.min(Math.max(levels, 1), 5) - 1];
+  return `flag${n}${up ? 'Up' : 'Down'}`;
+}
+
 export function restGlyph(base: number, measure?: boolean): string {
   if (measure) return 'restWhole';
   return base === 1
@@ -451,7 +457,9 @@ export function restGlyph(base: number, measure?: boolean): string {
             ? 'rest16th'
             : base === 32
               ? 'rest32nd'
-              : 'rest64th';
+              : base === 64
+                ? 'rest64th'
+                : 'rest128th';
 }
 
 export interface PlacedMeasure {
@@ -460,8 +468,15 @@ export interface PlacedMeasure {
   endX: number;
 }
 
-/** Place columns for stretch factor f (f=1 natural). x = 0 at the measure's left edge. */
-export function placeMeasure(sp: MeasureSpacing, f: number): PlacedMeasure {
+/** Least scale of the clearances between neighbouring columns (see `placeMeasure`'s `z`). */
+export const MIN_CLEARANCE = 0.75;
+
+/**
+ * Place columns for stretch factor f (f=1 natural). x = 0 at the measure's left edge. `z` scales the
+ * clearances (head/accidental extents plus gap) between neighbouring columns; it is below 1 only
+ * for a measure so dense that it does not fit a line even when compressed (`justifySystem`).
+ */
+export function placeMeasure(sp: MeasureSpacing, f: number, z = 1): PlacedMeasure {
   const nS = sp.endReq.length;
   const xs: number[] = [];
   const lastOcc: number[] = new Array(nS).fill(-1);
@@ -470,7 +485,7 @@ export function placeMeasure(sp: MeasureSpacing, f: number): PlacedMeasure {
     for (let s = 0; s < nS; s++) {
       if (!c.has[s]) continue;
       const i = lastOcc[s];
-      if (i >= 0) x = Math.max(x, xs[i] + sp.cols[i].R[s] + c.L[s] + 0.47);
+      if (i >= 0) x = Math.max(x, xs[i] + z * (sp.cols[i].R[s] + c.L[s] + 0.47));
       lastOcc[s] = j;
     }
     for (const m of c.minFrom) x = Math.max(x, xs[m.j] + m.d);
@@ -481,7 +496,7 @@ export function placeMeasure(sp: MeasureSpacing, f: number): PlacedMeasure {
   let endX = last + f * sp.endIdeal;
   if (sp.cols.length === 0 || sp.restOnly) endX = Math.max(endX, sp.lead + 5.5 * Math.min(1.5, f));
   for (let s = 0; s < nS; s++)
-    if (lastOcc[s] >= 0) endX = Math.max(endX, xs[lastOcc[s]] + sp.cols[lastOcc[s]].R[s] + sp.endTrail);
+    if (lastOcc[s] >= 0) endX = Math.max(endX, xs[lastOcc[s]] + z * (sp.cols[lastOcc[s]].R[s] + sp.endTrail));
   return { xs, width: endX, endX };
 }
 

@@ -7,7 +7,7 @@ import { must } from './util.ts';
 // Score > Measure > StaffMeasure (per staff id) > Voice > Item tree. Marks (dynamics, hairpins, pedal,
 // ...) are not stored with ticks but hang on the events they start at; see `marksOf`.
 
-/** Ticks per quarter note: divisible by 2^5, 3, 5 and 7, so 64th notes and tuplets up to septuplets are exact integers. */
+/** Ticks per quarter note: divisible by 2^5, 3, 5 and 7, so undotted 128th notes and tuplets up to septuplets are exact integers (a dotted 128th would be 157.5 ticks: not allowed). */
 export const PPQ = 3360;
 
 export type Step = 'c' | 'd' | 'e' | 'f' | 'g' | 'a' | 'b';
@@ -19,7 +19,7 @@ export interface Pitch {
   octave: number; // scientific pitch notation, c4 = middle C
 }
 
-export type BaseDur = 1 | 2 | 4 | 8 | 16 | 32 | 64;
+export type BaseDur = 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128;
 export interface Dur {
   base: BaseDur;
   dots: number;

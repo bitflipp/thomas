@@ -253,3 +253,16 @@ m1 time=2/4
   assert.ok(tips.size <= 2, `tips ${[...tips]}`);
   assert.deepEqual(findCollisions(engrave(s).pages).map(describe), []);
 });
+
+test('a measure too dense for one line is squeezed to fit instead of overflowing', () => {
+  const notes = Array.from({ length: 64 }, (_x, i) => `${'cdefgab'[i % 7]}4${i === 0 ? ':64' : ''}`).join(' ');
+  const s = parseText(`${HEAD}
+m1 time=4/4
+  rh.1: ${notes}
+  lh.1: R:1
+`);
+  const warnings: string[] = [];
+  const res = engrave(s, { warn: (m) => warnings.push(m) });
+  assert.deepEqual(warnings, []);
+  assert.equal(res.pages[0].prims.length > 0, true);
+});

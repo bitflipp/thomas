@@ -6,7 +6,7 @@ export const showHelp = signal(false);
 
 const ROWS: [string, string][] = [
   ['N / R / V (Esc)', 'Note input / rest input / select'],
-  ['1 – 7', 'Duration whole … 64th (also applies to the selection)'],
+  ['1 – 8', 'Duration whole … 128th (also applies to the selection)'],
   ['.', 'Cycle dots'],
   ['Q / W', 'Previous / next voice for new notes'],
   ['↑ ↓', 'Selected notes: semitone up / down'],

@@ -34,13 +34,14 @@ const RANK_TUPLET = 3;
 const BEAM_OF_ONE_NOTE_MIN_BASE: BaseDur = 8;
 
 /** Splits a gap into the fewest legal durations (largest first), to fill it with hidden rests. */
-function decomposeGap(ticks: number): Dur[] {
+export function decomposeGap(ticks: number): Dur[] {
   const out: Dur[] = [];
   while (ticks > 0) {
     let found: Dur | null = null;
     for (const base of ALL_BASES)
       for (const dots of [2, 1, 0]) {
         const bt = baseTicks({ base, dots });
+        if (!Number.isInteger(bt)) continue;
         if (bt <= ticks && (!found || bt > baseTicks(found))) found = { base, dots };
       }
     if (!found) throw new Error(`cannot represent gap of ${ticks} ticks`);
@@ -171,6 +172,21 @@ function beamRanges(evs: VoiceEvent[]): Range[] {
   return ranges;
 }
 
+/**
+ * A beam that starts or ends inside a tuplet but continues outside it would cross the tuplet's edge.
+ * When the part of the tuplet outside the beam is only rests (the source starts the beam at the first
+ * note after a rest), the beam is widened over those rests so that the tuplet nests inside it.
+ */
+function widenBeam(beam: Range, tuplets: Range[], evs: VoiceEvent[]): Range {
+  const rests = (a: number, b: number) => evs.slice(a, b).every((e) => e.ev.kind === 'rest');
+  let { a, b } = beam;
+  for (const t of tuplets) {
+    if (t.a < a && a <= t.b && b > t.b && rests(t.a, a)) a = t.a;
+    if (t.a <= b && b < t.b && a < t.a && rests(b + 1, t.b + 1)) b = t.b;
+  }
+  return a === beam.a && b === beam.b ? beam : { ...beam, a, b };
+}
+
 function groupName(rank: number): string {
   return rank === RANK_TUPLET ? 'tuplet' : rank === RANK_TREMOLO ? 'tremolo' : 'beam';
 }
@@ -212,6 +228,11 @@ function nest(evs: VoiceEvent[], ranges: Range[], mnum: number, warn: Warn): Ite
 /** Builds a voice's item tree from its raw notes (in time order). */
 export function buildVoice(notes: RawNote[], mlen: number, mnum: number, warn: Warn): Item[] {
   const evs = fillGaps(notes, mlen, mnum, warn);
-  const ranges = [...tupletRanges(evs, mnum, warn), ...tremoloRanges(evs, mnum, warn), ...beamRanges(evs)];
+  const tuplets = tupletRanges(evs, mnum, warn);
+  const ranges = [
+    ...tuplets,
+    ...tremoloRanges(evs, mnum, warn),
+    ...beamRanges(evs).map((b) => widenBeam(b, tuplets, evs)),
+  ];
   return nest(evs, ranges, mnum, warn);
 }

@@ -5,9 +5,9 @@ import type { SysCtx } from './draw.ts';
 import { articExtent, D, geomOf, staffOffset } from './draw.ts';
 import { drawMarks } from './marks.ts';
 import type { EvL } from './prep.ts';
-import { posToY } from './prep.ts';
+import { beamLevels, posToY } from './prep.ts';
 import { oid, Skyline } from './scene.ts';
-import { DOT_STEP } from './spacing.ts';
+import { DOT_STEP, flagGlyph } from './spacing.ts';
 
 const sm = loadSmufl();
 
@@ -209,15 +209,7 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
   let x0 = e.x + h.dx + g.hw + 0.12 + (dots ? 0.4 + DOT_STEP * dots : 0);
   if (sibs.some((i) => ledgerNear(e, e.heads[i], tieAbove(e, i))))
     x0 = Math.max(x0, e.x + h.dx + g.hw + ledgerExt + 0.1);
-  if (flagged)
-    x0 = Math.max(
-      x0,
-      g.stemX +
-        sm.bbox(
-          `flag${e.te.ev.dur.base >= 32 ? '32nd' : e.te.ev.dur.base >= 16 ? '16th' : '8th'}${above ? 'Up' : 'Down'}`,
-        ).x1 +
-        0.1,
-    );
+  if (flagged) x0 = Math.max(x0, g.stemX + sm.bbox(flagGlyph(beamLevels(e.te.ev.dur.base), above)).x1 + 0.1);
   const si = systems[e.mi >= 0 ? sysOfIndex(systems, e.mi) : 0];
   const thick = D.tieMidpointThickness as number;
   const place = (
