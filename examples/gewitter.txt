@@ -2,7 +2,7 @@
 title "Gewitter"
 composer "Philipp Naumann (2026)"
 rights "© Philipp Naumann, licensed under CC BY-SA 4.0"
-page 210.1x296.9 margin=10 space=1.91
+page 210.1x296.9 margin=10 space=1.6
 staff s1 clef=F4 name="Piano"
 staff s2 clef=F4 name="Piano"
 brace s1 s2
@@ -168,7 +168,7 @@ m50
   s1.1: R:2
   s2.1: 2:1(nobracket,nonum){trem2{f2:2 gb2}}
 m51
-  s1.1: r:16. [\clef G2 \f^ (f4:32 g4 db5 b4 f5 g5 db6 b5 f6 b5:8)]
+  s1.1: r:16. \clef G2 \f^ (f4:32 g4 db5 b4 f5 g5 db6 b5 f6 b5:8)
   s2.1: 2:1(nobracket,nonum){trem2{f2:2 gb2}} \unped
 m52
   s1.1: R:2
@@ -195,7 +195,7 @@ m59
   s1.1: \p R:2
   s2.1: 2:1(nobracket,nonum){trem2{\clef F4 \ped c3:2 db3}}
 m60
-  s1.1: r:16. [\f^ (c4:32 d4 ab4 f#4 c5 d5 ab5 f#5 c6 f#5:8)]
+  s1.1: r:16. \f^ (c4:32 d4 ab4 f#4 c5 d5 ab5 f#5 c6 f#5:8)
   s2.1: 2:1(nobracket,nonum){trem2{c3:2 db3}} \unped
 m61
   s1.1: \< R:2 \!
@@ -210,14 +210,14 @@ m64
   s1.1: <eb2 ab2>:2
   s2.1: \>^ \ped (cb2:16 dbb2 cb2 dbb2) \! \<^ (bb1 cb2 bb1 cb2) \unped \!
 m65
-  s1.1: \f r:16. [\clef G2 (ab4:32 bb4 fb5 d5 ab5 bb5 fb6 d6 ab6 d6:8)]
+  s1.1: \f r:16. \clef G2 (ab4:32 bb4 fb5 d5 ab5 bb5 fb6 d6 ab6 d6:8)
   s2.1: 2:1(nobracket,nonum){trem2{\ped ab1:2 bbb1}} \unped
 m66
   s1.1: R:2
   s2.1: \ped (eb2:16 ebb2 db2 c2) (eb2 ebb2 db2 c2)
   s2.2: <ab1~ cb2~>:2
 m67
-  s1.1: r:16. [(b3:32 c#4 g4 e#4 b4 c#5 g5 e#5 b5 e#5:8)]
+  s1.1: r:16. (b3:32 c#4 g4 e#4 b4 c#5 g5 e#5 b5 e#5:8)
   s2.1: (eb2:16 ebb2 db2 c2) (eb2 ebb2 db2 c2) \unped
   s2.2: <ab1 cb2>:2
 m68
@@ -267,7 +267,7 @@ m79
   s1.2: c4:8 f#3 g#3:4)2
   s2.1: \ped <e1 b1 e2>:2 \unped
 m80
-  s1.1: \ff a3:4 \clef G2 b3:32 c#4 d4 e4 f#4 g#4 a4 b4
+  s1.1: \ff= a3:4 \clef G2 b3:32 c#4 d4 e4 f#4 g#4 a4 b4
   s2.1: \ped a2:32 b2 c#3 d3 e3 f#3 g#3 a3 r:4
   s2.2: <a1~ a2~>:2->
 m81

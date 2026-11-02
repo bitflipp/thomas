@@ -32,6 +32,7 @@ import {
   score,
   showCollisions,
   showInspector,
+  shownZoom,
   showText,
   timing,
   toast,
@@ -223,7 +224,7 @@ export function App() {
           <button type="button" class="icon" title="Zoom out" onClick={() => zoomBy(1 / 1.2)}>
             <Ui.minus />
           </button>
-          <span class="val">{fit.value ? 'fit' : `${Math.round(zoom.value * 100)}%`}</span>
+          <span class="val">{Math.round((fit.value ? shownZoom.value : zoom.value) * 100)}%</span>
           <button type="button" class="icon" title="Zoom in" onClick={() => zoomBy(1.2)}>
             <Ui.plus />
           </button>

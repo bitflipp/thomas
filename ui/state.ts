@@ -143,6 +143,7 @@ export function loadText(t: string, name?: string): boolean {
 // ---------------------------------------------------------------- view
 
 export const zoom = signal(1);
+export const shownZoom = signal(1); // the zoom the pages are displayed at (differs from `zoom` while fitting)
 export const fit = signal(true); // fit pages to the pane width
 export const showText = signal(false);
 export const showInspector = signal(true);

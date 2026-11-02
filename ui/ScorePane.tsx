@@ -39,6 +39,7 @@ import {
   score,
   selection,
   showCollisions,
+  shownZoom,
   tool,
   VOICE_COLORS,
   voiceColors,
@@ -433,6 +434,11 @@ export function ScorePane() {
     for (const [pg, ks] of per) out[pg] = ks.sort().join('|');
     return out;
   }, [h, keys]);
+  const fitted =
+    res && fit.value ? (Math.max(200, (paneW || 800) - 48) * z) / (res.pages[0].width * res.staffSpace * MM_PX) : null;
+  useEffect(() => {
+    shownZoom.value = fitted ?? zoom.peek();
+  }, [fitted]);
   if (!(res && h)) return <div class="scroll" ref={box} />;
   const cssW = (pw: number) => (fit.value ? Math.max(200, (paneW || 800) - 48) * z : pw * res.staffSpace * MM_PX * z);
   const cursor = tool.value === 'select' ? 'default' : 'crosshair';
