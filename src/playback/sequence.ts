@@ -24,21 +24,8 @@ export interface Sequence {
   secToTick(sec: number): number;
 }
 
-const DYN: Record<string, number> = {
-  ppp: 24,
-  pp: 36,
-  p: 50,
-  mp: 62,
-  mf: 76,
-  f: 92,
-  ff: 108,
-  fff: 120,
-  sf: 104,
-  sfz: 104,
-  fp: 92,
-  rfz: 104,
-};
-const DEFAULT_VEL = 76;
+/** Every note plays at this velocity: playback is for proofreading, so dynamics are not rendered. */
+const VELOCITY = 80;
 const STACCATO = 0.5;
 
 /** MIDI channel of the n-th staff: 0..15 without the percussion channel 9. */
@@ -111,8 +98,8 @@ function tempoMap(score: Score, measureStart: number[]): Pick<Sequence, 'tickToS
 }
 
 /**
- * Dynamics apply to the whole staff (all its voices), from their position until the next one. Returns
- * the velocity in force at a tick (hairpins are not interpolated yet) and adds the staff's pedal changes.
+ * Returns the velocity of a note at a tick (constant, dynamics are ignored) and adds the staff's pedal
+ * changes.
  */
 function readDynamicsAndPedal(
   score: Score,
@@ -122,15 +109,11 @@ function readDynamicsAndPedal(
   total: number,
   pedal: PedalEvent[],
 ): (tick: number) => number {
-  const dyn: { tick: number; vel: number }[] = [];
   let down = false;
   score.measures.forEach((m, mi) => {
     for (const mk of marksOf(m.staves[staffId])) {
       const t = measureStart[mi] + mk.tick;
-      if (mk.type === 'dynamic') {
-        const v = DYN[mk.text];
-        if (v !== undefined) dyn.push({ tick: t, vel: v });
-      } else if (mk.type === 'pedal') {
+      if (mk.type === 'pedal') {
         if (down) pedal.push({ tick: t, ch, down: false });
         pedal.push({ tick: t, ch, down: true });
         down = true;
@@ -141,12 +124,7 @@ function readDynamicsAndPedal(
     }
   });
   if (down) pedal.push({ tick: total, ch, down: false });
-  dyn.sort((a, b) => a.tick - b.tick);
-  return (tick) => {
-    let v = DEFAULT_VEL;
-    for (const d of dyn) if (d.tick <= tick) v = d.vel;
-    return v;
-  };
+  return () => VELOCITY;
 }
 
 /** Collects the sounding notes of one voice, merging ties. */
@@ -186,9 +164,6 @@ function voiceNotes(notes: Note[], open: Map<number, Note>, ch: number): VoiceNo
   };
 }
 
-const accentBoost = (te: TimedEvent): number =>
-  te.ev.kind === 'note' && (te.ev.art?.includes('accent') || te.ev.art?.includes('marcato')) ? 14 : 0;
-
 /** What the note readers of one staff share. */
 interface StaffPlayback {
   ch: number;
@@ -218,7 +193,7 @@ function addTremolo(
   const stroke = (PPQ * 4) / 2 ** (trem.beams + 2);
   const count = Math.max(2, Math.round((to - from) / stroke));
   const len = (to - from) / count;
-  const vel = sp.velAt(from) + accentBoost(p0);
+  const vel = sp.velAt(from);
   for (let k = 0; k < count; k++) {
     const who = (k % 2 ? p1 : p0).ev;
     if (who.kind !== 'note') continue;
@@ -260,7 +235,7 @@ function addGraces(sp: StaffPlayback, graces: Grace[], start: number, ticks: num
     t = start;
     mainOn = start + total;
   }
-  const vel = Math.max(1, sp.velAt(start) - 8);
+  const vel = sp.velAt(start);
   graces.forEach((g, gi) => {
     for (const np of g.pitches)
       sp.notes.push({ start: t, end: t + lens[gi], midi: pitchMidi(np.pitch), vel, ch: sp.ch });
@@ -276,7 +251,7 @@ function addGraces(sp: StaffPlayback, graces: Grace[], start: number, ticks: num
 function addChord(sink: VoiceNotes, sp: StaffPlayback, te: TimedEvent & { ev: NoteEvent }, start: number): void {
   const end = start + te.ticks;
   const staccato = !!te.ev.art?.includes('staccato');
-  const vel = sp.velAt(start) + accentBoost(te);
+  const vel = sp.velAt(start);
   const mainOn = te.ev.graces?.length ? addGraces(sp, te.ev.graces, start, te.ticks) : start;
   const n = te.ev.pitches.length;
   const step = te.ev.arpeggio && n > 1 ? Math.min(PPQ / 8, (end - mainOn) / (3 * (n - 1))) : 0;
