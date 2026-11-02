@@ -286,6 +286,30 @@ function inside(rings: number[][], x: number, y: number): boolean {
   return c;
 }
 function outlinesIntersect(a: Shape, b: Shape): boolean {
+  if (edgesCross(a, b)) return true;
+  // No crossing edges. The outlines may still overlap if one lies completely inside the other, which
+  // one vertex of each tested against the other's rings (even-odd rule) detects.
+  return inside(b.rings, a.rings[0][0], a.rings[0][1]) || inside(a.rings, b.rings[0][0], b.rings[0][1]);
+}
+
+// ---- pair policy
+// Whether two primitives are *meant* to touch: parts of one note, members of one beam or tuplet group, ...
+function related(a: Prim, b: Prim): boolean {
+  if (a.o !== undefined && a.o === b.o) return true;
+  if (a.o !== undefined && b.g?.includes(a.o)) return true;
+  if (b.o !== undefined && a.g?.includes(b.o)) return true;
+  return !!a.g && !!b.g && a.g.some((x) => must(b.g).includes(x));
+}
+
+function permitted(a: Prim, b: Prim): boolean {
+  if (a.k === b.k && a.o !== undefined && a.o === b.o) return true; // parts of one object
+  const scope = allowed.get(`${a.k}|${b.k}`);
+  if (scope === undefined) return false;
+  return scope === 'any' || related(a, b);
+}
+
+/** Do any edges of the two outlines cross? Edges are first rejected by the bounding box of the overlap. */
+function edgesCross(a: Shape, b: Shape): boolean {
   const lx0 = Math.max(a.x0, b.x0);
   const lx1 = Math.min(a.x1, b.x1);
   const ly0 = Math.max(a.y0, b.y0);
@@ -309,50 +333,39 @@ function outlinesIntersect(a: Shape, b: Shape): boolean {
       }
     }
   }
-  // No crossing edges. The outlines may still overlap if one lies completely inside the other, which
-  // one vertex of each tested against the other's rings (even-odd rule) detects.
-  return inside(b.rings, a.rings[0][0], a.rings[0][1]) || inside(a.rings, b.rings[0][0], b.rings[0][1]);
+  return false;
 }
 
-// ---- pair policy
-// Whether two primitives are *meant* to touch: parts of one note, members of one beam or tuplet group, ...
-function related(a: Prim, b: Prim): boolean {
-  if (a.o !== undefined && a.o === b.o) return true;
-  if (a.o !== undefined && b.g?.includes(a.o)) return true;
-  if (b.o !== undefined && a.g?.includes(b.o)) return true;
-  return !!a.g && !!b.g && a.g.some((x) => must(b.g).includes(x));
+/** The shapes of a page that take part in collision checks (staff lines and untagged prims do not), sorted by left edge. */
+function pageShapes(page: Page): Shape[] {
+  const shapes: Shape[] = [];
+  for (const p of page.prims) {
+    if (!p.k || p.k === 'staff') continue;
+    const s = shapeOf(p);
+    if (s) shapes.push(s);
+  }
+  return shapes.sort((a, b) => a.x0 - b.x0);
 }
 
-function permitted(a: Prim, b: Prim): boolean {
-  if (a.k === b.k && a.o !== undefined && a.o === b.o) return true; // parts of one object
-  const scope = allowed.get(`${a.k}|${b.k}`);
-  if (scope === undefined) return false;
-  return scope === 'any' || related(a, b);
+/** The collision of two shapes whose bounding boxes overlap, unless it is permitted or only their boxes (not outlines) touch. */
+function collisionOf(a: Shape, b: Shape, page: number): Collision | undefined {
+  const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  if (w <= EPS || h <= EPS || permitted(a.p, b.p)) return undefined;
+  const mode = a.boxy && b.boxy ? 'box' : 'outline';
+  if (mode === 'outline' && !outlinesIntersect(a, b)) return undefined;
+  return { page, a: a.p, b: b.p, x: Math.max(a.x0, b.x0), y: Math.max(a.y0, b.y0), w, h, mode };
 }
 
 export function findCollisions(pages: Page[]): Collision[] {
   const out: Collision[] = [];
   pages.forEach((page, pi) => {
-    const shapes: Shape[] = [];
-    for (const p of page.prims) {
-      if (!p.k || p.k === 'staff') continue;
-      const s = shapeOf(p);
-      if (s) shapes.push(s);
-    }
-    shapes.sort((a, b) => a.x0 - b.x0);
-    for (let i = 0; i < shapes.length; i++) {
-      const a = shapes[i];
-      for (let j = i + 1; j < shapes.length && shapes[j].x0 < a.x1 - EPS; j++) {
-        const b = shapes[j];
-        const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
-        const h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
-        if (w <= EPS || h <= EPS) continue;
-        if (permitted(a.p, b.p)) continue;
-        const mode = a.boxy && b.boxy ? 'box' : 'outline';
-        if (mode === 'outline' && !outlinesIntersect(a, b)) continue;
-        out.push({ page: pi + 1, a: a.p, b: b.p, x: Math.max(a.x0, b.x0), y: Math.max(a.y0, b.y0), w, h, mode });
+    const shapes = pageShapes(page);
+    for (let i = 0; i < shapes.length; i++)
+      for (let j = i + 1; j < shapes.length && shapes[j].x0 < shapes[i].x1 - EPS; j++) {
+        const c = collisionOf(shapes[i], shapes[j], pi + 1);
+        if (c) out.push(c);
       }
-    }
   });
   return out;
 }

@@ -6,7 +6,7 @@
 // (head extents, stem anchor and tip) is kept in `geomOf` for the phases that follow, including the
 // spanner pass. Every primitive pushed here is tagged (`tagFrom`) for collision checking and hit testing,
 // and its occupied area is added to the staff's skyline (`pushBox`) so that spanners and marks can avoid it.
-import type { TupletGroup } from '../model.ts';
+import type { Articulation, NoteEvent, TupletGroup } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
 import type { BeamL, EvL, Prepared } from './prep.ts';
@@ -1329,38 +1329,40 @@ function drawArticulations(ctx: SysCtx, e: EvL, s: number): void {
   drawArticulationPrims(ctx, e, s);
   tagFrom(ctx.prims[s], n0, 'artic', e);
 }
+/** Does an articulation go above the note? By `artSide`, else a cross-staff beam's stem, the voice, the stem (marcato goes above). */
+function articulationsAbove(e: EvL & { ev: NoteEvent }, art: Articulation[]): boolean {
+  if (e.ev.artSide) return e.ev.artSide === 'above';
+  if (e.beam?.cross) return e.stem === 'down';
+  if (e.nVoices > 1) return e.voiceRank === 0;
+  return e.stem === 'down' || art.includes('marcato');
+}
+
+/** x of the articulations of a note and the y of the one nearest the note: beyond the stem tip on the stem's side, else just beyond the outermost head. */
+function articulationAnchor(e: EvL, g: Geom, above: boolean, nearest: Articulation): { cx: number; y: number } {
+  if (e.stem === (above ? 'up' : 'down')) {
+    const y = above ? g.stemTip - 1.2 : g.stemTip + 1.2;
+    return { cx: g.stemX, y: e.beam ? y + (above ? -0.2 : 0.2) : y };
+  }
+  const ref = above ? Math.max(...e.heads.map((h) => h.pos)) : Math.min(...e.heads.map((h) => h.pos));
+  let q = above ? ref + 3 : ref - 3; // 1.5 spaces from the head centre leaves a clear gap
+  if (q % 2 === 0 && q >= 0 && q <= 8) q += above ? 1 : -1; // inside the staff: sit in a space, not on a line
+  const y = nearest === 'staccato' ? posToY(ref) + (above ? -1.25 : 1.25) : posToY(q); // dots hug the head a little closer
+  const head = must(e.heads.find((h) => h.pos === ref));
+  return { cx: e.x + head.dx + g.hw / 2, y };
+}
+
 function drawArticulationPrims(ctx: SysCtx, e: EvL, s: number): void {
   if (e.ev.kind !== 'note' || !e.ev.art) return;
   const g = must(geomOf.get(e));
-  const above = e.ev.artSide
-    ? e.ev.artSide === 'above'
-    : e.beam?.cross
-      ? e.stem === 'down'
-      : e.nVoices > 1
-        ? e.voiceRank === 0
-        : e.stem === 'down' || e.ev.art.includes('marcato');
-  const stemSide = e.stem === (above ? 'up' : 'down');
+  const above = articulationsAbove(e as EvL & { ev: NoteEvent }, e.ev.art);
   const arts = [...e.ev.art].sort((a, b) => (a === 'staccato' ? -1 : b === 'staccato' ? 1 : 0)); // staccato nearest the head
-  let cx: number;
-  let y: number;
-  if (stemSide) {
-    cx = g.stemX;
-    y = above ? g.stemTip - 1.2 : g.stemTip + 1.2;
-    if (e.beam) y += above ? -0.2 : 0.2;
-  } else {
-    const ref = above ? Math.max(...e.heads.map((h) => h.pos)) : Math.min(...e.heads.map((h) => h.pos));
-    let q = above ? ref + 3 : ref - 3; // 1.5 spaces from the head centre leaves a clear gap
-    if (q % 2 === 0 && q >= 0 && q <= 8) q += above ? 1 : -1; // inside the staff: sit in a space, not on a line
-    y = posToY(q);
-    if (arts[0] === 'staccato') y = posToY(ref) + (above ? -1.25 : 1.25); // dots hug the head a little closer
-    const head = must(e.heads.find((h) => h.pos === ref));
-    cx = e.x + head.dx + g.hw / 2;
-  }
+  const { cx, y: y0 } = articulationAnchor(e, g, above, arts[0]);
+  let y = y0;
   let edge = y;
   for (const a of arts) {
-    const nm = `artic${a === 'accent' ? 'Accent' : a === 'staccato' ? 'Staccato' : 'Marcato'}${above ? 'Above' : 'Below'}`;
-    ctx.prims[s].push(glyphCentered(nm, cx, y));
-    const b = sm.bbox(nm);
+    const name = `artic${a === 'accent' ? 'Accent' : a === 'staccato' ? 'Staccato' : 'Marcato'}${above ? 'Above' : 'Below'}`;
+    ctx.prims[s].push(glyphCentered(name, cx, y));
+    const b = sm.bbox(name);
     const h = b.y1 - b.y0;
     pushBox(ctx, s, cx - 0.7, cx + 0.7, y - Math.max(0.5, h / 2), y + Math.max(0.5, h / 2));
     edge = above ? y - Math.max(0.2, h / 2) : y + Math.max(0.2, h / 2);
