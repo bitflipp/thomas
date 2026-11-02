@@ -94,97 +94,114 @@ function eventIn(d: Draft<Score>, a: EvAddr): Draft<Event> {
 
 /** Dissolve broken groups, drop dangling slurs: the invariants that edits tend to violate. Only writes where something is wrong. */
 function tidy(d: Score, only?: Set<number>): void {
-  const norm = (items: Item[]): Item[] | undefined => {
-    let changed = false;
-    const out: Item[] = [];
-    for (const it of items) {
-      if (isEvent(it)) {
-        out.push(it);
-        continue;
-      }
-      const sub = norm(it.items);
-      const kids = sub ?? it.items;
-      let it2: Item = it;
-      if (sub) {
-        it2 = { ...it, items: sub } as Item;
-        changed = true;
-      }
-      const notes = flattenVoice({ id: 0, items: kids }).filter((t) => t.ev.kind === 'note').length;
-      const all = flattenVoice({ id: 0, items: kids }).length;
-      if ((isBeam(it2) && notes < 2) || (isTremolo(it2) && (notes !== 2 || all !== 2))) {
-        out.push(...kids);
-        changed = true;
-      } else out.push(it2);
+  const touched = dissolveBrokenGroups(d, only);
+  dropDanglingSlurs(d, only ? touched.voices : undefined);
+  for (const staff of touched.staves) dropUnpairedHairpins(d, staff);
+}
+
+/**
+ * The items of a voice with the groups dissolved that lost their meaning (a beam with fewer than two
+ * notes, a tremolo that is not exactly a pair); undefined if nothing changed.
+ */
+function withoutBrokenGroups(items: Item[]): Item[] | undefined {
+  let changed = false;
+  const out: Item[] = [];
+  for (const it of items) {
+    if (isEvent(it)) {
+      out.push(it);
+      continue;
     }
-    return changed ? out : undefined;
-  };
-  const voicesTouched = new Set<string>();
-  const staffTouched = new Set<string>();
+    const sub = withoutBrokenGroups(it.items);
+    const kids = sub ?? it.items;
+    const rebuilt: Item = sub ? ({ ...it, items: sub } as Item) : it;
+    if (sub) changed = true;
+    const flat = flattenVoice({ id: 0, items: kids });
+    const notes = flat.filter((t) => t.ev.kind === 'note').length;
+    if ((isBeam(rebuilt) && notes < 2) || (isTremolo(rebuilt) && (notes !== 2 || flat.length !== 2))) {
+      out.push(...kids);
+      changed = true;
+    } else out.push(rebuilt);
+  }
+  return changed ? out : undefined;
+}
+
+/** Dissolves broken groups in the voices of the measures in `only` (all if absent); returns which staves and voices (`staff|voice`) were looked at. */
+function dissolveBrokenGroups(d: Score, only?: Set<number>): { staves: Set<string>; voices: Set<string> } {
+  const staves = new Set<string>();
+  const voices = new Set<string>();
   d.measures.forEach((m, mi) => {
     if (only && !only.has(mi)) return;
     for (const [sid, sm] of Object.entries(m.staves))
       for (const v of sm.voices) {
-        staffTouched.add(sid);
-        voicesTouched.add(`${sid}|${v.id}`);
-        const n = norm(v.items);
-        if (n) v.items = n;
+        staves.add(sid);
+        voices.add(`${sid}|${v.id}`);
+        const fixed = withoutBrokenGroups(v.items);
+        if (fixed) v.items = fixed;
       }
   });
-  // Slurs, per staff and voice in time order: a stop with no open start, or a start never
-  // stopped, is dropped (a note it hung on may have been deleted or overwritten).
+  return { staves, voices };
+}
+
+/** Slurs of one voice in time order: a stop with no open start, or a start never stopped, is dropped (a note it hung on may have been deleted or overwritten). */
+function dropDanglingSlursOf(evs: Event[]): void {
+  const open = new Set<number>();
+  for (const e of evs) {
+    if (e.slurStop) {
+      const keep = e.slurStop.filter((id) => open.has(id));
+      for (const id of keep) open.delete(id);
+      if (keep.length !== e.slurStop.length) {
+        if (keep.length) e.slurStop = keep;
+        else delete e.slurStop;
+      }
+    }
+    for (const s of e.slurStart ?? []) open.add(s.id);
+  }
+  for (const e of evs) {
+    if (!e.slurStart?.some((s) => open.has(s.id))) continue;
+    const keep = e.slurStart.filter((s) => !open.has(s.id));
+    if (keep.length) e.slurStart = keep;
+    else delete e.slurStart;
+  }
+}
+
+/** Drops dangling slurs per staff and voice; with `only`, just the voices named (`staff|voice`). */
+function dropDanglingSlurs(d: Score, only?: Set<string>): void {
   for (const st of d.staves) {
-    const voices = new Set<number>();
-    for (const m of d.measures) for (const v of m.staves[st.id]?.voices ?? []) voices.add(v.id);
-    for (const vid of voices) {
-      if (only && !voicesTouched.has(`${st.id}|${vid}`)) continue;
-      const open = new Set<number>();
+    const voiceIds = new Set<number>();
+    for (const m of d.measures) for (const v of m.staves[st.id]?.voices ?? []) voiceIds.add(v.id);
+    for (const vid of voiceIds) {
+      if (only && !only.has(`${st.id}|${vid}`)) continue;
       const evs: Event[] = [];
       for (const m of d.measures) {
         const v = m.staves[st.id]?.voices.find((x) => x.id === vid);
         if (v) for (const te of flattenVoice(v)) evs.push(te.ev);
       }
-      for (const e of evs) {
-        if (e.slurStop) {
-          const keep = e.slurStop.filter((id) => open.has(id));
-          for (const id of keep) open.delete(id);
-          if (keep.length !== e.slurStop.length) {
-            if (keep.length) e.slurStop = keep;
-            else delete e.slurStop;
-          }
-        }
-        for (const s of e.slurStart ?? []) open.add(s.id);
-      }
-      if (open.size)
-        for (const e of evs)
-          if (e.slurStart?.some((s) => open.has(s.id))) {
-            const keep = e.slurStart.filter((s) => !open.has(s.id));
-            if (keep.length) e.slurStart = keep;
-            else delete e.slurStart;
-          }
+      dropDanglingSlursOf(evs);
     }
   }
-  // Hairpins: a start without its stop (or the reverse) went away with the note that carried it, so
-  // the surviving half is removed too (matching is by id across measures).
-  for (const sid of staffTouched) {
-    const open = new Map<number, MarkAt>();
-    const dead: MarkAt[] = [];
-    d.measures.forEach((m, mi) => {
-      const sm = m.staves[sid];
-      if (!sm) return;
-      for (const mk of collectMarks(sm as StaffMeasure)) {
-        if (mk.type === 'hairpin') {
-          const old = open.get(mk.id);
-          if (old) dead.push(old);
-          open.set(mk.id, { mi, staff: sid, voice: mk.voice, idx: mk.idx, k: mk.k });
-        } else if (mk.type === 'stop' && mk.of === 'hairpin') {
-          if (open.has(mk.id)) open.delete(mk.id);
-          else dead.push({ mi, staff: sid, voice: mk.voice, idx: mk.idx, k: mk.k });
-        }
+}
+
+/** A hairpin start without its stop (or the reverse) went away with the note that carried it, so the surviving half is removed too (matching is by id across measures). */
+function dropUnpairedHairpins(d: Score, staffId: string): void {
+  const open = new Map<number, MarkAt>();
+  const dead: MarkAt[] = [];
+  d.measures.forEach((m, mi) => {
+    const sm = m.staves[staffId];
+    if (!sm) return;
+    for (const mk of collectMarks(sm as StaffMeasure)) {
+      const at: MarkAt = { mi, staff: staffId, voice: mk.voice, idx: mk.idx, k: mk.k };
+      if (mk.type === 'hairpin') {
+        const old = open.get(mk.id);
+        if (old) dead.push(old);
+        open.set(mk.id, at);
+      } else if (mk.type === 'stop' && mk.of === 'hairpin') {
+        if (open.has(mk.id)) open.delete(mk.id);
+        else dead.push(at);
       }
-    });
-    dead.push(...open.values());
-    dropMarks(d, dead);
-  }
+    }
+  });
+  dead.push(...open.values());
+  dropMarks(d, dead);
 }
 
 type MarkAt = MarkAddr;
