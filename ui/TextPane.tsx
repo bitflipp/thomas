@@ -42,10 +42,10 @@ function selectedRanges(refs: readonly Ref[]): { from: number; to: number; cls: 
     for (const [from, to] of ranges.get(key) ?? []) out.push({ from, to, cls });
   };
   for (const r of refs) {
-    // Heads, ties and slurs are written as part of their note, so they are shown as the note:
+    // Heads, ties, slurs and lines are written as part of their note, so they are shown as the note:
     // the text map has no range of their own for them.
     const own: Ref =
-      r.t === 'ev' || r.t === 'tie' || r.t === 'slur'
+      r.t === 'ev' || r.t === 'tie' || r.t === 'slur' || r.t === 'line'
         ? { t: 'ev', mi: r.mi, staff: r.staff, voice: r.voice, idx: r.idx }
         : r;
     add(refKey(own), 'cm-ref-sel');

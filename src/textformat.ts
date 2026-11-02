@@ -164,6 +164,7 @@ class VoiceWriter {
       pre.push(`\\staff ${this.curStaff}`);
     }
     for (const s of e.slurStart ?? []) pre.push(`(${idStr(s.id)}${sideStr(s.side)}`);
+    for (const s of e.lineStart ?? []) pre.push(`&${idStr(s.id)}${s.dashed ? '.' : ''}`);
     if (e.stem) pre.push(e.stem === 'up' ? '\\stemup' : '\\stemdown');
     if (e.kind === 'note') {
       if (e.graces?.length) pre.push(...graceStrs(e.graces));
@@ -203,12 +204,13 @@ class VoiceWriter {
     // are always written, which also forces the base to be written.
     const d = e.dur.base !== this.lastBase || e.dur.dots ? `:${durStr(e.dur)}` : '';
     this.lastBase = e.dur.base;
-    const slurEnd = (e.slurStop ?? []).map((i) => `)${idStr(i)}`).join('');
+    const slurEnd =
+      (e.slurStop ?? []).map((i) => `)${idStr(i)}`).join('') + (e.lineStop ?? []).map((i) => `;${idStr(i)}`).join('');
     const toks = [...pre, tagged(this.tags, refKey({ t: 'ev', ...loc }), core + d + tie + arts + slurEnd)];
     // A slur start is glued to the token after it: `(f#2:16 ... d#2)`. Nothing that follows starts with
     // a digit, so an id like in `(2` cannot be mistaken for part of the next token.
     return toks.reduce(
-      (acc, t, i) => (i > 0 && /^\(\d*[\^_]?$/.test(toks[i - 1]) ? acc + t : acc ? `${acc} ${t}` : t),
+      (acc, t, i) => (i > 0 && /^[(&]\d*[\^_.]?$/.test(toks[i - 1]) ? acc + t : acc ? `${acc} ${t}` : t),
       '',
     );
   }
@@ -426,6 +428,7 @@ class VoiceLineParser {
   private at: number | null;
   private pending: MarkBody[] = [];
   private pendingSlurs: { id: number; side?: Side }[] = [];
+  private pendingLines: { id: number; dashed?: boolean }[] = [];
   private pendingEv: PendingEv = {};
   private lastEv: Event | null = null;
   /** Set by \staff, sticky within the line. */
@@ -461,6 +464,8 @@ class VoiceLineParser {
     else if (this.readTremoloOpen()) return;
     else if (c === '(') this.readSlurStart();
     else if (c === ')') this.readSlurStop();
+    else if (c === '&') this.readLineStart();
+    else if (c === ';') this.readLineStop();
     else if (c === '\\') this.readCommand();
     else this.readEvent(c);
   }
@@ -560,6 +565,22 @@ class VoiceLineParser {
     const ev = must(last);
     ev.slurStop ??= [];
     ev.slurStop.push(id);
+  }
+
+  private readLineStart(): void {
+    this.sc.i++;
+    const id = this.num();
+    const dashed = this.sc.take(/\./y);
+    this.pendingLines.push({ id, ...(dashed ? { dashed: true } : {}) });
+  }
+
+  private readLineStop(): void {
+    this.sc.i++;
+    const id = this.num();
+    if (!this.lastEv) this.sc.fail('; without event');
+    const ev = must(this.lastEv);
+    ev.lineStop ??= [];
+    ev.lineStop.push(id);
   }
 
   /** A mark belongs to the next event (or the end of the measure), or in a mark line to its position. */
@@ -761,6 +782,8 @@ class VoiceLineParser {
     const ev: Event = c === 'r' || c === 's' || c === 'R' ? this.readRest(c) : this.readNoteEvent();
     if (this.pendingSlurs.length) ev.slurStart = this.pendingSlurs;
     this.pendingSlurs = [];
+    if (this.pendingLines.length) ev.lineStart = this.pendingLines;
+    this.pendingLines = [];
     if (this.pendingEv.stem) ev.stem = this.pendingEv.stem;
     if (this.curStaff !== this.home) ev.staff = this.curStaff;
     this.pendingEv = {};

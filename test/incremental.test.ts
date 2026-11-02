@@ -106,6 +106,16 @@ function randomEdit(score: Score, rand: () => number): { score: Score; what: str
       const mi = 1 + Math.floor(rand() * (score.measures.length - 1));
       return { score: C.setBreak(score, mi, rand() < 0.5 ? 'system' : undefined), what: `break ${mi}` };
     }
+    case 8: {
+      // a line between two notes of any voices and staves, mostly near each other, so that it often stays within a system
+      const a = pick(notes);
+      const near = notes.filter((e) => e.a.mi >= a.a.mi && e.a.mi <= a.a.mi + 1 && e !== a);
+      const b = pick(near.length ? near : notes);
+      return {
+        score: C.addLine(score, a.a, b.a, rand() < 0.3),
+        what: `line ${JSON.stringify(a.a)} ${JSON.stringify(b.a)}`,
+      };
+    }
     case 9: {
       // a slur between two notes of one voice, close enough to cross a barline or a system break now and then
       const a = pick(notes);

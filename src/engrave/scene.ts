@@ -17,6 +17,7 @@ export type Kind =
   | 'artic'
   | 'tie'
   | 'slur'
+  | 'link'
   | 'tuplet'
   | 'dyn'
   | 'hairpin'
@@ -42,7 +43,7 @@ export interface Tag {
   g?: number[];
   /** The model object (Event, TupletGroup, Mark) this primitive depicts. The editor's hit index maps clicks to it. */
   r?: object;
-  /** Slur id or tied head index: tells apart several spanners that start at the same event. */
+  /** Slur or line id, or tied head index: tells apart several spanners that start at the same event. */
   n?: number;
 }
 

@@ -124,6 +124,13 @@ export const Icon = {
       <circle cx="32" cy="27" r="2.6" fill="currentColor" />
     </svg>
   ),
+  link: () => (
+    <svg aria-hidden="true" width="36" height="36" viewBox="0 0 40 40">
+      <path d="M9 12L31 28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+      <ellipse cx="8" cy="11" rx="3.6" ry="2.6" fill="currentColor" transform="rotate(-20 8 11)" />
+      <ellipse cx="32" cy="29" rx="3.6" ry="2.6" fill="currentColor" transform="rotate(-20 32 29)" />
+    </svg>
+  ),
   cresc: () => (
     <svg aria-hidden="true" width="36" height="36" viewBox="0 0 40 40">
       <path d="M7 20L33 12M7 20L33 28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />

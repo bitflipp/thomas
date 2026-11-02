@@ -63,13 +63,17 @@ function pieces(e: Event, from: number, to: number, head: boolean): Event[] {
     if (i > 0) {
       delete n.marks;
       delete n.slurStart;
+      delete n.lineStart;
       delete n.art;
       delete n.artSide;
       delete n.arpeggio;
       delete n.graces;
       delete n.stem;
     }
-    if (i < durs.length - 1) delete n.slurStop;
+    if (i < durs.length - 1) {
+      delete n.slurStop;
+      delete n.lineStop;
+    }
     for (const p of n.pitches) if (p.tie === undefined) delete p.tie;
     return n;
   });

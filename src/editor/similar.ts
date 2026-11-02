@@ -37,6 +37,8 @@ export function similarTo(score: Score, ref: Ref): Ref[] {
               if (te.ev.kind === kind) out.push({ t: 'ev', ...at });
             } else if (ref.t === 'slur')
               for (const sl of te.ev.slurStart ?? []) out.push({ t: 'slur', ...at, id: sl.id });
+            else if (ref.t === 'line')
+              for (const ln of te.ev.lineStart ?? []) out.push({ t: 'line', ...at, id: ln.id });
             else if (ref.t === 'tie') {
               if (te.ev.kind === 'note')
                 te.ev.pitches.forEach((p, pi) => {

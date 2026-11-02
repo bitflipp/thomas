@@ -33,8 +33,10 @@ export function staffGap(ctx: SysCtx, s: number): number {
 function hasCrossStaffNotes(ctx: SysCtx): boolean {
   if (ctx.gapNeed.some((g) => g > 0)) return true;
   for (let mi = ctx.a; mi <= ctx.b; mi++)
+    // a line between staves is drawn at the final distance, so the distance is fixed first
     for (const sm of ctx.prep.measures[mi])
-      for (const v of sm.voices) if (v.evs.some((e) => e.staff !== e.home)) return true;
+      for (const v of sm.voices)
+        if (v.evs.some((e) => e.staff !== e.home || e.ev.lineStart || e.ev.lineStop)) return true;
   return false;
 }
 

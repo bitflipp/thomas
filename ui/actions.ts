@@ -8,8 +8,8 @@ import { eventOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import { transposeSemis } from '../src/editor/context.ts';
 import type { BaseDur, Dur } from '../src/model.ts';
-import { evRefs } from './interact.ts';
-import { commit, dots, dur, run, say, score, selection } from './state.ts';
+import { evRefs, sameSystem } from './interact.ts';
+import { commit, dots, dur, hit, run, say, score, selection } from './state.ts';
 
 const sortedDesc = (a: EvAddr, b: EvAddr) =>
   a.mi - b.mi || a.staff.localeCompare(b.staff) || a.voice - b.voice || b.idx - a.idx;
@@ -83,6 +83,21 @@ export function slurSelection(): void {
   const a = refs[0];
   const b = refs[refs.length - 1];
   run((s) => C.addSlur(s, a, b));
+}
+
+/** A line between the first and the last selected note (any voices or staves, but one system). */
+export function lineSelection(): void {
+  const refs = [...evRefs()].sort((a, b) => a.mi - b.mi || a.idx - b.idx);
+  const h = hit.peek();
+  if (refs.length !== 2) {
+    say('Select two notes', true);
+    return;
+  }
+  if (h && !sameSystem(h, refs[0], refs[1])) {
+    say('A line joins notes of one system', true);
+    return;
+  }
+  run((s) => C.addLine(s, refs[0], refs[1]));
 }
 
 export function tieSelection(): void {

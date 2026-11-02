@@ -31,6 +31,7 @@ export type Ref =
   | ({ t: 'ev'; pi?: number } & EvAddr) // a note/rest; `pi`: one head of a chord
   | ({ t: 'tie'; pi: number } & EvAddr)
   | ({ t: 'slur'; id: number } & EvAddr) // addressed by the event it starts at
+  | ({ t: 'line'; id: number } & EvAddr) // addressed by the event it starts at
   | ({ t: 'tuplet'; depth: number } & EvAddr) // by its first event; depth = nesting level (0 = outermost)
   | ({ t: 'mark' } & MarkAddr)
   | { t: 'measure'; mi: number };
@@ -44,6 +45,8 @@ export const refKey = (r: Ref): string => {
       return `tie:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.pi}`;
     case 'slur':
       return `slur:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.id}`;
+    case 'line':
+      return `line:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.id}`;
     case 'tuplet':
       return `tup:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.depth}`;
     case 'mark':

@@ -210,6 +210,7 @@ export type Tool =
   | 'note'
   | 'rest'
   | 'slur'
+  | 'line'
   | 'cresc'
   | 'dim'
   | 'pedal'

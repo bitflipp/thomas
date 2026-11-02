@@ -45,6 +45,7 @@ Voice numbers are local to a staff (`s1.1`, `s1.2`, `s2.1`, ...). Every voice of
 | Chord | `<pitches>` then duration | `<c4 e4 g4>:2` |
 | Tie | `~` after the duration of a single note; inside a chord after each tied pitch | `c4:2~ c4:4` `<c4~ e4>:2` |
 | Slur | `(` before the first note, `)` after the last. Optional number (overlap) and side `^` `_` | `(c5:8 d5 e5)` `(2^c5 ... d5)2` |
+| Line | `&` before the first note, `;` after the second (any two notes of one system, also in other voices or staves; `&` and `;` pair by number). Optional number (lines that overlap in time need different ones), `&.` dashed | `&c5:4 ... e3;` `&2.g4 ... c3;2` |
 | Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |
 | Accidental override | `!` force, `?` cautionary (after the pitch) | `c#4!` `e4?` |
 | Arpeggio | `\arp` before a chord | `\arp <c3 g3 e4>:8` |

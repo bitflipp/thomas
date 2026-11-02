@@ -142,6 +142,9 @@ export function Palette() {
         <ToolBtn t="slur" title="Slur: drag from note to note">
           <Icon.slur />
         </ToolBtn>
+        <ToolBtn t="line" title="Line between two notes (voicing): drag from note to note, within one system">
+          <Icon.link />
+        </ToolBtn>
         <ToolBtn t="cresc" title="Crescendo: drag from note to note">
           <Icon.cresc />
         </ToolBtn>
@@ -229,6 +232,7 @@ const HINTS: Record<Tool, string> = {
   note: 'Click on a staff: the note lands where the ghost shows. Click an existing note to add or remove a chord tone. Alt replaces tuplets.',
   rest: 'Click on a staff to put a rest of the chosen duration.',
   slur: 'Drag from the first note to the last.',
+  line: 'Drag from one note to another in the same system (any voice or staff).',
   cresc: 'Drag from the first note to the last.',
   dim: 'Drag from the first note to the last.',
   pedal: 'Drag from the note where the pedal goes down to the last note under it.',

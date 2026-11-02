@@ -38,6 +38,15 @@ export interface SlurStart {
   side?: 'above' | 'below';
 }
 
+/**
+ * A line drawn between two notes (a voicing aid): the start is on one event, the stop (same id) on another, which may be in
+ * another voice or staff. Both must be in one system to be drawn. Matching is score-wide by id, see `pairLines`.
+ */
+export interface LineStart {
+  id: number;
+  dashed?: boolean;
+}
+
 /** A grace note (or chord) played just before the note it is attached to; takes no time in the measure. */
 export interface Grace {
   pitches: NotePitch[];
@@ -51,6 +60,8 @@ export interface EventBase {
   staff?: string; // cross-staff: drawn on this other staff (default: the staff of the voice); stem and beam stay with the voice
   slurStart?: SlurStart[];
   slurStop?: number[];
+  lineStart?: LineStart[];
+  lineStop?: number[];
   marks?: MarkBody[]; // dynamics, hairpin/pedal/ottava starts and stops, clef changes, tempo, text: at the start of this event
 }
 export interface NoteEvent extends EventBase {
@@ -319,6 +330,70 @@ export function anchorMarks(sm: StaffMeasure, marks: TimedMark[]): void {
       v.end.push(body);
     }
   }
+}
+
+/** One end of a line, positioned for pairing: `ord` orders the voices at one tick (staff index, then voice id); `ref` is whatever the caller wants back. */
+export interface LineEnd<T> {
+  mi: number;
+  tick: number;
+  ord: number;
+  role: 'start' | 'stop';
+  id: number;
+  ref: T;
+}
+/**
+ * Pairs the starts and stops of lines: in time order, an end meets an open end of the same id and the opposite role.
+ * Ends that find no partner (or are replaced by another end of the same role and id) are `loose`.
+ */
+export function pairLines<T>(ends: LineEnd<T>[]): {
+  pairs: { start: LineEnd<T>; stop: LineEnd<T> }[];
+  loose: LineEnd<T>[];
+} {
+  const sorted = [...ends].sort((a, b) => a.mi - b.mi || a.tick - b.tick || a.ord - b.ord);
+  const open = new Map<number, LineEnd<T>>();
+  const pairs: { start: LineEnd<T>; stop: LineEnd<T> }[] = [];
+  const loose: LineEnd<T>[] = [];
+  for (const e of sorted) {
+    const o = open.get(e.id);
+    if (o && o.role !== e.role) {
+      pairs.push(e.role === 'stop' ? { start: o, stop: e } : { start: e, stop: o });
+      open.delete(e.id);
+      continue;
+    }
+    if (o) loose.push(o);
+    open.set(e.id, e);
+  }
+  loose.push(...open.values());
+  return { pairs, loose };
+}
+
+/** Where a line end sits, as an event address. */
+export interface LineAt {
+  ev: Event;
+  mi: number;
+  staff: string;
+  voice: number;
+  idx: number;
+}
+/** Every start and stop of a line in the score, with the event it hangs on. */
+export function lineEnds(score: Score): LineEnd<LineAt>[] {
+  const out: LineEnd<LineAt>[] = [];
+  score.measures.forEach((m, mi) => {
+    score.staves.forEach((st, si) => {
+      for (const v of m.staves[st.id]?.voices ?? [])
+        for (const te of flattenVoice(v)) {
+          const at = {
+            mi,
+            tick: te.start,
+            ord: si * 1000 + v.id,
+            ref: { ev: te.ev, mi, staff: st.id, voice: v.id, idx: te.index },
+          };
+          for (const x of te.ev.lineStart ?? []) out.push({ ...at, role: 'start', id: x.id });
+          for (const id of te.ev.lineStop ?? []) out.push({ ...at, role: 'stop', id });
+        }
+    });
+  });
+  return out;
 }
 
 export function voiceTicks(v: Voice): number {

@@ -9,7 +9,7 @@
 import type { Kind, Prim } from '../engrave/scene.ts';
 import type { Engraved, Layout, MeasureGeom } from '../engrave/system.ts';
 import type { Mark, Score } from '../model.ts';
-import { flattenVoice, marksOf } from '../model.ts';
+import { flattenVoice, lineEnds, marksOf, pairLines } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import type { EvAddr, Ref, ScoreIndex } from './addr.ts';
 import { eventOf, indexScore, markOf, refKey, tupletOf, voiceOf } from './addr.ts';
@@ -57,6 +57,7 @@ const PRIO: Partial<Record<Kind, number>> = {
   ledger: 3,
   tie: 2,
   slur: 2,
+  link: 2,
   tuplet: 3,
 };
 
@@ -114,6 +115,11 @@ function pathNumbers(p: Extract<Prim, { t: 'path' }>): number[] {
 
 /** Points along the first (upper) curve of a crescent path "M x y C ... " */
 function curvePts(p: Prim): { x: number; y: number }[] {
+  if (p.t === 'line')
+    return [
+      { x: p.x1, y: p.y1 },
+      { x: p.x2, y: p.y2 },
+    ];
   const n = p.t === 'path' ? pathNumbers(p) : [];
   if (n.length < 8) return [];
   const [x0, y0, ax, ay, bx, by, x1, y1] = n;
@@ -143,6 +149,7 @@ export function primRef(index: ScoreIndex, p: Prim): Ref | undefined {
   if (ev) {
     if (p.k === 'tie') return { t: 'tie', ...ev, pi: p.n ?? 0 };
     if (p.k === 'slur') return { t: 'slur', ...ev, id: p.n ?? 1 };
+    if (p.k === 'link') return { t: 'line', ...ev, id: p.n ?? 1 };
     return { t: 'ev', ...ev, ...((p.k === 'head' || p.k === 'acc') && p.n !== undefined ? { pi: p.n } : {}) };
   }
   const mk = index.mark.get(r as never);
@@ -152,7 +159,7 @@ export function primRef(index: ScoreIndex, p: Prim): Ref | undefined {
   return undefined;
 }
 
-const isCurveKind = (k: string | undefined) => k === 'slur' || k === 'tie';
+const isCurveKind = (k: string | undefined) => k === 'slur' || k === 'tie' || k === 'link';
 
 /** The key under which a prim joins a target: one target per model object and page (heads of an event are one each; slurs and ties are told apart from other prims of the same object). */
 function targetKey(page: number, p: Prim, ref: Ref): { key: string; head: boolean } {
@@ -245,7 +252,7 @@ export function hitTest(h: HitIndex, page: number, x: number, y: number, tol = 0
   for (const t of h.byPage[page] ?? []) {
     if (x < t.bbox.x0 - tol - 2 && !t.pts) continue;
     const d = distTarget(t, x, y);
-    const lim = t.k === 'slur' || t.k === 'tie' ? 0.5 : tol;
+    const lim = t.k === 'slur' || t.k === 'tie' || t.k === 'link' ? 0.5 : tol;
     if (d > lim) continue;
     const s = t.prio * 0.4 + d;
     if (s < bestScore) {
@@ -388,10 +395,30 @@ function endNoteOf(score: Score, ref: Extract<Ref, { t: 'slur' | 'tie' }>): EvAd
   return undefined;
 }
 
+/** The two notes of a line: the one it starts at and the one carrying the matching stop. */
+function lineNotes(score: Score, ref: Extract<Ref, { t: 'line' }>): EvAddr[] {
+  const at = (x: { mi: number; staff: string; voice: number; idx: number }): EvAddr => ({
+    mi: x.mi,
+    staff: x.staff,
+    voice: x.voice,
+    idx: x.idx,
+  });
+  const pair = pairLines(lineEnds(score)).pairs.find(
+    ({ start }) =>
+      start.id === ref.id &&
+      start.ref.mi === ref.mi &&
+      start.ref.staff === ref.staff &&
+      start.ref.voice === ref.voice &&
+      start.ref.idx === ref.idx,
+  );
+  return pair ? [at(pair.start.ref), at(pair.stop.ref)] : [at(ref)];
+}
+
 /** The notes a selected slur, tie or tuplet belongs to (its start and end notes; all notes of a tuplet). */
 export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
   if (ref.t === 'mark') return markNotes(score, ref);
   if (ref.t === 'tuplet') return tupletMembers(score, ref);
+  if (ref.t === 'line') return lineNotes(score, ref);
   if (ref.t !== 'slur' && ref.t !== 'tie') return [];
   const start: EvAddr = { mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: ref.idx };
   const end = endNoteOf(score, ref);

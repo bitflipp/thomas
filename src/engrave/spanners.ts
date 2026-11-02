@@ -1,4 +1,5 @@
-import { pitchStep } from '../model.ts';
+import type { LineEnd } from '../model.ts';
+import { pairLines, pitchStep } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
 import type { SysCtx } from './draw.ts';
@@ -113,6 +114,92 @@ function matchSlurs(systems: SysCtx[], sysOf: number[], timeOrder: EvL[], voiceE
   return out;
 }
 
+/** Lines between notes: pairs of ends found over the whole piece (any voices and staves), drawn when both ends are in one system. */
+function linkUnits(systems: SysCtx[], sysOf: number[]): SpannerUnit[] {
+  const ends: LineEnd<EvL>[] = [];
+  for (const measure of systems[0].prep.measures)
+    for (const sml of measure)
+      for (const v of sml.voices)
+        for (const e of v.evs) {
+          const at = { mi: e.mi, tick: e.start, ord: e.home * 1000 + e.voice, ref: e };
+          for (const st of e.ev.lineStart ?? []) ends.push({ ...at, role: 'start', id: st.id });
+          for (const id of e.ev.lineStop ?? []) ends.push({ ...at, role: 'stop', id });
+        }
+  if (!ends.length) return [];
+  const out: SpannerUnit[] = [];
+  for (const { start, stop } of pairLines(ends).pairs) {
+    const a = start.ref;
+    const b = stop.ref;
+    if (a === b || sysOf[a.mi] !== sysOf[b.mi]) continue; // a line is drawn only within one system
+    const dashed = !!a.ev.lineStart?.find((x) => x.id === start.id)?.dashed;
+    out.push({
+      sys: [sysOf[a.mi]],
+      key: `l${a.id}>${b.id}.${start.id}${dashed ? 'd' : ''}`,
+      cross: a.staff !== b.staff,
+      draw: () => drawLink(systems[sysOf[a.mi]], a, b, start.id, dashed),
+    });
+  }
+  return out;
+}
+
+const linkOwners = new WeakMap<EvL, Map<number, number>>();
+/** Owner tag of a line, stable across drawings (see `slurOwner`). */
+function linkOwner(a: EvL, id: number): number {
+  let m = linkOwners.get(a);
+  if (!m) {
+    m = new Map();
+    linkOwners.set(a, m);
+  }
+  let o = m.get(id);
+  if (o === undefined) {
+    o = oid({});
+    m.set(id, o);
+  }
+  return o;
+}
+
+/**
+ * A straight line from a head of note `a` to a head of note `b`, in the coordinates of `a`'s staff. Of a chord the head
+ * nearest to the other end is used; the line stops a little short of each head. Nothing is recorded in the skyline.
+ */
+function drawLink(ctx: SysCtx, a: EvL, b: EvL, id: number, dashed: boolean): void {
+  if (a.ev.kind !== 'note' || b.ev.kind !== 'note') return;
+  const ga = must(geomOf.get(a));
+  const gb = must(geomOf.get(b));
+  const yOf = (e: EvL, pos: number) => posToY(pos) + staffOffset(ctx, a.staff, e.staff);
+  const mean = (e: EvL) => e.heads.reduce((t, h) => t + yOf(e, h.pos), 0) / e.heads.length;
+  const nearest = (e: EvL, y: number) =>
+    e.heads.reduce((best, h) => (Math.abs(yOf(e, h.pos) - y) < Math.abs(yOf(e, best.pos) - y) ? h : best));
+  const ha = nearest(a, mean(b));
+  const hb = nearest(b, mean(a));
+  const x0 = a.x + ha.dx + ga.hw / 2;
+  const y0 = yOf(a, ha.pos);
+  const x1 = b.x + hb.dx + gb.hw / 2;
+  const y1 = yOf(b, hb.pos);
+  const len = Math.hypot(x1 - x0, y1 - y0);
+  if (len < 1e-6) return;
+  const ux = (x1 - x0) / len;
+  const uy = (y1 - y0) / len;
+  // Distance from a head's centre to its outline along the line (an ellipse), plus clearance.
+  const reach = (hw: number) => 1 / Math.hypot(ux / (hw / 2), uy / 0.5) + 0.35;
+  const ra = reach(ga.hw);
+  const rb = reach(gb.hw);
+  if (len - ra - rb < 0.5) return;
+  ctx.prims[a.staff].push({
+    t: 'line',
+    x1: x0 + ux * ra,
+    y1: y0 + uy * ra,
+    x2: x1 - ux * rb,
+    y2: y1 - uy * rb,
+    w: 0.12,
+    ...(dashed ? { dash: [0.45, 0.3] as [number, number] } : {}),
+    k: 'link',
+    o: linkOwner(a, id),
+    r: a.ev,
+    n: id,
+  });
+}
+
 /** One tie or slur to draw: the systems it puts primitives into, what identifies it (its ends and whatever else it depends on beyond those systems), and how to draw it. */
 interface SpannerUnit {
   sys: number[];
@@ -165,8 +252,13 @@ export function planSpanners(
     for (const evs of voiceEvs.values()) ties.push(...tieUnits(systems, sysOf, evs));
     slurs.push(...matchSlurs(systems, sysOf, timeOrder, voiceEvs));
   }
-  // Slurs between staves go first so that the others nest around them.
-  const units = [...ties, ...slurs.filter((q) => q.cross), ...slurs.filter((q) => !q.cross)];
+  // Slurs between staves go first so that the others nest around them; lines take no part in the skyline and come last.
+  const units = [
+    ...ties,
+    ...slurs.filter((q) => q.cross),
+    ...slurs.filter((q) => !q.cross),
+    ...linkUnits(systems, sysOf),
+  ];
   const keys: string[][] = systems.map(() => []);
   for (const u of units) for (const i of new Set(u.sys)) keys[i].push(u.key);
   const sigs = keys.map((k) => k.join(','));

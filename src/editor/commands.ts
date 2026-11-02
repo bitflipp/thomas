@@ -15,6 +15,7 @@ import type {
   Dur,
   Event,
   Item,
+  LineEnd,
   MarkBody,
   NoteEvent,
   NotePitch,
@@ -32,8 +33,10 @@ import {
   isBeam,
   isEvent,
   isTremolo,
+  lineEnds,
   marksOf,
   measureTicks,
+  pairLines,
   timeAt,
 } from '../model.ts';
 import { must } from '../util.ts';
@@ -108,6 +111,7 @@ function eventIn(d: Draft<Score>, a: EvAddr): Draft<Event> {
 function tidy(d: Score, only?: Set<number>): void {
   const touched = dissolveBrokenGroups(d, only);
   dropDanglingSlurs(d, only ? touched.voices : undefined);
+  dropLooseLines(d);
   for (const staff of touched.staves) dropUnpairedHairpins(d, staff);
 }
 
@@ -124,6 +128,54 @@ function slurTokensOf(v: Voice): { stops: number[]; starts: number[] }[] {
     slurTokens.set(v, t);
   }
   return t;
+}
+
+/** Line ids of a voice's events in time order, for events that have any. Kept per voice object like `slurTokens`. */
+const lineTokens = new WeakMap<Voice, { tick: number; starts: number[]; stops: number[] }[]>();
+function lineTokensOf(v: Voice): { tick: number; starts: number[]; stops: number[] }[] {
+  let t = lineTokens.get(v);
+  if (!t) {
+    t = [];
+    for (const te of flattenVoice(v)) {
+      const e = te.ev;
+      if (e.lineStart || e.lineStop)
+        t.push({ tick: te.start, starts: (e.lineStart ?? []).map((x) => x.id), stops: e.lineStop ?? [] });
+    }
+    lineTokens.set(v, t);
+  }
+  return t;
+}
+
+/** Is a line start without its stop (or the reverse) left in the score? Reads only. */
+function hasLooseLines(s: Score): boolean {
+  const ends: LineEnd<null>[] = [];
+  s.measures.forEach((m, mi) => {
+    s.staves.forEach((st, si) => {
+      for (const v of m.staves[st.id]?.voices ?? [])
+        for (const t of lineTokensOf(v)) {
+          const at = { mi, tick: t.tick, ord: si * 1000 + v.id, ref: null };
+          for (const id of t.starts) ends.push({ ...at, role: 'start', id });
+          for (const id of t.stops) ends.push({ ...at, role: 'stop', id });
+        }
+    });
+  });
+  return ends.length > 0 && pairLines(ends).loose.length > 0;
+}
+
+/** Lines whose other end went away with its note are removed. */
+function dropLooseLines(d: Score): void {
+  for (const l of pairLines(lineEnds(d)).loose) {
+    const e = l.ref.ev;
+    if (l.role === 'start') {
+      const keep = (e.lineStart ?? []).filter((x) => x.id !== l.id);
+      if (keep.length) e.lineStart = keep;
+      else delete e.lineStart;
+    } else {
+      const keep = (e.lineStop ?? []).filter((x) => x !== l.id);
+      if (keep.length) e.lineStop = keep;
+      else delete e.lineStop;
+    }
+  }
 }
 
 /** Does `tidy` have anything to do? The same checks as `tidy`, reading only. */
@@ -156,7 +208,7 @@ function needsTidy(s: Score, only?: Set<number>): boolean {
     if (open.size) return true; // a start never stopped
   }
   for (const sid of staves) if (hasUnpairedHairpins(s, sid)) return true;
-  return false;
+  return hasLooseLines(s);
 }
 
 /** Is a hairpin start without its stop, or a stop without its start, left on the staff? (matching is by id across measures) */
@@ -568,6 +620,54 @@ export function addSlur(score: Score, from: EvAddr, to: EvAddr, side?: 'above' |
     first.slurStart.push(side ? { id, side } : { id });
     last.slurStop ??= [];
     last.slurStop.push(id);
+  });
+}
+
+// ------------------------------------------------------------------ lines
+
+/** A line between two notes, which may be in different voices or staves (it is drawn only when they are in one system, which the engraver decides). */
+export function addLine(score: Score, from: EvAddr, to: EvAddr, dashed = false): Score {
+  if (from.mi === to.mi && from.staff === to.staff && from.voice === to.voice && from.idx === to.idx)
+    throw new EditError('A line needs two different notes');
+  return edit(score, (d) => {
+    const a = eventIn(d, from);
+    const b = eventIn(d, to);
+    if (a.kind !== 'note' || b.kind !== 'note') throw new EditError('A line joins notes');
+    // The lowest number not used by a line that overlaps the new one in time, so that lines stay distinguishable in the text format.
+    const at = (x: EvAddr) => x.mi * 1e7 + flattenVoice(voiceIn(d, x) as Voice)[x.idx].start;
+    const [t0, t1] = [at(from), at(to)].sort((p, q) => p - q);
+    const spans = pairLines(lineEnds(d as Score)).pairs.map(({ start, stop }) => ({
+      id: start.id,
+      t0: Math.min(start.mi * 1e7 + start.tick, stop.mi * 1e7 + stop.tick),
+      t1: Math.max(start.mi * 1e7 + start.tick, stop.mi * 1e7 + stop.tick),
+    }));
+    let id = 1;
+    while (spans.some((s) => s.id === id && s.t0 <= t1 && s.t1 >= t0)) id++;
+    a.lineStart ??= [];
+    a.lineStart.push(dashed ? { id, dashed } : { id });
+    b.lineStop ??= [];
+    b.lineStop.push(id);
+  });
+}
+
+export function removeLine(score: Score, from: EvAddr, id: number): Score {
+  return edit(score, (d) => {
+    const e = eventIn(d, from);
+    if (e.lineStart) {
+      const k = e.lineStart.filter((s) => s.id !== id);
+      if (k.length) e.lineStart = k;
+      else delete e.lineStart;
+    }
+  }); // the matching stop is removed by tidy()
+}
+
+export function setLineDashed(score: Score, from: EvAddr, id: number, dashed: boolean): Score {
+  return updateEvents(score, [from], (e) => {
+    const s = e.lineStart?.find((x) => x.id === id);
+    if (s) {
+      if (dashed) s.dashed = true;
+      else delete s.dashed;
+    }
   });
 }
 
@@ -1198,6 +1298,8 @@ export function pasteEvents(score: Score, loc: Loc, tick: number, evs: Event[]):
       const c = JSON.parse(JSON.stringify(e)) as Event;
       delete c.slurStart;
       delete c.slurStop;
+      delete c.lineStart;
+      delete c.lineStop;
       delete c.staff;
       delete c.marks;
       const w = baseTicks(c.dur);

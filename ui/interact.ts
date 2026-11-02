@@ -200,7 +200,7 @@ type Drag =
   | { k: 'marquee'; start: Where; additive: boolean; moved: boolean; base: Ref[] }
   | {
       k: 'span';
-      tool: 'slur' | 'cresc' | 'dim' | 'pedal' | '8va' | '8vb';
+      tool: 'slur' | 'line' | 'cresc' | 'dim' | 'pedal' | '8va' | '8vb';
       start: Where;
       cx: number;
       cy: number;
@@ -211,12 +211,26 @@ let drag: Drag = { k: 'none' };
 
 const MARK_TOOLS = new Set<string>(['dynamic', 'text', 'tempo', 'clef']);
 type SpanTool = Extract<Drag, { k: 'span' }>['tool'];
-const SPAN_TOOLS = new Set<string>(['slur', 'cresc', 'dim', 'pedal', '8va', '8vb']);
+const SPAN_TOOLS = new Set<string>(['slur', 'line', 'cresc', 'dim', 'pedal', '8va', '8vb']);
+
+/** Do both events lie in one system? A line between notes is drawn only then. */
+export function sameSystem(h: HitIndex, a: EvAddr, b: EvAddr): boolean {
+  const sys = (mi: number) => h.layout.systems.find((s) => mi >= s.a && mi <= s.b);
+  const s = sys(a.mi);
+  return !!s && s === sys(b.mi);
+}
 
 /** Starts dragging a span (slur, hairpin, pedal, octave shift) from the note under the pointer. */
 function startSpan(e: PointerEvent, w: Where, tool: SpanTool, target: Target | undefined): void {
   if (target?.ref.t !== 'ev') {
-    say(tool === 'slur' ? 'Start the slur on a note' : 'Start the line on a note or rest', true);
+    say(
+      tool === 'slur'
+        ? 'Start the slur on a note'
+        : tool === 'line'
+          ? 'Start the line on a note'
+          : 'Start the span on a note or rest',
+      true,
+    );
     return;
   }
   drag = {
@@ -424,7 +438,12 @@ function continueDrag(d: Drag, e: PointerEvent, w: Where, h: HitIndex): void {
     if (w.page === d.start.page) ghost.value = { kind: 'rect', page: w.page, box: rectBetween(w, d.start) };
   } else if (d.k === 'span') {
     const tg = hitTest(h, w.page, w.x, w.y);
-    ghost.value = { kind: 'span', from: d.start, to: w, bad: !(tg?.ref.t === 'ev' && tg.ref.staff === d.from.staff) };
+    const ok =
+      tg?.ref.t === 'ev' &&
+      (d.tool === 'line'
+        ? sameSystem(h, d.from, tg.ref) && eventOf(score.peek(), tg.ref)?.kind === 'note'
+        : tg.ref.staff === d.from.staff);
+    ghost.value = { kind: 'span', from: d.start, to: w, bad: !ok };
   } else if (d.k === 'mark') {
     if (!(d.moved || pastThreshold(d, e))) return;
     d.moved = true;
@@ -464,7 +483,10 @@ function finishSpan(d: Extract<Drag, { k: 'span' }>, w: Where, h: HitIndex): voi
   const from = d.from;
   const kind = d.tool;
   if (kind === 'slur') run((s) => C.addSlur(s, from, to));
-  else run((s) => C.addSpanOver(s, kind, from, to));
+  else if (kind === 'line') {
+    if (sameSystem(h, from, to)) run((s) => C.addLine(s, from, to));
+    else say('A line joins notes of one system', true);
+  } else run((s) => C.addSpanOver(s, kind, from, to));
 }
 
 /** Moves a dragged mark to the event under the pointer. */
@@ -626,6 +648,7 @@ export function deleteSelection(): void {
     const marks = sel.filter((x): x is Extract<Ref, { t: 'mark' }> => x.t === 'mark');
     if (marks.length) s = C.removeMarks(s, marks);
     for (const r of sel.filter((x): x is Extract<Ref, { t: 'slur' }> => x.t === 'slur')) s = C.removeSlur(s, r, r.id);
+    for (const r of sel.filter((x): x is Extract<Ref, { t: 'line' }> => x.t === 'line')) s = C.removeLine(s, r, r.id);
     for (const r of sel.filter((x): x is Extract<Ref, { t: 'tuplet' }> => x.t === 'tuplet')) s = C.removeTuplet(s, r);
     for (const r of sel.filter((x): x is Extract<Ref, { t: 'tie' }> => x.t === 'tie'))
       s = C.toggleTie(s, [{ ...r, pi: r.pi }]);

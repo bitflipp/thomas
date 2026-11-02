@@ -11,7 +11,7 @@ import { eventOf, markOf, tupletOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import type { Event, MarkBody, MarkPlacement, NoteEvent, Score } from '../src/model.ts';
 import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
-import { chooseDots, flipStem, nudge, slurSelection, tieSelection } from './actions.ts';
+import { chooseDots, flipStem, lineSelection, nudge, slurSelection, tieSelection } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
 import { deleteSelection, evRefs, select, selectSimilar, tupletsAround } from './interact.ts';
@@ -692,6 +692,15 @@ function EventSection() {
               Slur (S)
             </button>
           )}
+          {refs.length === 2 && (
+            <button
+              type="button"
+              title="Line between the two notes (they must be in one system)"
+              onClick={lineSelection}
+            >
+              Line
+            </button>
+          )}
           {refs.length === 2 &&
             [1, 2, 3].map((b) => (
               <button
@@ -848,6 +857,42 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
   );
 }
 
+function LineSection() {
+  // Every selected line is edited along with the first.
+  const group = selection.value.filter((x): x is Extract<Ref, { t: 'line' }> => x.t === 'line');
+  const style = same(
+    group.map((g) => (eventOf(score.value, g)?.lineStart?.find((s) => s.id === g.id)?.dashed ? 'dashed' : 'solid')),
+  );
+  return (
+    <section>
+      <Group title="Properties">
+        <Row label="Style">
+          <Pick
+            value={style}
+            opts={[
+              ['solid', 'solid'],
+              ['dashed', 'dashed'],
+            ]}
+            onChange={(v) =>
+              run((x) => {
+                for (const g of group) C.setLineDashed(x, g, g.id, v === 'dashed');
+              })
+            }
+          />
+        </Row>
+      </Group>
+      <Group title="Actions">
+        <div class="btns">
+          <SimilarButton />
+          <button type="button" class="danger" onClick={() => deleteSelection()}>
+            Delete
+          </button>
+        </div>
+      </Group>
+    </section>
+  );
+}
+
 function SlurSection() {
   // Every selected slur is edited along with the first.
   const group = selection.value.filter((x): x is Extract<Ref, { t: 'slur' }> => x.t === 'slur');
@@ -979,7 +1024,7 @@ function selectionLabel(sc: Score, sel: Ref[]): string | null {
     const g = tupletOf(sc, first);
     return g ? `Tuplet ${g.actual}:${g.normal}` : 'Tuplet';
   }
-  return first.t === 'slur' ? 'Slur' : 'Tie';
+  return first.t === 'slur' ? 'Slur' : first.t === 'line' ? 'Line' : 'Tie';
 }
 
 // The tab the user clicked; forgotten whenever the selection changes so the panel follows the selection again.
@@ -1026,6 +1071,7 @@ export function Inspector() {
             {sel.some((r) => r.t === 'ev') && <EventSection />}
             {first?.t === 'mark' && <MarkSection r={first} />}
             {first?.t === 'slur' && <SlurSection />}
+            {first?.t === 'line' && <LineSection />}
             {first?.t === 'tuplet' && <TupletSection r={first} />}
             {first?.t === 'tie' && (
               <section>

@@ -199,7 +199,7 @@ function PageView({
           if (r.pi !== undefined && keys.has(refKey(r))) return SEL;
         } else if (keys.has(refKey(r))) return SEL;
       }
-      if (voiceColors.value && (r.t === 'ev' || r.t === 'tie' || r.t === 'slur' || r.t === 'tuplet'))
+      if (voiceColors.value && (r.t === 'ev' || r.t === 'tie' || r.t === 'slur' || r.t === 'line' || r.t === 'tuplet'))
         return VOICE_COLORS[r.voice];
       return undefined;
     };
@@ -212,7 +212,7 @@ function PageView({
   const hovered = useMemo(() => {
     if (!hov || hov.page !== i || !near) return [];
     const key = refKey(hov.ref);
-    const curve = hov.k === 'slur' || hov.k === 'tie';
+    const curve = hov.k === 'slur' || hov.k === 'tie' || hov.k === 'link';
     const out: number[] = [];
     p.prims.forEach((q, n) => {
       if (!q.k || q.k === 'beam' || !q.r || (curve && q.k !== hov.k)) return;
