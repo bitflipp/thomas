@@ -19,69 +19,74 @@ function unescapeXml(s: string): string {
   });
 }
 
+/** The index after a DOCTYPE, which may contain an internal subset in [ ... ] with its own `>`s, so the bracket depth is tracked. MusicXML files carry a DOCTYPE with an external reference only, which we ignore. */
+function endOfDoctype(src: string, lt: number): number {
+  let depth = 0;
+  let j = lt;
+  for (; j < src.length; j++) {
+    if (src[j] === '[') depth++;
+    else if (src[j] === ']') depth--;
+    else if (src[j] === '>' && depth <= 0) break;
+  }
+  return j + 1;
+}
+
+/** The index of the `>` that ends the tag starting at `lt`. A `>` inside a quoted attribute value does not end it. */
+function endOfTag(src: string, lt: number): number {
+  let quote = '';
+  let j = lt + 1;
+  for (; j < src.length; j++) {
+    const c = src[j];
+    if (quote) {
+      if (c === quote) quote = '';
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === '>') break;
+  }
+  return j;
+}
+
+/** An element from the inside of its start tag (`name a="1" b='2'`, without `<`, `>` and a self-closing `/`). */
+function parseStartTag(inner: string): XNode {
+  const name = must(/^([^\s/]+)/.exec(inner));
+  const node: XNode = { tag: name[1], attrs: {}, children: [], text: '' };
+  const attribute = /([^\s=]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
+  const rest = inner.slice(name[0].length);
+  for (let a = attribute.exec(rest); a; a = attribute.exec(rest)) node.attrs[a[1]] = unescapeXml(a[3] ?? a[4]);
+  return node;
+}
+
 export function parseXml(src: string): XNode {
   let i = 0;
   const stack: XNode[] = [];
   let root: XNode | null = null;
-  const n = src.length;
-  while (i < n) {
+  const appendText = (t: string) => {
+    if (stack.length) stack[stack.length - 1].text += t;
+  };
+  while (i < src.length) {
     const lt = src.indexOf('<', i);
     if (lt < 0) break;
-    if (lt > i && stack.length) stack[stack.length - 1].text += unescapeXml(src.slice(i, lt));
-    if (src.startsWith('<!--', lt)) {
-      i = src.indexOf('-->', lt) + 3;
-      continue;
-    }
-    if (src.startsWith('<?', lt)) {
-      i = src.indexOf('?>', lt) + 2;
-      continue;
-    }
-    if (src.startsWith('<![CDATA[', lt)) {
-      const e = src.indexOf(']]>', lt);
-      if (stack.length) stack[stack.length - 1].text += src.slice(lt + 9, e);
-      i = e + 3;
-      continue;
-    }
-    if (src.startsWith('<!', lt)) {
-      // DOCTYPE: may contain an internal subset in [ ... ] with its own `>`s, so track the bracket
-      // depth. MusicXML files carry a DOCTYPE with an external reference only, which we ignore.
-      let depth = 0;
-      let j = lt;
-      for (; j < n; j++) {
-        if (src[j] === '[') depth++;
-        else if (src[j] === ']') depth--;
-        else if (src[j] === '>' && depth <= 0) break;
+    if (lt > i) appendText(unescapeXml(src.slice(i, lt)));
+    if (src.startsWith('<!--', lt)) i = src.indexOf('-->', lt) + 3;
+    else if (src.startsWith('<?', lt)) i = src.indexOf('?>', lt) + 2;
+    else if (src.startsWith('<![CDATA[', lt)) {
+      const end = src.indexOf(']]>', lt);
+      appendText(src.slice(lt + 9, end));
+      i = end + 3;
+    } else if (src.startsWith('<!', lt)) i = endOfDoctype(src, lt);
+    else {
+      const end = endOfTag(src, lt);
+      const body = src.slice(lt + 1, end);
+      i = end + 1;
+      if (body[0] === '/') {
+        stack.pop();
+        continue;
       }
-      i = j + 1;
-      continue;
+      const selfClose = body.endsWith('/');
+      const node = parseStartTag(selfClose ? body.slice(0, -1) : body);
+      if (stack.length) stack[stack.length - 1].children.push(node);
+      else root = node;
+      if (!selfClose) stack.push(node);
     }
-    // Find the end of the tag. A `>` inside a quoted attribute value does not end it, so the
-    // scan remembers the quote character it is in (`q`).
-    let j = lt + 1;
-    let q = '';
-    for (; j < n; j++) {
-      const c = src[j];
-      if (q) {
-        if (c === q) q = '';
-      } else if (c === '"' || c === "'") q = c;
-      else if (c === '>') break;
-    }
-    const body = src.slice(lt + 1, j);
-    i = j + 1;
-    if (body[0] === '/') {
-      stack.pop();
-      continue;
-    }
-    const selfClose = body.endsWith('/');
-    const inner = selfClose ? body.slice(0, -1) : body;
-    const m = must(/^([^\s/]+)/.exec(inner));
-    const node: XNode = { tag: m[1], attrs: {}, children: [], text: '' };
-    const re = /([^\s=]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
-    const rest = inner.slice(m[0].length);
-    for (let a = re.exec(rest); a; a = re.exec(rest)) node.attrs[a[1]] = unescapeXml(a[3] ?? a[4]);
-    if (stack.length) stack[stack.length - 1].children.push(node);
-    else root = node;
-    if (!selfClose) stack.push(node);
   }
   if (!root) throw new Error('empty XML');
   return root;
