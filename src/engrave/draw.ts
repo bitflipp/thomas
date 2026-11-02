@@ -575,152 +575,177 @@ function drawNoteBasics(ctx: SysCtx, e: EvL, s: number): void {
   if (e.ev.kind === 'note' && e.ev.arpeggio) drawArpeggio(ctx, e, s, yTop, yBot);
 }
 
-/** Grace notes: small heads with their own up-stems, a flag or beams, and a slash for an acciaccatura. */
-function drawGraces(ctx: SysCtx, e: EvL, s: number): void {
-  const gls = must(e.graces);
-  const prims = ctx.prims[s];
-  const GS = GRACE_SCALE;
-  const STEM = 0.1;
-  const STEM_LEN = 2.7;
-  const bt = (D.beamThickness as number) * 0.8;
-  const bs = (D.beamSpacing as number) * 0.8;
-  const ext = (D.legerLineExtension as number) * GS;
-  // Runs of beamed grace notes: consecutive ones of eighth length or shorter, at least two. `runOf`
-  // gives the same object for all members of a run, undefined for lone notes (which get flags).
+const GRACE_STEM = 0.1;
+const GRACE_STEM_LENGTH = 2.7;
+
+/** What the drawing of the grace notes of one event shares. */
+interface GraceDrawing {
+  ctx: SysCtx;
+  s: number;
+  e: EvL;
+  graces: NonNullable<EvL['graces']>;
+  /** For each grace note, the object shared by the members of its beamed run (undefined for lone notes, which get flags). */
+  runOf: (object | undefined)[];
+}
+
+/** Where a grace note is: its head x, stem x, extent and where its stem ends. */
+interface GraceGeom {
+  yTop: number;
+  yBot: number;
+  x: number;
+  stemX: number;
+  tip: number;
+}
+
+/** Runs of beamed grace notes: consecutive ones of eighth length or shorter, at least two. */
+function graceRuns(graces: GraceDrawing['graces']): (object | undefined)[] {
   const runOf: (object | undefined)[] = [];
-  for (let i = 0; i < gls.length; ) {
+  for (let i = 0; i < graces.length; ) {
     let j = i;
-    while (j < gls.length && gls[j].g.base >= 8) j++;
+    while (j < graces.length && graces[j].g.base >= 8) j++;
     if (j - i >= 2) {
       const run = {};
       for (let k = i; k < j; k++) runOf[k] = run;
       i = j;
     } else i = Math.max(j, i + 1);
   }
-  const tag = (
-    from: number,
-    k: 'head' | 'acc' | 'ledger' | 'stem' | 'flag' | 'beam',
-    gl: (typeof gls)[number],
-    i: number,
-  ) => {
-    tagFrom(prims, from, k, gl.g, runOf[i] ? [runOf[i]] : undefined);
-    for (let q = from; q < prims.length; q++) prims[q].r = e.ev;
-  };
-  const geo = gls.map((gl, i) => {
-    const ys = gl.heads.map((h) => posToY(h.pos));
-    const yTop = Math.min(...ys);
-    const yBot = Math.max(...ys);
-    const x = e.x + gl.dx;
-    const stemX = x + gl.hw - STEM / 2;
-    gl.heads.forEach((h) => {
-      const n0 = prims.length;
-      prims.push({ t: 'glyph', name: headGlyph(gl.g.base), x, y: posToY(h.pos), sx: HEAD_SCALE * GS, sy: GS });
-      tag(n0, 'head', gl, i);
-      if (h.acc) {
-        const n1 = prims.length;
-        const ax = e.x + must(h.accX);
-        prims.push({ t: 'glyph', name: h.acc.glyph, x: ax, y: posToY(h.pos), sx: GS, sy: GS });
-        tag(n1, 'acc', gl, i);
-        const ab = sm.bbox(h.acc.glyph);
-        pushBox(
-          ctx,
-          s,
-          ax + ab.x0 * GS,
-          ax + ab.x1 * GS,
-          posToY(h.pos) - ab.y1 * GS - 0.1,
-          posToY(h.pos) - ab.y0 * GS + 0.1,
-          true,
-        );
-      }
-    });
-    const posMin = Math.min(...gl.heads.map((h) => h.pos));
-    const posMax = Math.max(...gl.heads.map((h) => h.pos));
-    const ledger = (p: number) => {
-      const n0 = prims.length;
-      const prim: Prim = {
-        t: 'line',
-        x1: x - ext,
-        x2: x + gl.hw + ext,
-        y1: posToY(p),
-        y2: posToY(p),
-        w: D.legerLineThickness as number,
-      };
-      prims.push(prim);
-      tag(n0, 'ledger', gl, i);
-      ledgerSegs.push({ prim, s, y: posToY(p), x0: x - ext, x1: x + gl.hw + ext, hx0: x, hx1: x + gl.hw });
-    };
-    for (let p = -2; p >= posMin; p -= 2) ledger(p);
-    for (let p = 10; p <= posMax; p += 2) ledger(p);
-    return { yTop, yBot, x, stemX, tip: Math.min(yTop - STEM_LEN, 2) };
-  });
-  // Stems first, then flags for lone notes or beams for runs. Beams are drawn per level
-  // (a primary beam over the whole run, secondary ones for the faster notes).
-  const stem = (i: number, tip: number) => {
-    const gl = gls[i];
-    const g = geo[i];
-    if (gl.g.base < 2) return;
+  return runOf;
+}
+
+/** Tags the prims drawn since `from` as part of grace note `i`. */
+function tagGrace(
+  d: GraceDrawing,
+  from: number,
+  kind: 'head' | 'acc' | 'ledger' | 'stem' | 'flag' | 'beam',
+  i: number,
+) {
+  const prims = d.ctx.prims[d.s];
+  tagFrom(prims, from, kind, d.graces[i].g, d.runOf[i] ? [d.runOf[i]] : undefined);
+  for (let q = from; q < prims.length; q++) prims[q].r = d.e.ev;
+}
+
+/** Heads, accidentals and ledger lines of grace note `i`. */
+function drawGraceHeads(d: GraceDrawing, i: number): GraceGeom {
+  const { ctx, s, e } = d;
+  const prims = ctx.prims[s];
+  const gl = d.graces[i];
+  const GS = GRACE_SCALE;
+  const ledgerExt = (D.legerLineExtension as number) * GS;
+  const ys = gl.heads.map((h) => posToY(h.pos));
+  const yTop = Math.min(...ys);
+  const yBot = Math.max(...ys);
+  const x = e.x + gl.dx;
+  for (const h of gl.heads) {
     const n0 = prims.length;
-    prims.push({ t: 'line', x1: g.stemX, y1: g.yBot - 0.168 * GS, x2: g.stemX, y2: tip, w: STEM });
-    tag(n0, 'stem', gl, i);
-  };
-  for (let i = 0; i < gls.length; ) {
-    const run = runOf[i];
-    if (!run) {
-      const gl = gls[i];
-      const g = geo[i];
-      stem(i, g.tip);
-      if (gl.g.base >= 8) {
-        const n = beamLevels(gl.g.base);
-        const name = `flag${n === 1 ? '8th' : n === 2 ? '16th' : n === 3 ? '32nd' : '64th'}Up`;
-        const n0 = prims.length;
-        prims.push({ t: 'glyph', name, x: g.stemX - STEM / 2, y: g.tip, sx: GS, sy: GS });
-        tag(n0, 'flag', gl, i);
-      }
-      i++;
-      continue;
-    }
-    let j = i;
-    while (j < gls.length && runOf[j] === run) j++;
-    const tip = Math.min(...geo.slice(i, j).map((g) => g.tip));
-    for (let k = i; k < j; k++) stem(k, tip);
-    const maxLv = Math.max(...gls.slice(i, j).map((gl) => beamLevels(gl.g.base)));
-    for (let lv = 1; lv <= maxLv; lv++) {
-      const y0 = tip + (lv - 1) * (bt + bs);
-      let a = i;
-      while (a < j) {
-        if (beamLevels(gls[a].g.base) < lv) {
-          a++;
-          continue;
-        }
-        let b = a;
-        while (b + 1 < j && beamLevels(gls[b + 1].g.base) >= lv) b++;
-        let xa: number;
-        let xb: number;
-        if (b > a) {
-          xa = geo[a].stemX - STEM / 2;
-          xb = geo[b].stemX + STEM / 2;
-        } else if (a === i) {
-          xa = geo[a].stemX - STEM / 2;
-          xb = geo[a].stemX + 0.8;
-        } else {
-          xa = geo[a].stemX - 0.8;
-          xb = geo[a].stemX + STEM / 2;
-        }
-        const n0 = prims.length;
-        prims.push({
-          t: 'path',
-          d: `M${xa.toFixed(3)} ${y0.toFixed(3)}L${xb.toFixed(3)} ${y0.toFixed(3)}L${xb.toFixed(3)} ${(y0 + bt).toFixed(3)}L${xa.toFixed(3)} ${(y0 + bt).toFixed(3)}Z`,
-        });
-        tag(n0, 'beam', gls[a], a);
-        a = b + 1;
-      }
-    }
-    i = j;
+    prims.push({ t: 'glyph', name: headGlyph(gl.g.base), x, y: posToY(h.pos), sx: HEAD_SCALE * GS, sy: GS });
+    tagGrace(d, n0, 'head', i);
+    if (!h.acc) continue;
+    const n1 = prims.length;
+    const ax = e.x + must(h.accX);
+    prims.push({ t: 'glyph', name: h.acc.glyph, x: ax, y: posToY(h.pos), sx: GS, sy: GS });
+    tagGrace(d, n1, 'acc', i);
+    const box = sm.bbox(h.acc.glyph);
+    pushBox(
+      ctx,
+      s,
+      ax + box.x0 * GS,
+      ax + box.x1 * GS,
+      posToY(h.pos) - box.y1 * GS - 0.1,
+      posToY(h.pos) - box.y0 * GS + 0.1,
+      true,
+    );
   }
-  // The slash of an acciaccatura runs through the stem of the first note of its run (or the
-  // lone note). For a run, the tip is taken from the whole run, so that the slash lies on its stems.
-  for (let i = 0; i < gls.length; i++) {
-    if (!gls[i].g.slash || gls[i].g.base < 8 || (runOf[i] && runOf[i] === runOf[i - 1])) continue;
+  const ledger = (p: number) => {
+    const n0 = prims.length;
+    const prim: Prim = {
+      t: 'line',
+      x1: x - ledgerExt,
+      x2: x + gl.hw + ledgerExt,
+      y1: posToY(p),
+      y2: posToY(p),
+      w: D.legerLineThickness as number,
+    };
+    prims.push(prim);
+    tagGrace(d, n0, 'ledger', i);
+    ledgerSegs.push({ prim, s, y: posToY(p), x0: x - ledgerExt, x1: x + gl.hw + ledgerExt, hx0: x, hx1: x + gl.hw });
+  };
+  const posMin = Math.min(...gl.heads.map((h) => h.pos));
+  const posMax = Math.max(...gl.heads.map((h) => h.pos));
+  for (let p = -2; p >= posMin; p -= 2) ledger(p);
+  for (let p = 10; p <= posMax; p += 2) ledger(p);
+  return { yTop, yBot, x, stemX: x + gl.hw - GRACE_STEM / 2, tip: Math.min(yTop - GRACE_STEM_LENGTH, 2) };
+}
+
+function drawGraceStem(d: GraceDrawing, geo: GraceGeom[], i: number, tip: number): void {
+  if (d.graces[i].g.base < 2) return;
+  const prims = d.ctx.prims[d.s];
+  const g = geo[i];
+  const n0 = prims.length;
+  prims.push({ t: 'line', x1: g.stemX, y1: g.yBot - 0.168 * GRACE_SCALE, x2: g.stemX, y2: tip, w: GRACE_STEM });
+  tagGrace(d, n0, 'stem', i);
+}
+
+/** A lone grace note: its stem and flag. */
+function drawGraceWithFlag(d: GraceDrawing, geo: GraceGeom[], i: number): void {
+  const base = d.graces[i].g.base;
+  drawGraceStem(d, geo, i, geo[i].tip);
+  if (base < 8) return;
+  const n = beamLevels(base);
+  const name = `flag${n === 1 ? '8th' : n === 2 ? '16th' : n === 3 ? '32nd' : '64th'}Up`;
+  const prims = d.ctx.prims[d.s];
+  const n0 = prims.length;
+  prims.push({ t: 'glyph', name, x: geo[i].stemX - GRACE_STEM / 2, y: geo[i].tip, sx: GRACE_SCALE, sy: GRACE_SCALE });
+  tagGrace(d, n0, 'flag', i);
+}
+
+/** A run of beamed grace notes i..j-1: the stems end at the highest tip; beams are drawn per level (a primary beam over the whole run, secondary ones for the faster notes). */
+function drawGraceRun(d: GraceDrawing, geo: GraceGeom[], i: number, j: number): void {
+  const prims = d.ctx.prims[d.s];
+  const thickness = (D.beamThickness as number) * 0.8;
+  const spacing = (D.beamSpacing as number) * 0.8;
+  const levelOf = (k: number) => beamLevels(d.graces[k].g.base);
+  const tip = Math.min(...geo.slice(i, j).map((g) => g.tip));
+  for (let k = i; k < j; k++) drawGraceStem(d, geo, k, tip);
+  const maxLevel = Math.max(...d.graces.slice(i, j).map((_, k) => levelOf(i + k)));
+  for (let level = 1; level <= maxLevel; level++) {
+    const y0 = tip + (level - 1) * (thickness + spacing);
+    let a = i;
+    while (a < j) {
+      if (levelOf(a) < level) {
+        a++;
+        continue;
+      }
+      let b = a;
+      while (b + 1 < j && levelOf(b + 1) >= level) b++;
+      // A lone note of this level gets a hook towards the rest of the run.
+      let xa: number;
+      let xb: number;
+      if (b > a) {
+        xa = geo[a].stemX - GRACE_STEM / 2;
+        xb = geo[b].stemX + GRACE_STEM / 2;
+      } else if (a === i) {
+        xa = geo[a].stemX - GRACE_STEM / 2;
+        xb = geo[a].stemX + 0.8;
+      } else {
+        xa = geo[a].stemX - 0.8;
+        xb = geo[a].stemX + GRACE_STEM / 2;
+      }
+      const n0 = prims.length;
+      prims.push({
+        t: 'path',
+        d: `M${xa.toFixed(3)} ${y0.toFixed(3)}L${xb.toFixed(3)} ${y0.toFixed(3)}L${xb.toFixed(3)} ${(y0 + thickness).toFixed(3)}L${xa.toFixed(3)} ${(y0 + thickness).toFixed(3)}Z`,
+      });
+      tagGrace(d, n0, 'beam', a);
+      a = b + 1;
+    }
+  }
+}
+
+/** The slash of an acciaccatura runs through the stem of the first note of its run (or the lone note). For a run, the tip is taken from the whole run, so that the slash lies on its stems. */
+function drawGraceSlashes(d: GraceDrawing, geo: GraceGeom[]): void {
+  const { graces, runOf } = d;
+  for (let i = 0; i < graces.length; i++) {
+    if (!graces[i].g.slash || graces[i].g.base < 8 || (runOf[i] && runOf[i] === runOf[i - 1])) continue;
     const g = geo[i];
     let tip = g.tip;
     if (runOf[i]) {
@@ -728,14 +753,35 @@ function drawGraces(ctx: SysCtx, e: EvL, s: number): void {
       while (runOf[j + 1] === runOf[i]) j++;
       tip = Math.min(...geo.slice(i, j + 1).map((q) => q.tip));
     }
+    const prims = d.ctx.prims[d.s];
     const n0 = prims.length;
     prims.push({ t: 'line', x1: g.stemX - 0.9, y1: tip + 1.9, x2: g.stemX + 1.0, y2: tip + 0.5, w: 0.1 });
-    tag(n0, 'stem', gls[i], i);
+    tagGrace(d, n0, 'stem', i);
   }
-  const xs = geo.map((g) => g.x);
+}
+
+/** Grace notes: small heads with their own up-stems, a flag or beams, and a slash for an acciaccatura. */
+function drawGraces(ctx: SysCtx, e: EvL, s: number): void {
+  const graces = must(e.graces);
+  const d: GraceDrawing = { ctx, s, e, graces, runOf: graceRuns(graces) };
+  const geo = graces.map((_, i) => drawGraceHeads(d, i));
+  // Stems first, then flags for lone notes or beams for runs.
+  for (let i = 0; i < graces.length; ) {
+    const run = d.runOf[i];
+    if (!run) {
+      drawGraceWithFlag(d, geo, i);
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < graces.length && d.runOf[j] === run) j++;
+    drawGraceRun(d, geo, i, j);
+    i = j;
+  }
+  drawGraceSlashes(d, geo);
   const top = Math.min(...geo.map((g) => g.tip));
   const bot = Math.max(...geo.map((g) => g.yBot));
-  pushBox(ctx, s, Math.min(...xs) - 0.3, e.x - 0.2, top - 0.3, bot + 0.5);
+  pushBox(ctx, s, Math.min(...geo.map((g) => g.x)) - 0.3, e.x - 0.2, top - 0.3, bot + 0.5);
 }
 
 function drawRest(ctx: SysCtx, e: EvL, s: number): void {
