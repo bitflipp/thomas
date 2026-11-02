@@ -11,6 +11,7 @@ import { D, geomOf, xAtTick } from './draw.ts';
 import type { EvL, Prepared } from './prep.ts';
 import type { Kind, Prim } from './scene.ts';
 import { oid } from './scene.ts';
+import { HEAD_SCALE, headWidth, STEM_T } from './spacing.ts';
 
 const sm = loadSmufl();
 
@@ -166,8 +167,10 @@ function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' })
 
 function tempoItem(m: Mark & { type: 'tempo' }, x0: number): Item {
   let x = x0;
-  const unit = m.unit === 2 ? 'metNoteHalfUp' : 'metNoteQuarterUp';
-  const noteBox = sm.bbox(unit);
+  // Drawn exactly like a staff note: the same head glyph and scale, stem 3.5 long.
+  const head = m.unit === 2 ? 'noteheadHalf' : 'noteheadBlack';
+  const hw = headWidth(m.unit === 2 ? 2 : 4);
+  const noteBox = { x1: hw };
   const label = `= ${m.bpm}`;
   const size = 2.5;
   const textWidth = label.length * size * 0.55;
@@ -181,17 +184,20 @@ function tempoItem(m: Mark & { type: 'tempo' }, x0: number): Item {
       this.x1 += dx;
     },
     x0: x,
-    x1: x + noteBox.x1 + dotsWidth + 0.5 + textWidth,
+    x1: x + noteBox.x1 + dotsWidth + 0.75 + textWidth,
     side: 'above',
-    up: 1.6,
-    down: 0.2,
+    up: 3.7,
+    down: 1.8,
     row: 0,
     order: 0,
     draw: (ref) => {
-      const out: Prim[] = [{ t: 'glyph', name: unit, x, y: ref }];
+      const out: Prim[] = [
+        { t: 'glyph', name: head, x, y: ref, sx: HEAD_SCALE, sy: 1 },
+        { t: 'line', x1: x + hw - STEM_T / 2, y1: ref - 0.17, x2: x + hw - STEM_T / 2, y2: ref - 3.5, w: STEM_T },
+      ];
       for (let k = 0; k < m.dots; k++)
-        out.push({ t: 'glyph', name: 'metAugmentationDot', x: x + noteBox.x1 + 0.2 + k * 0.5, y: ref });
-      out.push({ t: 'text', x: x + noteBox.x1 + dotsWidth + 0.5, y: ref + 0.5, s: label, size, bold: true });
+        out.push({ t: 'glyph', name: 'augmentationDot', x: x + noteBox.x1 + 0.2 + k * 0.5, y: ref });
+      out.push({ t: 'text', x: x + noteBox.x1 + dotsWidth + 0.75, y: ref + 0.5, s: label, size, bold: true });
       return out;
     },
   };
