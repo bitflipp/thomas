@@ -150,6 +150,22 @@ function targetKey(page: number, p: Prim, ref: Ref): { key: string; head: boolea
   return { key: `${page}|${kind}${refKey(ref)}${head ? '|h' : ''}`, head };
 }
 
+/** Adds a prim (with its box) to the target of its model object, creating the target if needed. */
+function addToTarget(byKey: Map<string, Target>, page: number, p: Prim, ref: Ref, bb: Box): void {
+  const { key, head } = targetKey(page, p, ref);
+  let t = byKey.get(key);
+  if (!t) {
+    t = { page, ref, k: head ? 'head' : p.k, boxes: [], bbox: bb, prio: PRIO[head ? 'head' : p.k] ?? 3 };
+    byKey.set(key, t);
+  }
+  if (isCurveKind(p.k)) {
+    t.pts ??= [];
+    t.pts.push(...curvePts(p.t === 'path' ? p.d : ''));
+  } else t.boxes.push(bb);
+  t.bbox = union(t.bbox, bb);
+  if (p.k === 'rest') t.prio = 0;
+}
+
 export function buildHitIndex(score: Score, res: Engraved): HitIndex {
   const index = indexScore(score);
   const byKey = new Map<string, Target>();
@@ -158,19 +174,7 @@ export function buildHitIndex(score: Score, res: Engraved): HitIndex {
       if (!p.k || p.k === 'beam') continue;
       const ref = primRef(index, p);
       const bb = ref && primBox(p);
-      if (!(ref && bb)) continue;
-      const { key, head } = targetKey(pi, p, ref);
-      let t = byKey.get(key);
-      if (!t) {
-        t = { page: pi, ref, k: head ? 'head' : p.k, boxes: [], bbox: bb, prio: PRIO[head ? 'head' : p.k] ?? 3 };
-        byKey.set(key, t);
-      }
-      if (isCurveKind(p.k)) {
-        t.pts ??= [];
-        t.pts.push(...curvePts(p.t === 'path' ? p.d : ''));
-      } else t.boxes.push(bb);
-      t.bbox = union(t.bbox, bb);
-      if (p.k === 'rest') t.prio = 0;
+      if (ref && bb) addToTarget(byKey, pi, p, ref, bb);
     }
   });
   const targets = [...byKey.values()];
@@ -324,36 +328,44 @@ export function measureAtStaff(
 // ---------------------------------------------------------------- dependents
 // Selecting a slur, tie, tuplet or mark highlights the notes it depends on; this finds them.
 
-/** The notes a selected slur, tie or tuplet belongs to (its start and end notes; all notes of a tuplet). */
-export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
-  if (ref.t === 'mark') return markNotes(score, ref);
-  if (ref.t !== 'slur' && ref.t !== 'tie' && ref.t !== 'tuplet') return [];
+/** All notes of a tuplet (and the event the ref points at). */
+function tupletMembers(score: Score, ref: Extract<Ref, { t: 'tuplet' }>): EvAddr[] {
   const out: EvAddr[] = [{ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: ref.idx }];
-  if (ref.t === 'tuplet') {
-    const v = voiceOf(score, ref);
-    const g = v && tupletOf(score, ref);
-    if (v && g)
-      for (const te of flattenVoice(v))
-        if (te.tuplets[ref.depth] === g) out.push({ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: te.index });
-    return out;
-  }
-  // Walk forward through the voice, across measures, to the note that ends the slur (the one carrying
-  // its stop) or receives the tie (the next note: a tie that is not followed by a note has no end).
+  const v = voiceOf(score, ref);
+  const g = v && tupletOf(score, ref);
+  if (v && g)
+    for (const te of flattenVoice(v))
+      if (te.tuplets[ref.depth] === g) out.push({ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: te.index });
+  return out;
+}
+
+/**
+ * The note that ends a slur (the one carrying its stop) or receives a tie (the next note: a tie that
+ * is not followed by a note has no end). Walks forward through the voice, across measures.
+ */
+function endNoteOf(score: Score, ref: Extract<Ref, { t: 'slur' | 'tie' }>): EvAddr | undefined {
   const start = eventOf(score, ref);
   for (let mi = ref.mi; mi < score.measures.length; mi++) {
     const v = voiceOf(score, { mi, staff: ref.staff, voice: ref.voice });
-    if (!v) break;
+    if (!v) return undefined;
     for (const te of flattenVoice(v)) {
-      if (mi === ref.mi && te.index <= ref.idx) continue;
-      if (te.ev === start) continue;
-      if (ref.t === 'tie' ? te.ev.kind === 'note' : te.ev.slurStop?.includes(ref.id)) {
-        out.push({ mi, staff: ref.staff, voice: ref.voice, idx: te.index });
-        return out;
-      }
-      if (ref.t === 'tie') return out;
+      if ((mi === ref.mi && te.index <= ref.idx) || te.ev === start) continue;
+      const ends = ref.t === 'tie' ? te.ev.kind === 'note' : te.ev.slurStop?.includes(ref.id);
+      if (ends) return { mi, staff: ref.staff, voice: ref.voice, idx: te.index };
+      if (ref.t === 'tie') return undefined;
     }
   }
-  return out;
+  return undefined;
+}
+
+/** The notes a selected slur, tie or tuplet belongs to (its start and end notes; all notes of a tuplet). */
+export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
+  if (ref.t === 'mark') return markNotes(score, ref);
+  if (ref.t === 'tuplet') return tupletMembers(score, ref);
+  if (ref.t !== 'slur' && ref.t !== 'tie') return [];
+  const start: EvAddr = { mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: ref.idx };
+  const end = endNoteOf(score, ref);
+  return end ? [start, end] : [start];
 }
 
 /**
