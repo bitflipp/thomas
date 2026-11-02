@@ -30,8 +30,8 @@ export const GRACE_SCALE = 0.7;
 export const DOT_STEP = 0.55;
 /** Least distance between an up-stem and the following down-stem of a cross-staff beam. */
 export const CROSS_STEM_SEP = 2.0;
-/** Minimum stretch factor allowed when fitting measures on a line (0.7: at most 30 % tighter than ideal). */
-export const COMPRESS = 0.7;
+/** Minimum stretch factor allowed when fitting measures on a line (0.55: at most 45 % tighter than ideal). */
+export const COMPRESS = 0.55;
 
 /** Ideal distance (staff spaces) between two columns `dt` ticks apart: a fixed part plus a power law (a quarter apart: 3.0). */
 export function idealSpace(dt: number): number {
@@ -222,7 +222,7 @@ export function spaceMeasure(prep: Prepared, mi: number, skipClef0 = false): Mea
     restOnly,
   };
   sp.minWidth = placeMeasure(sp, 1).width;
-  sp.compWidth = placeMeasure(sp, COMPRESS).width;
+  sp.compWidth = placeMeasure(sp, COMPRESS, PLANNED_CLEARANCE).width;
   return sp;
 }
 
@@ -468,6 +468,8 @@ export interface PlacedMeasure {
   endX: number;
 }
 
+/** Clearance scale a line may be planned with (squeezing the clearances is otherwise a last resort down to MIN_CLEARANCE). */
+const PLANNED_CLEARANCE = 0.9;
 /** Least scale of the clearances between neighbouring columns (see `placeMeasure`'s `z`). */
 export const MIN_CLEARANCE = 0.75;
 
