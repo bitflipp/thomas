@@ -236,7 +236,7 @@ function drawLink(ctx: SysCtx, a: EvL, b: EvL, id: number, dashed: boolean): voi
   const ux = (x1 - x0) / len;
   const uy = (y1 - y0) / len;
   // Distance from a head's centre to its outline along the line (an ellipse), plus clearance.
-  const reach = (hw: number) => 1 / Math.hypot(ux / (hw / 2), uy / 0.5) + 0.9;
+  const reach = (hw: number) => 1 / Math.hypot(ux / (hw / 2), uy / 0.5) + 0.6;
   // A line that would run through the stem of its own note starts beyond the stem instead (when it fits).
   const pastStem = (e: EvL, g: typeof ga, cx: number, cy: number, dir: number, r: number): number => {
     if (e.stemTip === undefined || e.stemBase === undefined || Math.abs(ux) < 1e-6) return r;
@@ -245,7 +245,7 @@ function drawLink(ctx: SysCtx, a: EvL, b: EvL, id: number, dashed: boolean): voi
     const t = (g.stemX - cx) / (ux * dir); // distance along the line (away from the head) to the stem
     if (t <= 0) return r;
     const y = cy + uy * dir * t;
-    return y >= lo + off - 0.3 && y <= hi + off + 0.3 ? Math.max(r, t + 0.4) : r;
+    return y >= lo + off - 0.5 && y <= hi + off + 0.5 ? Math.max(r, t + 0.8) : r;
   };
   const ra = pastStem(a, ga, x0, y0, 1, reach(ga.hw));
   const rb = pastStem(b, gb, x1, y1, -1, reach(gb.hw));
