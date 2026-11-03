@@ -2,8 +2,8 @@
 // itself; the browser has no file system, so Vite serves the files as URLs and they are fetched here
 // once at startup, before the first engraving.
 
-import fontUrl from '../node_modules/@vexflow-fonts/bravura/bravura.otf?url';
-import metaUrl from '../node_modules/@vexflow-fonts/bravura/metadata.json?url';
+import fontUrl from '../fonts/leland/Leland.otf?url';
+import metaUrl from '../fonts/leland/leland_metadata.json?url';
 import { setSmuflSource } from '../src/smufl.ts';
 
 export async function initFonts(): Promise<void> {

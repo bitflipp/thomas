@@ -1,7 +1,7 @@
 # thomas — a music typesetter
 
 Text (or MusicXML) in, engraved SVG/PDF out. It reads a human-readable score format (see [FORMAT.md](FORMAT.md)),
-computes the whole layout and draws it with the SMuFL font Bravura. Everything the sample piece
+computes the whole layout and draws it with the SMuFL font Leland. Everything the sample piece
 `gewitter.musicxml` needs is supported (see [FEATURES.md](FEATURES.md)).
 
 ```
@@ -39,7 +39,7 @@ of notes, autosave in the browser, printing (PDF via the print dialog). `Ctrl E`
 | `src/model.ts` | Score model (JSON-serialisable), tick arithmetic, validation |
 | `src/xml.ts`, `src/musicxml*.ts` | Small XML parser; MusicXML → model (entry, measure reader, voice builder) |
 | `src/textformat.ts` | Model ⇄ text (writer and parser) |
-| `src/smufl.ts` | Bravura glyph outlines (as SVG paths) and metrics |
+| `src/smufl.ts` | Leland glyph outlines (as SVG paths) and metrics |
 | `src/engrave/prep.ts` | Analysis: clef/ottava state, written pitch positions, accidentals, beaming, stem directions |
 | `src/engrave/spacing.ts` | Columns per measure, extents, accidental stacking, stretchable spacing |
 | `src/engrave/draw.ts` | Heads, stems, flags, beams, tremolos, tuplets, articulations, arpeggios |

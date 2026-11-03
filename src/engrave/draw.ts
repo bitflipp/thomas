@@ -14,7 +14,17 @@ import { beamLevels, posToY, staffPos } from './prep.ts';
 import type { Prim, Skyline } from './scene.ts';
 import { oid, tagFrom } from './scene.ts';
 import type { MeasureSpacing, PlacedMeasure } from './spacing.ts';
-import { DOT_STEP, flagGlyph, GRACE_SCALE, HEAD_SCALE, headGlyph, headWidth, restGlyph, STEM_T } from './spacing.ts';
+import {
+  DOT_STEP,
+  END_CLEF_GAP,
+  flagGlyph,
+  GRACE_SCALE,
+  HEAD_SCALE,
+  headGlyph,
+  headWidth,
+  restGlyph,
+  STEM_T,
+} from './spacing.ts';
 
 const sm = loadSmufl();
 export const D = new Proxy({} as typeof sm.def, { get: (_, k) => sm.def[k as string] }); // lazy: the font may not be loaded yet
@@ -218,7 +228,9 @@ function positionEvents(ctx: SysCtx, mi: number, s: number): void {
   const colIndex = new Map(sp.cols.map((c, j) => [c.tick, j]));
   for (const e of ctx.prep.measures[mi][s].evs) {
     if (e.ev.kind === 'rest' && e.ev.style === 'measure') {
-      e.x = ctx.mx[mi] + (sp.lead + pl.endX) / 2 - sm.adv('restWhole') / 2;
+      // Centred between the first column and the barline, or the small clef that precedes it.
+      const right = sp.endClef[s] ? pl.endX - sm.adv('gClefChange') - 2 * END_CLEF_GAP : pl.endX;
+      e.x = ctx.mx[mi] + (sp.lead + right) / 2 - sm.adv('restWhole') / 2;
       continue;
     }
     const j = colIndex.get(e.start);
@@ -1288,7 +1300,7 @@ function planTuplet(
   return { bracket, showNum, above, label: String(t.label ?? t.actual), ya, yb, x0, x1, bx0, bx1, cx, cy, box };
 }
 
-/** The tuplet's bracket (a line with a hook at each end, interrupted for the number) and number (plain italic text rather than Bravura's tuplet figures, which are bolder than the other numerals in the score), and their skyline boxes. */
+/** The tuplet's bracket (a line with a hook at each end, interrupted for the number) and number (plain italic text rather than the font's tuplet figures, which are bolder than the other numerals in the score), and their skyline boxes. */
 function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
   const { bracket, showNum, above, ya, yb, x0, x1, bx0, bx1, cx, cy, box } = p;
   const textWidth = p.label.length * 1.0;

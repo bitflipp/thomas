@@ -18,7 +18,6 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
     "@preact/signals": "^2.11.4",
-    "@vexflow-fonts/bravura": "^1.0.2",
     "codemirror": "^6.0.2",
     "immer": "^11.2.9",
     "opentype.js": "^2.0.0",

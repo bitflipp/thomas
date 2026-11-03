@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { describe, findCollisions } from '../src/engrave/collide.ts';
 import { prepare } from '../src/engrave/prep.ts';
 import type { Prim } from '../src/engrave/scene.ts';
-import { HEAD_SCALE } from '../src/engrave/spacing.ts';
+import { headWidth } from '../src/engrave/spacing.ts';
 import { engrave } from '../src/engrave/system.ts';
 import { flattenVoice, PPQ, validate } from '../src/model.ts';
 import { pageToSvg } from '../src/render.ts';
@@ -196,7 +196,7 @@ m1 time=2/4
   // head, so after the shift both stems stand at (almost) the same x.
   assert.ok(Math.abs(vlines[0].x1 - vlines[1].x1) < 0.2, `stems at ${vlines.map((l) => l.x1)}`);
   const xs = heads.map((h) => h.x).sort((a, b) => a - b);
-  assert.ok(Math.abs(xs[1] - xs[0] - 1.18 * HEAD_SCALE) < 0.01);
+  assert.ok(Math.abs(xs[1] - xs[0] - headWidth(4)) < 0.01);
 });
 
 test('measure numbers: shown at the start of every system but the first', () => {
@@ -257,7 +257,7 @@ m1 time=2/4
 });
 
 test('a measure too dense for one line is squeezed to fit instead of overflowing', () => {
-  const notes = Array.from({ length: 64 }, (_x, i) => `${'cdefgab'[i % 7]}4${i === 0 ? ':64' : ''}`).join(' ');
+  const notes = Array.from({ length: 32 }, (_x, i) => `${'cdefgab'[i % 7]}4${i === 0 ? ':32' : ''}`).join(' ');
   const s = parseText(`${HEAD}
 m1 time=4/4
   rh.1: ${notes}

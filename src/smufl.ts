@@ -1,4 +1,4 @@
-// SMuFL font access (Bravura): glyph outlines as SVG path data, metrics in staff spaces.
+// SMuFL font access (Leland): glyph outlines as SVG path data, metrics in staff spaces.
 //
 // The engraver refers to glyphs by SMuFL name (`noteheadBlack`); `CP` is the only place that knows
 // their codepoints, so adding a glyph means adding it there (and running `checkCodepoints`).
@@ -118,10 +118,10 @@ export interface Smufl {
 }
 
 let cached: Smufl | null = null;
-/** The parts of Bravura's metadata.json that are used. */
+/** The parts of the font's metadata.json that are used. */
 export interface FontMeta {
   glyphBBoxes: Record<string, { bBoxNE: [number, number]; bBoxSW: [number, number] }>;
-  glyphAdvanceWidths: Record<string, number>;
+  glyphAdvanceWidths?: Record<string, number>;
   glyphsWithAnchors: Record<string, Record<string, [number, number]> | undefined>;
   engravingDefaults: Record<string, number>;
 }
@@ -137,11 +137,11 @@ function nodeSource(): { buf: ArrayBuffer; meta: FontMeta } {
   const fs = (process as unknown as { getBuiltinModule(id: 'node:fs'): typeof import('node:fs') }).getBuiltinModule(
     'node:fs',
   );
-  const base = new URL('../node_modules/@vexflow-fonts/bravura/', import.meta.url);
-  const b = fs.readFileSync(new URL('bravura.otf', base)) as Uint8Array;
+  const dir = new URL('../fonts/leland/', import.meta.url);
+  const b = fs.readFileSync(new URL('Leland.otf', dir)) as Uint8Array;
   return {
     buf: b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer,
-    meta: JSON.parse(fs.readFileSync(new URL('metadata.json', base), 'utf8')),
+    meta: JSON.parse(fs.readFileSync(new URL('leland_metadata.json', dir), 'utf8')),
   };
 }
 
@@ -189,9 +189,12 @@ function real(): Smufl {
       return { x0: b.bBoxSW[0], y0: b.bBoxSW[1], x1: b.bBoxNE[0], y1: b.bBoxNE[1] };
     },
     adv(name) {
-      const a = meta.glyphAdvanceWidths[name];
-      if (a === undefined) throw new Error(`no advance for ${name}`);
-      return a;
+      const a = meta.glyphAdvanceWidths?.[name];
+      if (a !== undefined) return a;
+      // Some fonts (Leland) ship no advances in their metadata: read them from the font (4 staff spaces = 1 em).
+      const cp = CP[name];
+      if (cp === undefined) throw new Error(`no advance for ${name}`);
+      return ((font.charToGlyph(String.fromCodePoint(cp)).advanceWidth ?? 0) / font.unitsPerEm) * 4;
     },
     anchor(name, key) {
       return meta.glyphsWithAnchors[name]?.[key];
@@ -210,6 +213,10 @@ export function checkCodepoints(): string[] {
   const bad: string[] = [];
   for (const [name, cp] of Object.entries(CP)) {
     const g = font.charToGlyph(String.fromCodePoint(cp));
+    if (!meta.glyphAdvanceWidths) {
+      if (!meta.glyphBBoxes[name]) bad.push(`${name}: not in metadata`);
+      continue;
+    }
     const a = meta.glyphAdvanceWidths[name];
     if (a === undefined) {
       bad.push(`${name}: not in metadata`);

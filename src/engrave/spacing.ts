@@ -18,8 +18,8 @@ const sm = loadSmufl();
 export function headGlyph(base: number): string {
   return base === 1 ? 'noteheadWhole' : base === 2 ? 'noteheadHalf' : 'noteheadBlack';
 }
-/** MuseScore's noteheads are a little fuller than Bravura's at the same staff size; the reference piece was set with those. */
-export const HEAD_SCALE = 1.1;
+/** Notehead width factor (Leland's heads are already MuseScore's full size). */
+export const HEAD_SCALE = 1;
 export function headWidth(base: number): number {
   return sm.adv(headGlyph(base)) * HEAD_SCALE;
 }

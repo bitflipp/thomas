@@ -56,8 +56,8 @@ for (const [a, b, s] of ALLOW) {
   allowed.set(`${b}|${a}`, s);
 }
 
-/** Overlaps thinner than this (staff spaces) count as touching: engraving routinely butts shapes together exactly. */
-const EPS = 0.03;
+/** Overlaps thinner than this (staff spaces) count as touching: engraving routinely butts shapes together exactly, and Leland's noteheads are 1.06 spaces tall, so heads on adjacent positions overlap by 0.06. */
+const EPS = 0.07;
 
 interface Shape {
   p: Prim;
@@ -87,7 +87,7 @@ const sm = loadSmufl();
 
 // ---- path flattening
 // Glyph and curve outlines come as SVG path data; to intersect them they are approximated by polygons
-// (Béziers sampled at 6-8 points, which is plenty at the 0.03 tolerance). Rings of a glyph are cached by name.
+// (Béziers sampled at 6-8 points, which is plenty at the 0.07 tolerance). Rings of a glyph are cached by name.
 const glyphRings = new Map<string, number[][]>();
 function flattenPath(d: string): number[][] {
   const tok = d.match(/[MLHVCQZmlhvcqz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
