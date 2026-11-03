@@ -123,6 +123,8 @@ export interface Prepared {
   timeOf: TimeSig[];
   /** The cache entry of every measure when `prepare` ran with a cache (see `PrepCache`). */
   entries?: MeasureEntry[];
+  /** Editor aid: hidden rests are drawn as faint, tagged `ghost` glyphs (not in the skyline), so that they can be clicked. */
+  ghostRests?: boolean;
 }
 
 /**

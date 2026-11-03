@@ -45,6 +45,8 @@ export interface Tag {
   r?: object;
   /** Slur or line id, or tied head index: tells apart several spanners that start at the same event. */
   n?: number;
+  /** Editor aid, not part of the score's output: a hidden rest drawn faintly so that it can be selected. */
+  ghost?: true;
 }
 
 const ids = new WeakMap<object, number>();

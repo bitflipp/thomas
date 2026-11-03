@@ -238,6 +238,7 @@ function drawHeadsAndRests(ctx: SysCtx, mi: number, s: number): void {
       // the rest would sit in the middle of those notes and say nothing true about the bar.
       const crossedOver = e.ev.style === 'measure' && evs.some((o) => o.home !== s && o.ev.kind === 'note');
       if (e.ev.style !== 'hidden' && !crossedOver) drawRest(ctx, e, s);
+      else if (e.ev.style === 'hidden' && ctx.prep.ghostRests) drawRest(ctx, e, s, true);
       continue;
     }
     drawNoteBasics(ctx, e, s);
@@ -801,12 +802,13 @@ function drawGraces(ctx: SysCtx, e: EvL, s: number): void {
   pushBox(ctx, s, Math.min(...geo.map((g) => g.x)) - 0.3, e.x - 0.2, top - 0.3, bot + 0.5);
 }
 
-function drawRest(ctx: SysCtx, e: EvL, s: number): void {
+function drawRest(ctx: SysCtx, e: EvL, s: number, ghost = false): void {
   const n0 = ctx.prims[s].length;
-  drawRestPrims(ctx, e, s);
+  drawRestPrims(ctx, e, s, ghost);
   tagFrom(ctx.prims[s], n0, 'rest', e);
+  if (ghost) for (let i = n0; i < ctx.prims[s].length; i++) ctx.prims[s][i].ghost = true;
 }
-function drawRestPrims(ctx: SysCtx, e: EvL, s: number): void {
+function drawRestPrims(ctx: SysCtx, e: EvL, s: number, ghost: boolean): void {
   const base = e.te.ev.dur.base;
   const name = restGlyph(base, e.ev.kind === 'rest' && e.ev.style === 'measure');
   let y = base === 1 || (e.ev.kind === 'rest' && e.ev.style === 'measure') ? 1 : 2;
@@ -834,7 +836,7 @@ function drawRestPrims(ctx: SysCtx, e: EvL, s: number): void {
   }
   ctx.prims[s].push({ t: 'glyph', name, x: e.x, y });
   const b = sm.bbox(name);
-  pushBox(ctx, s, e.x, e.x + b.x1, y - b.y1, y - b.y0);
+  if (!ghost) pushBox(ctx, s, e.x, e.x + b.x1, y - b.y1, y - b.y0);
   const dots = e.te.ev.dur.dots;
   for (let k = 0; k < dots; k++)
     ctx.prims[s].push({ t: 'glyph', name: 'augmentationDot', x: e.x + b.x1 + 0.4 + k * DOT_STEP, y: y - 0.5 });

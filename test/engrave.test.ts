@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { describe, findCollisions } from '../src/engrave/collide.ts';
 import { prepare } from '../src/engrave/prep.ts';
+import type { Prim } from '../src/engrave/scene.ts';
 import { HEAD_SCALE } from '../src/engrave/spacing.ts';
 import { engrave } from '../src/engrave/system.ts';
 import { flattenVoice, PPQ, validate } from '../src/model.ts';
@@ -288,4 +289,24 @@ m1 time=4/4 key=0
       `ink centre ${centre} vs gap ${lines[4]}..${lines[5]}`,
     );
   }
+});
+
+test('ghost rests: hidden rests are drawn as selectable ghosts only on request, and change nothing else', () => {
+  const s = parseText(`${HEAD}
+m1 time=4/4 key=0
+  rh.1: c5:8 d5 e5 f5 g5:2
+  rh.2: s:4 e4:4 s:2
+  lh.1: R:1
+`);
+  const plain = engrave(s);
+  const ghosted = engrave(s, { ghostRests: true });
+  assert.equal(plain.pages[0].prims.filter((p) => p.ghost).length, 0);
+  const ghosts = ghosted.pages[0].prims.filter((p) => p.ghost);
+  assert.equal(ghosts.length, 2);
+  assert.ok(ghosts.every((p) => p.k === 'rest' && p.r));
+  // Owner ids count up over runs, so they differ between any two engravings.
+  const bare = (ps: Prim[]) => ps.map(({ o: _o, g: _g, ...p }) => p);
+  assert.deepEqual(bare(ghosted.pages[0].prims.filter((p) => !p.ghost)), bare(plain.pages[0].prims));
+  assert.ok(!pageToSvg(ghosted.pages[0], ghosted.staffSpace).includes('restQuarter'));
+  assert.ok(pageToSvg(ghosted.pages[0], ghosted.staffSpace, { ghosts: true }).includes('restQuarter'));
 });

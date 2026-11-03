@@ -20,6 +20,8 @@ export interface SvgOptions {
   color?: (p: Prim) => string | undefined;
   /** Tag each element with `data-p` = its index in `page.prims`, so an editor can recolour single primitives in the DOM. */
   index?: boolean;
+  /** Keep the editor-only ghost primitives (hidden rests); they are left out by default. */
+  ghosts?: boolean;
 }
 
 /** Renders `page` (sizes in staff spaces) at `staffSpaceMm` millimetres per staff space. Lines are emitted after fills so that they stay on top. */
@@ -28,6 +30,7 @@ export function pageToSvg(page: Page, staffSpaceMm: number, opts: SvgOptions = {
   const used = new Set<string>();
   const body: string[] = [];
   page.prims.forEach((p, i) => {
+    if (p.ghost && !opts.ghosts) return;
     const col = opts.color?.(p);
     const ix = opts.index ? ` data-p="${i}"` : '';
     const fa = col ? ` fill="${col}"` : '';

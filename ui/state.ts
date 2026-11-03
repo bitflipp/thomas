@@ -185,6 +185,7 @@ effect(() => {
       measureNumbers: nums,
       warn: (m: string) => console.warn(m),
       cache: engraveCache,
+      ghostRests: true,
     };
     let res = engrave(s, opts);
     if (res.systems === 1) res = engrave(s, { ...opts, fillLast: true }); // a score of one short line: spread it out, there is room to work in

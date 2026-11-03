@@ -35,6 +35,8 @@ export interface EngraveOptions {
   warn?: (m: string) => void;
   /** Results of the previous run (see `createEngraveCache`): only what an edit touched is computed again. */
   cache?: EngraveCache;
+  /** Editor aid: draw hidden rests as ghosts (`Prim.ghost`) that can be selected; a renderer for output leaves them out. */
+  ghostRests?: boolean;
 }
 
 /** The part of the previous run that the next one may reuse. Make one with `createEngraveCache` and pass it to every `engrave` of the same document. */
@@ -125,6 +127,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const respectBreaks = opts.respectBreaks ?? true;
   const cache = opts.cache;
   const prep = prepare(score, cache?.prep);
+  prep.ghostRests = opts.ghostRests;
   const S = score.page.staffSpace;
   const braceRoom = score.groups.some((g) => g.kind === 'brace') ? BRACE_ROOM : NO_BRACE_ROOM;
   const lineWidth = (score.page.width - 2 * score.page.margin) / S - braceRoom;
@@ -152,7 +155,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const warn = opts.warn ?? (() => undefined);
   const justifyOpts = { fillLast: opts.fillLast, warn };
   const fillLast = opts.fillLast ?? false;
-  const scoreKey = [score.page, score.groups, score.staves];
+  const scoreKey = [score.page, score.groups, score.staves, !!opts.ghostRests];
   if (cache?.scoreKey.some((x, i) => x !== scoreKey[i])) cache.systems = [];
   const kept = new Set<SysCtx>();
   const systems: SysCtx[] = plans.map((plan, index) => {

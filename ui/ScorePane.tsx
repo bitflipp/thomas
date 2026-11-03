@@ -47,6 +47,7 @@ import {
 
 const MM_PX = 96 / 25.4;
 const SEL = '#2f6fed';
+const GHOST = '#c4c4c4'; // a hidden rest, drawn faintly in the editor only
 const HOVER = '#6b9af0'; // the selection colour, lighter
 
 type GhostOf<K extends Ghost['kind']> = Extract<Ghost, { kind: K }>;
@@ -199,11 +200,15 @@ function PageView({
           if (r.pi !== undefined && keys.has(refKey(r))) return SEL;
         } else if (keys.has(refKey(r))) return SEL;
       }
+      if (q.ghost) return GHOST;
       if (voiceColors.value && (r.t === 'ev' || r.t === 'tie' || r.t === 'slur' || r.t === 'line' || r.t === 'tuplet'))
         return VOICE_COLORS[r.voice];
       return undefined;
     };
-    return pageToSvg(p, res.staffSpace, { color: colorFor, index: true }).replace(/^<\?xml[^>]*>\s*/, '');
+    return pageToSvg(p, res.staffSpace, { color: colorFor, index: true, ghosts: !printing.value }).replace(
+      /^<\?xml[^>]*>\s*/,
+      '',
+    );
   }, [res, h, sig, near, voiceColors.value, printing.value]);
   // The hovered element is recoloured in place, like a selected one but lighter. Generating
   // new SVG on every pointer move would be far too slow, so only the matching primitives change.
