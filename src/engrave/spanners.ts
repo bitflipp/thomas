@@ -85,12 +85,38 @@ function findTieTarget(evs: EvL[], i: number, head: EvL['heads'][number]): { nex
   return { nh: -1 };
 }
 
+/** A tie that finds no note in its own voice may end on the same pitch in another voice of the staff starting exactly where the tied note ends. */
+function findOtherVoiceTarget(
+  timeOrder: EvL[],
+  measureLen: number[],
+  e: EvL,
+  head: EvL['heads'][number],
+): { next?: EvL; nh: number } {
+  const end = e.start + e.ticks;
+  const wrap = end >= measureLen[e.mi];
+  for (const c of timeOrder) {
+    if (c.voice === e.voice || c.ev.kind !== 'note') continue;
+    if (!(wrap ? c.mi === e.mi + 1 && c.start === 0 : c.mi === e.mi && c.start === end)) continue;
+    const nh = c.heads.findIndex(
+      (x) => pitchStep(x.pitch) === pitchStep(head.pitch) && x.pitch.alter === head.pitch.alter,
+    );
+    if (nh >= 0) return { next: c, nh };
+  }
+  return { nh: -1 };
+}
+
 /**
  * Ties of one voice, one unit per tied head. The tie of a note whose successor is in another system is drawn in two halves.
  * Nested ties of a chord are drawn from the inside out: the arc nearest the chord first, the outer
  * ones around it, so each can clear the previous one through the skyline.
  */
-function tieUnits(systems: SysCtx[], sysOf: number[], evs: EvL[]): SpannerUnit[] {
+function tieUnits(
+  systems: SysCtx[],
+  sysOf: number[],
+  evs: EvL[],
+  timeOrder: EvL[],
+  measureLen: number[],
+): SpannerUnit[] {
   const out: SpannerUnit[] = [];
   evs.forEach((e, i) => {
     if (e.ev.kind !== 'note' || !e.heads.some((h) => h.tie)) return;
@@ -104,7 +130,8 @@ function tieUnits(systems: SysCtx[], sysOf: number[], evs: EvL[]): SpannerUnit[]
       });
     for (const hi of order) {
       if (!e.heads[hi].tie) continue;
-      const { next, nh } = findTieTarget(evs, i, e.heads[hi]);
+      let { next, nh } = findTieTarget(evs, i, e.heads[hi]);
+      if (!next) ({ next, nh } = findOtherVoiceTarget(timeOrder, measureLen, e, e.heads[hi]));
       const second = next && nh >= 0 ? sysOf[next.mi] : sysOf[e.mi];
       out.push({
         sys: [sysOf[e.mi], second],
@@ -209,7 +236,7 @@ function drawLink(ctx: SysCtx, a: EvL, b: EvL, id: number, dashed: boolean): voi
   const ux = (x1 - x0) / len;
   const uy = (y1 - y0) / len;
   // Distance from a head's centre to its outline along the line (an ellipse), plus clearance.
-  const reach = (hw: number) => 1 / Math.hypot(ux / (hw / 2), uy / 0.5) + 0.35;
+  const reach = (hw: number) => 1 / Math.hypot(ux / (hw / 2), uy / 0.5) + 0.7;
   const ra = reach(ga.hw);
   const rb = reach(gb.hw);
   if (len - ra - rb < 0.5) return;
@@ -277,7 +304,7 @@ export function planSpanners(
       // events by time so that stops can be matched to starts.
       for (const e of measure[s].byTime) timeOrder.push(e);
     }
-    for (const evs of voiceEvs.values()) ties.push(...tieUnits(systems, sysOf, evs));
+    for (const evs of voiceEvs.values()) ties.push(...tieUnits(systems, sysOf, evs, timeOrder, prep.measureLen));
     slurs.push(...matchSlurs(systems, sysOf, timeOrder, voiceEvs));
   }
   // Slurs between staves go first so that the others nest around them; lines take no part in the skyline and come last.

@@ -1292,7 +1292,7 @@ function planTuplet(
 function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
   const { bracket, showNum, above, ya, yb, x0, x1, bx0, bx1, cx, cy, box } = p;
   const textWidth = p.label.length * 1.0;
-  const boxHalfW = textWidth / 2 + 0.55;
+  const boxHalfW = Math.max(0.95, textWidth / 2 + 0.45); // radius of the circle round the number
   const [boxTop, boxBottom] = [-1.07, 0.89]; // relative to cy: the digit (cap height ~1.26) spans -0.72..0.54, with 0.35 padding
   const hookLen = 0.75 * (above ? 1 : -1);
   const lineWidth = D.tupletBracketThickness as number;
@@ -1310,14 +1310,35 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
     ctx.prims[s].push({ t: 'line', x1: bx1, y1: yAt(bx1), x2: bx1, y2: yAt(bx1) + hookLen, w: lineWidth });
   }
   if (box) {
-    const [l, r, u, d, bw] = [cx - boxHalfW, cx + boxHalfW, cy + boxTop, cy + boxBottom, 0.1];
-    const rect = (x0: number, y0: number, x1: number, y1: number) => `M${f(x0)} ${f(y0)}H${f(x1)}V${f(y1)}H${f(x0)}Z`;
-    const rectCcw = (x0: number, y0: number, x1: number, y1: number) =>
-      `M${f(x0)} ${f(y0)}V${f(y1)}H${f(x1)}V${f(y0)}Z`;
-    ctx.prims[s].push({ t: 'path', d: rect(l, u, r, d), fill: '#fff', top: true });
+    const [ccy, bw] = [cy + (boxTop + boxBottom) / 2, 0.1];
+    const K = 0.5523; // cubic Bezier approximation of a quarter circle
+    const circle = (rad: number, ccw: boolean) => {
+      const k = rad * K;
+      const pts: [number, number][] = [
+        [cx + rad, ccy],
+        [cx, ccy + rad],
+        [cx - rad, ccy],
+        [cx, ccy - rad],
+      ];
+      if (ccw) pts.reverse().unshift(pts.pop() as [number, number]);
+      let d = `M${f(pts[0][0])} ${f(pts[0][1])}`;
+      for (let i = 0; i < 4; i++) {
+        const [p, q] = [pts[i], pts[(i + 1) % 4]];
+        const [tx, ty] = [(q[0] - p[0]) / rad, (q[1] - p[1]) / rad];
+        // control points leave p along the tangent, which is perpendicular to the radius at p
+        const rp = [(p[0] - cx) / rad, (p[1] - ccy) / rad];
+        const rq = [(q[0] - cx) / rad, (q[1] - ccy) / rad];
+        const sgn = tx * -rp[1] + ty * rp[0] > 0 ? 1 : -1; // direction of travel
+        const c1 = [p[0] + sgn * -rp[1] * k, p[1] + sgn * rp[0] * k];
+        const c2 = [q[0] - sgn * -rq[1] * k, q[1] - sgn * rq[0] * k];
+        d += `C${f(c1[0])} ${f(c1[1])} ${f(c2[0])} ${f(c2[1])} ${f(q[0])} ${f(q[1])}`;
+      }
+      return `${d}Z`;
+    };
+    ctx.prims[s].push({ t: 'path', d: circle(boxHalfW, false), fill: '#fff', top: true });
     ctx.prims[s].push({
       t: 'path',
-      d: `${rect(l - bw / 2, u - bw / 2, r + bw / 2, d + bw / 2)}${rectCcw(l + bw / 2, u + bw / 2, r - bw / 2, d - bw / 2)}`,
+      d: `${circle(boxHalfW + bw / 2, false)}${circle(boxHalfW - bw / 2, true)}`,
       top: true,
     });
   }
@@ -1341,8 +1362,8 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
       s,
       cx - (box ? boxHalfW : textWidth / 2),
       cx + (box ? boxHalfW : textWidth / 2),
-      cy - (box ? -boxTop : 0.9),
-      cy + (box ? boxBottom : 0.9),
+      box ? cy + (boxTop + boxBottom) / 2 - boxHalfW : cy - 0.9,
+      box ? cy + (boxTop + boxBottom) / 2 + boxHalfW : cy + 0.9,
     );
 }
 
