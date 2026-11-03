@@ -8,7 +8,7 @@ import { drawMarks } from './marks.ts';
 import type { EvL } from './prep.ts';
 import { beamLevels, posToY } from './prep.ts';
 import { oid, Skyline } from './scene.ts';
-import { DOT_STEP, flagGlyph } from './spacing.ts';
+import { DOT_STEP, flagGlyph, STEM_T } from './spacing.ts';
 
 const sm = loadSmufl();
 
@@ -237,15 +237,21 @@ function drawLink(ctx: SysCtx, a: EvL, b: EvL, id: number, dashed: boolean): voi
   const uy = (y1 - y0) / len;
   // Distance from a head's centre to its outline along the line (an ellipse), plus clearance.
   const reach = (hw: number) => 1 / Math.hypot(ux / (hw / 2), uy / 0.5) + 0.6;
-  // A line that would run through the stem of its own note starts beyond the stem instead (when it fits).
+  // The end keeps the same clearance from the note's own stem as from the head: it is pushed along the line until it is
+  // out of the stem's neighbourhood (which may mean past the stem).
+  const CLEAR = 0.6;
   const pastStem = (e: EvL, g: typeof ga, cx: number, cy: number, dir: number, r: number): number => {
-    if (e.stemTip === undefined || e.stemBase === undefined || Math.abs(ux) < 1e-6) return r;
-    const [lo, hi] = [Math.min(e.stemTip, e.stemBase), Math.max(e.stemTip, e.stemBase)];
+    if (!e.stem) return r;
+    const [lo, hi] = [Math.min(g.stemTip, g.stemBase), Math.max(g.stemTip, g.stemBase)];
     const off = staffOffset(ctx, a.staff, e.staff);
-    const t = (g.stemX - cx) / (ux * dir); // distance along the line (away from the head) to the stem
-    if (t <= 0) return r;
-    const y = cy + uy * dir * t;
-    return y >= lo + off - 0.5 && y <= hi + off + 0.5 ? Math.max(r, t + 0.8) : r;
+    const near = (q: number) => {
+      const px = cx + ux * dir * q;
+      const py = cy + uy * dir * q;
+      return Math.abs(px - g.stemX) < CLEAR + STEM_T / 2 && py > lo + off - CLEAR && py < hi + off + CLEAR;
+    };
+    let q = r;
+    while (near(q) && q < len) q += 0.05;
+    return q < len ? q : r;
   };
   const ra = pastStem(a, ga, x0, y0, 1, reach(ga.hw));
   const rb = pastStem(b, gb, x1, y1, -1, reach(gb.hw));
