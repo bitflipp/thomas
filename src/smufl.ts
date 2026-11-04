@@ -133,6 +133,21 @@ export function setSmuflSource(buf: ArrayBuffer, meta: FontMeta): void {
   cached = null;
 }
 
+/** SVG path data with 3 decimals. opentype.js 2.0's own `toPathData` drops the last segment of a glyph's last contour (a slanted edge closes the sharp). */
+function pathData(path: {
+  commands: { type: string; x?: number; y?: number; x1?: number; y1?: number; x2?: number; y2?: number }[];
+}): string {
+  const n = (v: number | undefined) => (+(v ?? 0).toFixed(3)).toString();
+  let d = '';
+  for (const c of path.commands) {
+    if (c.type === 'Z') d += 'Z';
+    else if (c.type === 'C') d += `C${n(c.x1)} ${n(c.y1)} ${n(c.x2)} ${n(c.y2)} ${n(c.x)} ${n(c.y)}`;
+    else if (c.type === 'Q') d += `Q${n(c.x1)} ${n(c.y1)} ${n(c.x)} ${n(c.y)}`;
+    else d += `${c.type}${n(c.x)} ${n(c.y)}`;
+  }
+  return d;
+}
+
 function nodeSource(): { buf: ArrayBuffer; meta: FontMeta } {
   const fs = (process as unknown as { getBuiltinModule(id: 'node:fs'): typeof import('node:fs') }).getBuiltinModule(
     'node:fs',
@@ -175,13 +190,13 @@ function real(): Smufl {
         const cp = CP[name];
         if (cp === undefined) throw new Error(`unknown glyph ${name}`);
         const g = font.charToGlyph(String.fromCodePoint(cp));
-        p = g.getPath(0, 0, 4).toPathData(3);
+        p = pathData(g.getPath(0, 0, 4));
         paths.set(name, p);
       }
       return p;
     },
     pathCp(cp) {
-      return font.charToGlyph(String.fromCodePoint(cp)).getPath(0, 0, 4).toPathData(3);
+      return pathData(font.charToGlyph(String.fromCodePoint(cp)).getPath(0, 0, 4));
     },
     bbox(name) {
       const b = meta.glyphBBoxes[name];
