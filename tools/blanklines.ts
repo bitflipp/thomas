@@ -240,11 +240,13 @@ function trimEnd(lines: string[], end: number): number {
 const args = process.argv.slice(2);
 const fix = args.includes('--fix');
 const given = args.filter((a) => !a.startsWith('--'));
+
 const files = given.length
   ? given
   : execFileSync('git', ['ls-files', '*.ts', '*.tsx'], { encoding: 'utf8' }).split('\n').filter(Boolean);
 
 let failed = 0;
+
 for (const file of files) {
   const text = readFileSync(file, 'utf8');
   const lines = text.split('\n');
@@ -261,6 +263,7 @@ for (const file of files) {
     writeFileSync(file, out.join('\n'));
   } else failed += problems.length;
 }
+
 if (failed) {
   console.error(`${failed} blank-line problem(s); run with --fix to repair the missing ones.`);
   process.exit(1);
