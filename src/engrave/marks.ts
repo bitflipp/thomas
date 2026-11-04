@@ -60,7 +60,7 @@ interface Piece {
 }
 
 /** Where on the notes a span snaps to: its first piece starts at `start`, its last ends at `end`. */
-type Snap = { start: 'stem' | 'headL'; end: 'stem' | 'headR' };
+type Snap = { start?: 'stem' | 'headL'; end: 'stem' | 'headR'; endPad?: number };
 
 /** Everything the mark placement of one staff works on. */
 interface StaffMarks {
@@ -341,8 +341,9 @@ function spanPieces(sm0: StaffMarks, sp: Span, startOff: number, endOff: number,
     const ctx = systems[si];
     const first = si === s0;
     const last = si === s1;
-    const sx = snap && first ? noteX(sm0, m0, t0, 'at', snap.start) : undefined;
-    const ex = snap && last && sp.end ? noteX(sm0, m1, t1, 'before', snap.end) : undefined;
+    const sx = snap?.start && first ? noteX(sm0, m0, t0, 'at', snap.start) : undefined;
+    const ex0 = snap && last && sp.end ? noteX(sm0, m1, t1, 'before', snap.end) : undefined;
+    const ex = ex0 === undefined ? undefined : ex0 + (snap?.endPad ?? 0);
     const x0 = first ? (sx ?? xAtTick(ctx, m0, t0) + startOff) : ctx.prefix;
     const x1 = last ? (ex ?? xAtTick(ctx, m1, t1) + endOff) : ctx.width - 0.3;
     if (x1 - x0 > 0.3) out.push({ si, x0, x1, first, last });
@@ -434,7 +435,7 @@ function addOctaveShifts(sm0: StaffMarks, spans: Span[], items: Item[][]): void 
     const glyph = above ? 'ottavaAlta' : 'ottavaBassa';
     const box = sm.bbox(glyph);
     const glyphWidth = sm.adv(glyph);
-    for (const p of spanPieces(sm0, sp, -0.2, 0.7))
+    for (const p of spanPieces(sm0, sp, -0.2, 0.7, { end: 'headR', endPad: 0.3 }))
       items[p.si].push({
         src: m,
         kind: 'ott',
