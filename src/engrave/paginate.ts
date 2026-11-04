@@ -1,6 +1,8 @@
 // Pagination: header, placing the systems top to bottom on pages, vertical justification, and the
 // layout geometry the editor uses for hit testing.
+
 import type { Score } from '../model.ts';
+
 import type { SysCtx } from './draw.ts';
 import type { FinalizedSystem } from './finalize.ts';
 import type { Page, Prim } from './scene.ts';
@@ -17,6 +19,7 @@ export interface MeasureGeom {
   y: number;
   cols: { tick: number; x: number }[];
 }
+
 /** Where a system sits: its measure range, horizontal extent and the page y of each staff's top line. */
 export interface SystemGeom {
   page: number;
@@ -27,6 +30,7 @@ export interface SystemGeom {
   x1: number;
   staffY: number[];
 }
+
 /** The page geometry of the whole piece, for the editor's hit testing (see src/editor/hit.ts). */
 export interface Layout {
   systems: SystemGeom[];

@@ -13,6 +13,7 @@ const FONT = "'Liberation Serif', 'Noto Serif CJK KR', 'Noto Serif', serif";
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
 const f3 = (n: number) => (Math.round(n * 1000) / 1000).toString();
 
 export interface SvgOptions {

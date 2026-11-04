@@ -6,6 +6,7 @@
 // time but carries state across measures where notation does (clefs, ottava, ties into the next measure).
 
 import { beamGroups, beatTicks } from '../beams.ts';
+
 import type {
   Clef,
   Event,
@@ -23,64 +24,67 @@ import type {
   TupletGroup,
   Voice,
 } from '../model.ts';
+
 import { flattenVoice, marksOf, measureTicks, pitchStep, STEPS } from '../model.ts';
 import { must } from '../util.ts';
 import type { MeasureSpacing } from './spacing.ts';
 
-export const HALF = 1; // staff positions are in half spaces above the bottom line
+export const HALF = 1; // Staff positions are counted in half spaces above the bottom line.
 
 export function clefBottomStep(c: Clef): number {
   const sign = c.sign === 'G' ? { s: 'g', o: 4 } : c.sign === 'F' ? { s: 'f', o: 3 } : { s: 'c', o: 4 };
   const signStep = sign.o * 7 + STEPS.indexOf(sign.s as never);
   return signStep - 2 * (c.line - 1) + 7 * (c.octave ?? 0);
 }
-/** staff position (half-spaces above bottom line) for a written pitch */
+
+/** Staff position (half-spaces above bottom line) for a written pitch. */
 export function staffPos(p: Pitch, c: Clef): number {
   return pitchStep(p) - clefBottomStep(c);
 }
+
 export function posToY(pos: number): number {
   return 4 - pos / 2;
 }
 
 export interface HeadL {
-  pos: number; // written staff position
-  pitch: Pitch; // sounding pitch
+  pos: number; // This is the written staff position.
+  pitch: Pitch; // This is the sounding pitch.
   tie: boolean;
   acc?: { glyph: string; cautionary: boolean };
-  displaced: boolean; // moved to the other side of the stem
-  dx: number; // x offset relative to the event's notehead x (set during layout)
-  accX?: number; // x offset of the accidental glyph's left edge
-  shared?: boolean; // unison with a head of the first voice that can serve both: drawn only once
-  sharers?: EvL[]; // events of other voices whose stems attach to this head (they share it)
-  skipDots?: boolean; // the first voice already draws at least as many dots here
+  displaced: boolean; // The head is moved to the other side of the stem.
+  dx: number; // This is the x offset relative to the event's notehead x (set during layout).
+  accX?: number; // This is the x offset of the accidental glyph's left edge.
+  shared?: boolean; // The head is a unison with a head of the first voice that can serve both, so it is drawn only once.
+  sharers?: EvL[]; // These are the events of other voices whose stems attach to this head, so they share it.
+  skipDots?: boolean; // The first voice already draws at least as many dots here.
 }
 
 /** A grace note (or chord) in front of an event: its heads and, once spaced, where it stands relative to the event's x. */
 export interface GraceL {
   g: Grace;
   heads: HeadL[];
-  dx: number; // left edge of the heads, relative to the event's notehead x (set during spacing)
-  hw: number; // head width
+  dx: number; // This is the left edge of the heads, relative to the event's notehead x (set during spacing).
+  hw: number; // This is the head width.
 }
 
 export interface EvL {
   id: number;
-  mi: number; // measure index
-  staff: number; // staff index the heads are drawn on (differs from `home` for cross-staff notes)
-  home: number; // staff index of the voice (stems, beams, tuplets and slurs belong to it)
-  voice: number; // voice id
-  voiceRank: number; // 0-based rank among sounding voices in this staff-measure
+  mi: number; // This is the measure index.
+  staff: number; // This is the staff index the heads are drawn on (it differs from `home` for cross-staff notes).
+  home: number; // This is the staff index of the voice, to which stems, beams, tuplets and slurs belong.
+  voice: number; // This is the voice id.
+  voiceRank: number; // This is the 0-based rank among the sounding voices in this staff-measure.
   nVoices: number;
   te: TimedEvent;
   ev: Event;
-  start: number; // tick in measure
+  start: number; // This is the tick within the measure.
   ticks: number;
   clef: Clef;
   heads: HeadL[];
-  graces?: GraceL[]; // grace notes in front, drawn small to the left
+  graces?: GraceL[]; // Grace notes in front of the note are drawn small to its left.
   stem: 'up' | 'down' | null;
   beam?: BeamL;
-  tremPair?: EvL; // partner of a two-note tremolo (set on both)
+  tremPair?: EvL; // This is the partner of a two-note tremolo (set on both notes).
   tremIsFirst?: boolean;
   tremBeams?: number;
   tupletKeys: TupletGroup[];
@@ -99,23 +103,23 @@ export interface EvL {
 }
 
 export interface BeamL {
-  evs: EvL[]; // all members incl. rests
-  notes: EvL[]; // members that are notes
+  evs: EvL[]; // These are all members, including rests.
+  notes: EvL[]; // These are the members that are notes.
   dir: 'up' | 'down';
-  cross?: boolean; // members sit on different staves: the beam runs between them, stems point towards it
-  crossY?: [number, number]; // cross beam: top and bottom edge (y in the voice's staff, set when drawn)
+  cross?: boolean; // The members sit on different staves, so the beam runs between them and the stems point towards it.
+  crossY?: [number, number]; // For a cross-staff beam these are the top and bottom edge (y in the voice's staff, set when drawn).
 }
 
 export interface StaffMeasureL {
-  evs: EvL[]; // events drawn on this staff (all voices, incl. cross-staff arrivals), sorted by (start, voice)
-  voices: { id: number; evs: EvL[] }[]; // the voices of this staff, with all their events wherever drawn
-  byTime: EvL[]; // the events of the voices of this staff (wherever drawn) by start, then voice
+  evs: EvL[]; // These are the events drawn on this staff (all voices, including cross-staff arrivals), sorted by start and voice.
+  voices: { id: number; evs: EvL[] }[]; // These are the voices of this staff, with all their events wherever they are drawn.
+  byTime: EvL[]; // These are the events of the voices of this staff (wherever drawn), sorted by start and then voice.
   marks: Mark[];
 }
 
 export interface Prepared {
   score: Score;
-  measures: StaffMeasureL[][]; // [measure][staff]
+  measures: StaffMeasureL[][]; // The list is indexed by measure, then by staff.
   clefAt: (staff: number, mi: number, tick: number) => Clef;
   measureLen: number[];
   /** The key (fifths) and time signature in force at each measure: `keyAt` and `timeAt` of the score, found once. */
@@ -157,6 +161,7 @@ const ACC_GLYPH: Record<number, string> = {
   1: 'accidentalSharp',
   2: 'accidentalDoubleSharp',
 };
+
 const SHARP_ORDER = ['f', 'c', 'g', 'd', 'a', 'e', 'b'];
 
 export function keyAlter(fifths: number, step: string): number {
@@ -321,7 +326,7 @@ function assignAccidentals(env: PrepEnv, voicesOf: VoiceL[][], key: number): voi
       .sort((a, b) => a.start - b.start || a.voice - b.voice);
     for (const e of onStaff) {
       if (e.ev.kind !== 'note') continue;
-      // grace notes come first
+      // Grace notes come first.
       for (const gl of e.graces ?? [])
         for (const [i, np] of gl.g.pitches.entries()) shown(np, gl.heads[i], false, e.start === 0);
       for (const [i, np] of e.ev.pitches.entries())
@@ -532,7 +537,7 @@ function decideDir(notes: EvL[], rank: number, nVoices: number): 'up' | 'down' {
     }
   if (hi === Number.NEGATIVE_INFINITY) return 'up';
   const above = hi - 4;
-  const below = 4 - lo; // distance from middle line (position 4)
+  const below = 4 - lo; // This is the distance from the middle line (position 4).
   return above > below ? 'down' : above < below ? 'up' : (hi + lo) / 2 >= 4 ? 'down' : 'up';
 }
 

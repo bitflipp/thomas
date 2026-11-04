@@ -26,6 +26,7 @@ function Row({ label, children }: { label: string; children: preact.ComponentChi
     </div>
   );
 }
+
 /** A dropdown over (value, label[, icon]) entries; a mixed selection shows an empty entry. */
 function Pick<T extends string | number | boolean | undefined>({
   value,
@@ -40,6 +41,7 @@ function Pick<T extends string | number | boolean | undefined>({
     <Dropdown value={value} opts={opts.map(([v, label, icon]) => ({ value: v, label, icon }))} onChange={onChange} />
   );
 }
+
 function Num({
   value,
   min,
@@ -70,6 +72,7 @@ function Num({
     />
   );
 }
+
 function Txt({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <input
@@ -80,8 +83,10 @@ function Txt({ value, onChange, placeholder }: { value: string; onChange: (v: st
     />
   );
 }
+
 const same = <T,>(xs: T[]): T | 'mixed' => (xs.length && xs.every((x) => x === xs[0]) ? xs[0] : 'mixed');
 const KEYS = Array.from({ length: 15 }, (_, i) => i - 7);
+
 const KEYNAME = (n: number) =>
   n === 0 ? 'C / a (no accidentals)' : n > 0 ? `${n} sharp${n > 1 ? 's' : ''}` : `${-n} flat${n < -1 ? 's' : ''}`;
 
@@ -159,6 +164,7 @@ const CLEF_OPTS: [string, { sign: 'G' | 'F' | 'C'; line: number; octave?: number
   ['C4', { sign: 'C', line: 4 }, 'Tenor'],
   ['G2-1', { sign: 'G', line: 2, octave: -1 }, 'Treble 8vb'],
 ];
+
 const clefKey = (c: { sign: string; line: number; octave?: number }) => `${c.sign}${c.line}${c.octave ? '-1' : ''}`;
 
 function StavesSection() {
@@ -418,6 +424,7 @@ function Group({ title, children }: { id?: string; title: string; children: prea
     </div>
   );
 }
+
 function Tog({
   on,
   title,
@@ -1019,6 +1026,7 @@ function selectionLabel(sc: Score, sel: Ref[]): string | null {
 
 // The tab the user clicked; forgotten whenever the selection changes so the panel follows the selection again.
 const userTab = signal<string | null>(null);
+
 selection.subscribe(() => {
   userTab.value = null;
 });
@@ -1028,7 +1036,7 @@ export function Properties() {
   const sc = score.value;
   const first = sel[0];
   const selLabel = selectionLabel(sc, sel);
-  const mi = first ? first.mi : undefined; // every ref kind carries its measure
+  const mi = first ? first.mi : undefined; // Every ref kind carries its measure.
   const tabs: [string, string][] = [];
   if (selLabel) tabs.push(['sel', selLabel]);
   if (mi !== undefined && mi < sc.measures.length) tabs.push(['measure', `Measure ${mi + 1}`]);

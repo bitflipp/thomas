@@ -1,4 +1,5 @@
 import { must } from './util.ts';
+
 // Minimal XML parser (elements, attributes, text, entities), enough for MusicXML.
 //
 // Not a validating or namespace-aware parser: comments, processing instructions and the DOCTYPE are
@@ -11,6 +12,7 @@ export interface XNode {
 }
 
 const ENT: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+
 function unescapeXml(s: string): string {
   return s.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-z]+);/g, (m, e: string) => {
     if (e[0] === '#')
@@ -95,9 +97,11 @@ export function parseXml(src: string): XNode {
 export function child(n: XNode | undefined, tag: string): XNode | undefined {
   return n?.children.find((c) => c.tag === tag);
 }
+
 export function children(n: XNode | undefined, tag: string): XNode[] {
   return n ? n.children.filter((c) => c.tag === tag) : [];
 }
+
 export function text(n: XNode | undefined, tag?: string): string | undefined {
   const t = tag ? child(n, tag) : n;
   return t ? t.text.trim() : undefined;

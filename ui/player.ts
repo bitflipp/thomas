@@ -4,7 +4,9 @@
 // sends every message due within the next LOOKAHEAD seconds with an exact `timestamp`, so that
 // timing comes from the MIDI stack rather than from setInterval jitter. There is no built-in synth:
 // sound comes from whichever Web MIDI output the user picked.
+
 import { computed, effect, signal } from '@preact/signals';
+
 import { xOfTick } from '../src/editor/hit.ts';
 import type { Score } from '../src/model.ts';
 import { buildSequence, measureStarts } from '../src/playback/sequence.ts';
@@ -12,8 +14,10 @@ import { must } from '../src/util.ts';
 import { docId, engraved, say, score } from './state.ts';
 
 export const playing = signal(false);
+
 /** Where playback resumes, and where the playhead is drawn. Absolute ticks from the start of the score. */
 export const playTick = signal(0);
+
 export const midiPorts = signal<{ id: string; name: string }[]>([]);
 export const midiOut = signal<string | null>(null);
 
@@ -21,9 +25,12 @@ const LOOKAHEAD = 0.12;
 const LEAD_IN = 0.06;
 const POLL_MS = 25;
 let access: MIDIAccess | null = null;
+
 /** The sequence of `seqOf`, built when first needed: an edit that is not heard needs none (and a long piece takes a while to build). */
 let seqCache: ReturnType<typeof buildSequence> | undefined;
+
 let seqOf: Score | undefined;
+
 function currentSeq(): ReturnType<typeof buildSequence> {
   const s = score.peek();
   if (!seqCache || seqOf !== s) {
@@ -32,9 +39,12 @@ function currentSeq(): ReturnType<typeof buildSequence> {
   }
   return seqCache;
 }
+
 /** Where the measures of the score start, and its length, in ticks (cheap, unlike the sequence). */
 let startsFor: Score | undefined;
+
 let startsValue: ReturnType<typeof measureStarts> | undefined;
+
 function startsOf(s: Score): ReturnType<typeof measureStarts> {
   if (!startsValue || startsFor !== s) {
     startsValue = measureStarts(s);
@@ -42,10 +52,13 @@ function startsOf(s: Score): ReturnType<typeof measureStarts> {
   }
   return startsValue;
 }
+
 let timer: ReturnType<typeof setInterval> | undefined;
 let raf = 0;
+
 /** Wall clock (ms) at which score time `sec0` (seconds) is heard; `next` is the index of the next message to send. */
 let wall0 = 0;
+
 let sec0 = 0;
 let next = 0;
 let sounding = false;
@@ -55,6 +68,7 @@ try {
 } catch {
   /* storage unavailable */
 }
+
 midiOut.subscribe((id) => {
   try {
     id ? localStorage.setItem('thomas.midiOut', id) : localStorage.removeItem('thomas.midiOut');
@@ -95,6 +109,7 @@ async function connect(): Promise<MIDIOutput | null> {
 
 const outPort = (): MIDIOutput | undefined =>
   access && midiOut.peek() ? access.outputs.get(must(midiOut.peek())) : undefined;
+
 const nowSec = (): number => sec0 + (performance.now() - wall0) / 1000;
 
 /** Releases the sustain pedal (CC64) and stops all notes (CC123) on every channel, so a stop never leaves hanging notes. */
@@ -184,12 +199,14 @@ export function toggle(): void {
   if (playing.peek()) stop();
   else void play();
 }
+
 export function rewind(): void {
   if (playing.peek()) {
     stop();
   }
   playTick.value = 0;
 }
+
 export function seek(tick: number): void {
   const was = playing.peek();
   if (was) {
@@ -200,6 +217,7 @@ export function seek(tick: number): void {
   playTick.value = Math.max(0, Math.min(currentSeq().totalTicks, tick));
   if (was) begin();
 }
+
 export function chooseOutput(id: string): void {
   const was = playing.peek();
   if (was) stop();
@@ -214,7 +232,7 @@ effect(() => {
     playTick.value = Math.max(0, Math.min(startsOf(s).total, playTick.peek()));
     return;
   }
-  const tick = (seqCache ?? currentSeq()).secToTick(nowSec()); // by the sequence being heard, which is the old score's
+  const tick = (seqCache ?? currentSeq()).secToTick(nowSec()); // The tick is computed by the sequence being heard, which is the old score's.
   clearInterval(timer);
   cancelAnimationFrame(raf);
   silence();
@@ -234,6 +252,7 @@ export interface Playhead {
   y0: number;
   y1: number;
 }
+
 /** Where the playhead is drawn: on the first staff's measure, from the top of the system to the bottom. */
 export const playhead = computed<Playhead | null>(() => {
   const res = engraved.value;
@@ -253,5 +272,6 @@ export const playhead = computed<Playhead | null>(() => {
     y1: sys.staffY[sys.staffY.length - 1] + 4.5,
   };
 });
+
 /** Absolute tick at which measure `mi` starts. */
 export const measureTick = (mi: number): number => startsOf(score.peek()).measureStart[mi] ?? 0;

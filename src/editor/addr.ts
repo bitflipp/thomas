@@ -4,7 +4,9 @@
 // highlight) cannot hold on to events or marks themselves. It holds a `Ref` instead: measure index,
 // staff id, voice id and the flat event index within the voice, which survive an edit that does not
 // restructure that voice. `indexScore` goes from objects to addresses and the `*Of` functions back.
+
 import type { Event, Mark, Measure, Score, TupletGroup, Voice } from '../model.ts';
+
 import { flattenVoice, marksOf } from '../model.ts';
 
 /** An event: measure, staff id, voice id and its index in the voice's flattened event order. */
@@ -14,6 +16,7 @@ export interface EvAddr {
   voice: number;
   idx: number;
 }
+
 /** A mark: the voice it hangs on, the event (index in the voice; -1 = the voice's end marks) and its place in that list. */
 export interface MarkAddr {
   mi: number;
@@ -28,11 +31,11 @@ export interface MarkAddr {
  * `pi` one head of a chord, `id` a slur (several can start at one event), `depth` a tuplet level.
  */
 export type Ref =
-  | ({ t: 'ev'; pi?: number } & EvAddr) // a note/rest; `pi`: one head of a chord
+  | ({ t: 'ev'; pi?: number } & EvAddr) // This addresses a note or rest; `pi` selects one head of a chord.
   | ({ t: 'tie'; pi: number } & EvAddr)
-  | ({ t: 'slur'; id: number } & EvAddr) // addressed by the event it starts at
-  | ({ t: 'line'; id: number } & EvAddr) // addressed by the event it starts at
-  | ({ t: 'tuplet'; depth: number } & EvAddr) // by its first event; depth = nesting level (0 = outermost)
+  | ({ t: 'slur'; id: number } & EvAddr) // A slur is addressed by the event it starts at.
+  | ({ t: 'line'; id: number } & EvAddr) // A line is addressed by the event it starts at.
+  | ({ t: 'tuplet'; depth: number } & EvAddr) // A tuplet is addressed by its first event; `depth` is its nesting level (0 is the outermost).
   | ({ t: 'mark' } & MarkAddr)
   | { t: 'measure'; mi: number };
 
@@ -114,15 +117,18 @@ export function indexScore(score: Score): ScoreIndex {
 export function voiceOf(score: Score, a: { mi: number; staff: string; voice: number }): Voice | undefined {
   return score.measures[a.mi]?.staves[a.staff]?.voices.find((v) => v.id === a.voice);
 }
+
 export function eventOf(score: Score, a: EvAddr): Event | undefined {
   const v = voiceOf(score, a);
   return v ? flattenVoice(v)[a.idx]?.ev : undefined;
 }
+
 export function markOf(score: Score, a: MarkAddr): Mark | undefined {
   return marksOf(score.measures[a.mi]?.staves[a.staff]).find(
     (m) => m.voice === a.voice && m.idx === a.idx && m.k === a.k,
   );
 }
+
 export function tupletOf(score: Score, a: EvAddr & { depth: number }): TupletGroup | undefined {
   const v = voiceOf(score, a);
   return v ? flattenVoice(v)[a.idx]?.tuplets[a.depth] : undefined;

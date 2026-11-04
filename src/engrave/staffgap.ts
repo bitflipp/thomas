@@ -1,6 +1,8 @@
 // The vertical distance between the staves of a system: how much room the content of both needs,
 // cross-staff beams that fix it early, and the alignment of dynamics that sit in the gap.
+
 import { loadSmufl } from '../smufl.ts';
+
 import { must } from '../util.ts';
 import type { SysCtx } from './draw.ts';
 import { drawSystemNotes } from './draw.ts';
@@ -33,7 +35,7 @@ export function staffGap(ctx: SysCtx, s: number): number {
 function hasCrossStaffNotes(ctx: SysCtx): boolean {
   if (ctx.gapNeed.some((g) => g > 0)) return true;
   for (let mi = ctx.a; mi <= ctx.b; mi++)
-    // a line between staves is drawn at the final distance, so the distance is fixed first
+    // A line between staves is drawn at the final distance, so the distance is fixed first.
     for (const sm of ctx.prep.measures[mi])
       for (const v of sm.voices)
         if (v.evs.some((e) => e.staff !== e.home || e.ev.lineStart || e.ev.lineStop)) return true;
@@ -85,6 +87,7 @@ function drawFixingGap(ctx: SysCtx): void {
 function markNotes(ctx: SysCtx): void {
   ctx.base = { prims: ctx.prims.map((p) => p.length), sky: ctx.sky.map((k) => k.boxes.length) };
 }
+
 function markSpanners(ctx: SysCtx): void {
   ctx.ts = { prims: ctx.prims.map((p) => p.length), sky: ctx.sky.map((k) => k.boxes.length) };
 }
@@ -250,7 +253,7 @@ function planCentre(
   sameSide: (p: Prim) => boolean,
 ): CentrePlan | undefined {
   if (!first.length) return;
-  const marks = [...first, ...attachedMarks(ctx, owner, first, sameSide)]; // the attached marks move along, so they are limited by the content too
+  const marks = [...first, ...attachedMarks(ctx, owner, first, sameSide)]; // The attached marks move along, so they are limited by the content too.
   const moving = new Set(marks.map((p) => p.o));
   let x0 = Number.POSITIVE_INFINITY;
   let x1 = Number.NEGATIVE_INFINITY;
@@ -264,7 +267,7 @@ function planCentre(
     top = Math.min(top, ctx.staffY[owner] + t);
     bottom = Math.max(bottom, ctx.staffY[owner] + u);
   }
-  let lo = ctx.staffY[s] + STAFF_HEIGHT; // the free space of the gap: from the upper staff's bottom line to the lower staff's top line
+  let lo = ctx.staffY[s] + STAFF_HEIGHT; // This is the free space of the gap, from the upper staff's bottom line to the lower staff's top line.
   let hi = ctx.staffY[s + 1];
   for (const k of [s, s + 1])
     for (const b of ctx.sky[k].boxes) {
@@ -284,7 +287,7 @@ function planCentre(
       const by1 = ctx.staffY[k] + b.y1;
       if (by1 <= top + 0.01) lo = Math.max(lo, by1);
       else if (by0 >= bottom - 0.01) hi = Math.min(hi, by0);
-      else if (by1 > lo && by0 < hi) return; // overlaps the mark itself: leave it where it is
+      else if (by1 > lo && by0 < hi) return; // A mark that overlaps the mark itself is left where it is.
     }
   const clearance = 0.3;
   const dyMin = lo + clearance - top;

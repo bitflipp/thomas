@@ -6,7 +6,9 @@
 // and beam ranges nested into groups), with beams and brackets that the engraver's automatic choice
 // reproduces left out again; (4) timed marks are hung on events (`anchorMarks`).
 // Everything MuseScore-specific that is only a position or an automatic break is dropped on purpose.
+
 import { beatTicks, simplifyBeams, simplifyTupletBrackets } from './beams.ts';
+
 import type { Measure, NoteEvent, Score, StaffDef, TimedMark, TimeSig } from './model.ts';
 import { anchorMarks, baseTicks, measureTicks } from './model.ts';
 import type { MeasureSink, PartState, RawMark, ReadEnv } from './musicxml-measure.ts';

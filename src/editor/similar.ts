@@ -1,6 +1,8 @@
 // "Select similar": every element of the score that is like a given one (all `p` dynamics, all cresc. hairpins,
 // all quarter rests ...), as refs ready to become the selection.
+
 import type { MarkBody, Score } from '../model.ts';
+
 import { flattenVoice, marksOf } from '../model.ts';
 import type { Ref } from './addr.ts';
 import { eventOf } from './addr.ts';

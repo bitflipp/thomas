@@ -42,11 +42,14 @@ const USAGE = `usage:
   --space <mm> (render, check) overrides the staff space, the global engraving scale (default: the file's page line)`;
 
 const [cmd, ...rawArgs] = process.argv.slice(2);
+
 // `--space <mm>` / `--space=<mm>` overrides the staff space, the global engraving scale of the score's
 // page setup. It applies to every command that engraves, so it is pulled out before the commands
 // look at their positional arguments and flags.
 let spaceOverride: number | undefined;
+
 const args: string[] = [];
+
 for (let i = 0; i < rawArgs.length; i++) {
   const a = rawArgs[i];
   if (a === '--space' || a.startsWith('--space=')) {
@@ -58,10 +61,12 @@ for (let i = 0; i < rawArgs.length; i++) {
     spaceOverride = v;
   } else args.push(a);
 }
+
 const withSpace = (s: Score): Score => {
   if (spaceOverride) s.page.staffSpace = spaceOverride;
   return s;
 };
+
 try {
   if (cmd === 'import') {
     const flags = new Set(args.filter((a) => a.startsWith('--')));

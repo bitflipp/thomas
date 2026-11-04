@@ -8,6 +8,7 @@ import { parseText } from '../src/textformat.ts';
 const HEAD = `page 210x297 margin=10 space=1.75
 staff rh clef=G2
 `;
+
 const on = (s: ReturnType<typeof buildSequence>) => s.msgs.filter((m) => (m.bytes[0] & 0xf0) === 0x90);
 
 test('quarter notes at 120 bpm are half a second apart', () => {
@@ -46,7 +47,7 @@ test('the whole piece builds, with tempo changes and increasing time', () => {
 test('a two-note tremolo alternates in strokes of the beam value', () => {
   const s = buildSequence(parseText(`${HEAD}m1 time=4/4 key=0\n  rh.1: trem2{ c4:2 e4:2 } c4:2\n`));
   const n = on(s).filter((m) => m.sec < 2);
-  assert.equal(n.length, 16); // a whole note of 16th strokes
+  assert.equal(n.length, 16); // This is a whole note of 16th strokes.
   assert.deepEqual(
     n.slice(0, 4).map((m) => m.bytes[1]),
     [60, 64, 60, 64],

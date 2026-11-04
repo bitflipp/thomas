@@ -105,6 +105,7 @@ m2
 });
 
 const prims = (src: string) => engrave(parseText(src)).pages[0].prims;
+
 const ledgers = (ps: ReturnType<typeof prims>) =>
   ps.filter((p) => p.t === 'line' && p.y1 === p.y2 && p.w === 0.16 && p.x2 - p.x1 < 3);
 
@@ -137,7 +138,7 @@ m1 time=2/4
   rh.1: d4:4 g5:4
   lh.1: R:2
 `),
-  ); // d4 = space below the staff, g5 = space above: no ledger lines
+  ); // The note d4 is in the space below the staff and g5 in the space above, so there are no ledger lines.
   assert.equal(none.length, 0);
   const one = ledgers(
     prims(`${HEAD}
@@ -145,7 +146,7 @@ m1 time=2/4
   rh.1: c4:4 a5:4
   lh.1: R:2
 `),
-  ); // c4 on the first line below, a5 on the first line above
+  ); // The note c4 is on the first line below and a5 on the first line above.
   assert.equal(one.length, 2);
   const two = ledgers(
     prims(`${HEAD}
@@ -153,7 +154,7 @@ m1 time=2/4
   rh.1: b3:4 e6:4
   lh.1: R:2
 `),
-  ); // b3 needs the c4 line; e6 needs a5, c6, e6
+  ); // The note b3 needs the c4 line, and e6 needs a5, c6 and e6.
   assert.equal(two.length, 4);
 });
 
@@ -243,7 +244,7 @@ m1 time=2/4
     evs.slice(0, 6).map((e) => e.stem),
     ['up', 'up', 'up', 'down', 'down', 'down'],
   );
-  assert.equal(p.measures[0][0].evs.filter((e) => e.ev.kind === 'note').length, 3); // the rh column holds the arrivals
+  assert.equal(p.measures[0][0].evs.filter((e) => e.ev.kind === 'note').length, 3); // The rh column holds the arrivals.
   const prims = engrave(s).pages[0].prims;
   const beams = prims.filter((q) => q.k === 'beam');
   assert.ok(beams.length > 0);

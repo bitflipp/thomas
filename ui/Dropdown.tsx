@@ -1,7 +1,9 @@
 // The one dropdown control (there are no native selects in the UI). Entries can carry SVG icons and a tooltip, and
 // can be disabled. It behaves like a select: click or ArrowUp/Down to open, arrows to move, Enter or Space to pick,
 // Esc or a click elsewhere to close. The list is `position: fixed`, so scrolling panels do not clip it.
+
 import { useEffect, useRef, useState } from 'preact/hooks';
+
 import { must } from '../src/util.ts';
 
 export type DropdownOpt<T> = {

@@ -16,6 +16,7 @@ import { Properties } from './Properties.tsx';
 import { chooseOutput, midiOut, midiPorts, playing, toggle } from './player.ts';
 import { ScorePane } from './ScorePane.tsx';
 import { Shortcuts, showHelp } from './Shortcuts.tsx';
+
 import {
   dirty,
   engraved,
@@ -44,6 +45,7 @@ import {
 
 const viewOpen = signal(false);
 const TextPane = lazy(() => import('./TextPane.tsx').then((m) => ({ default: m.TextPane })));
+
 const examples = import.meta.glob('../examples/*.txt', { query: '?raw', import: 'default', eager: true }) as Record<
   string,
   string
@@ -75,7 +77,7 @@ function printPdf() {
   const st =
     document.getElementById('print-page') ??
     document.head.appendChild(Object.assign(document.createElement('style'), { id: 'print-page' }));
-  st.textContent = `@page { size: ${res.pages[0].width * res.staffSpace}mm ${res.pages[0].height * res.staffSpace}mm; margin: 0 }\n@media print { .page { height: ${res.pages[0].height * res.staffSpace - 1}mm !important; } }`; // a hair shorter than the sheet: rounding must not push an empty page after each one
+  st.textContent = `@page { size: ${res.pages[0].width * res.staffSpace}mm ${res.pages[0].height * res.staffSpace}mm; margin: 0 }\n@media print { .page { height: ${res.pages[0].height * res.staffSpace - 1}mm !important; } }`; // The page is a hair shorter than the sheet, because rounding must not push an empty page after each one.
   // Pages far from the viewport have no SVG yet: render all of them, wait for the DOM, then print.
   printing.value = true;
   const done = () => {

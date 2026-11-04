@@ -35,7 +35,7 @@ test('marks are positioned from the parsed tree (tuplets, end of measure, mark l
   assert.equal(
     at((m) => m.type === 'stop'),
     1680 + 1680,
-  ); // 8th, then three 16ths in the time of two 8ths
+  ); // This is an 8th, then three 16ths in the time of two 8ths.
   assert.equal(
     at((m) => m.type === 'pedal'),
     1680,
@@ -101,8 +101,8 @@ test('simplifyTupletBrackets drops a bracket choice equal to the default', () =>
   const v = s.measures[0].staves.rh.voices[0];
   simplifyTupletBrackets(v, 3360);
   const [a, b] = v.items as { bracket?: boolean }[];
-  assert.equal(a.bracket, undefined); // fully beamed: no bracket anyway
-  assert.equal(b.bracket, undefined); // not beamed: bracket anyway
+  assert.equal(a.bracket, undefined); // A fully beamed group has no bracket anyway.
+  assert.equal(b.bracket, undefined); // A group that is not beamed has a bracket anyway.
 });
 
 test('validate rejects single-note beam groups', () => {

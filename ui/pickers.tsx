@@ -1,6 +1,8 @@
 // Pickers shared by the tool palette and the Properties panel, so duration and accidental look the same
 // everywhere. They render bare buttons; the container (`.grid` in the palette, `.seg` in the panel) styles them.
+
 import type { BaseDur } from '../src/model.ts';
+
 import { CPS, Glyph } from './icons.tsx';
 
 export const DURS: [BaseDur, number, string][] = [
@@ -13,6 +15,7 @@ export const DURS: [BaseDur, number, string][] = [
   [64, CPS.sixty4, '7'],
   [128, CPS.hundred28, '8'],
 ];
+
 export const ACCS: [number, number, string][] = [
   [-2, CPS.dflat, 'Double flat'],
   [-1, CPS.flat, 'Flat'],

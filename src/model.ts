@@ -1,4 +1,5 @@
 import { must } from './util.ts';
+
 // Core score model. The model (plain JSON-serialisable data) is the source of truth; the text format
 // (textformat.ts) and the MusicXML importer produce and consume it, the engraver and playback read it,
 // and the editor changes it only through pure functions (src/editor/commands.ts).
@@ -15,24 +16,27 @@ export const STEPS: Step[] = ['c', 'd', 'e', 'f', 'g', 'a', 'b'];
 
 export interface Pitch {
   step: Step;
-  alter: number; // -2..2 (semitones)
-  octave: number; // scientific pitch notation, c4 = middle C
+  alter: number; // The alteration ranges from -2 to 2 semitones.
+  octave: number; // The octave uses scientific pitch notation, where c4 is middle C.
 }
 
 export type BaseDur = 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128;
+
 export interface Dur {
   base: BaseDur;
   dots: number;
 }
 
 export type AccOverride = 'force' | 'cautionary';
+
 export interface NotePitch {
   pitch: Pitch;
-  tie?: boolean; // tied to the next note of the same pitch
+  tie?: boolean; // The note is tied to the next note of the same pitch.
   acc?: AccOverride;
 }
 
 export type Articulation = 'accent' | 'marcato' | 'staccato';
+
 export interface SlurStart {
   id: number;
   side?: 'above' | 'below';
@@ -50,35 +54,39 @@ export interface LineStart {
 /** A grace note (or chord) played just before the note it is attached to; takes no time in the measure. */
 export interface Grace {
   pitches: NotePitch[];
-  base: BaseDur; // written value: 8 = one flag, 16 = two ...
-  slash?: boolean; // acciaccatura (struck through) rather than appoggiatura
+  base: BaseDur; // This is the written value: 8 has one flag, 16 has two, and so on.
+  slash?: boolean; // The grace note is an acciaccatura (struck through) rather than an appoggiatura.
 }
 
 export interface EventBase {
   dur: Dur;
   stem?: 'up' | 'down';
-  staff?: string; // cross-staff: drawn on this other staff (default: the staff of the voice); stem and beam stay with the voice
+  staff?: string; // For a cross-staff note this is the other staff it is drawn on (default: the staff of the voice); stem and beam stay with the voice.
   slurStart?: SlurStart[];
   slurStop?: number[];
   lineStart?: LineStart[];
   lineStop?: number[];
-  marks?: MarkBody[]; // dynamics, hairpin/pedal/ottava starts and stops, clef changes, tempo, text: at the start of this event
+  marks?: MarkBody[]; // These marks (dynamics, hairpin/pedal/ottava starts and stops, clef changes, tempo, text) sit at the start of this event.
 }
+
 export interface NoteEvent extends EventBase {
   kind: 'note';
-  pitches: NotePitch[]; // ordered low -> high
+  pitches: NotePitch[]; // The pitches are ordered from low to high.
   art?: Articulation[];
-  artSide?: 'above' | 'below'; // forced side of the articulations (default: by stem / voice)
+  artSide?: 'above' | 'below'; // This forces the side of the articulations (default: by stem and voice).
   arpeggio?: boolean;
-  graces?: Grace[]; // grace notes in front of this note, in playing order
-  noBeam?: boolean; // stays unbeamed although the automatic beaming would join it to its neighbours
+  graces?: Grace[]; // These are the grace notes in front of this note, in playing order.
+  noBeam?: boolean; // The note stays unbeamed although the automatic beaming would join it to its neighbours.
 }
-export type RestStyle = 'normal' | 'hidden' | 'measure'; // hidden = spacer; measure = whole-measure rest (dur is informational)
+
+export type RestStyle = 'normal' | 'hidden' | 'measure'; // A hidden rest is a spacer, and a measure rest is a whole-measure rest (its `dur` is informational).
+
 export interface RestEvent extends EventBase {
   kind: 'rest';
   style: RestStyle;
-  display?: Pitch; // forced vertical position
+  display?: Pitch; // This forces the vertical position.
 }
+
 export type Event = NoteEvent | RestEvent;
 
 export interface TupletGroup {
@@ -93,6 +101,7 @@ export interface TupletGroup {
   placement?: 'above' | 'below';
   items: Item[];
 }
+
 /**
  * Explicit beam group: at least two notes, consecutive in the voice (possibly inside tuplets).
  * Events outside explicit groups are beamed automatically (see beams.ts); `noBeam` opts a note out.
@@ -102,12 +111,14 @@ export interface BeamGroup {
   kind: 'beam';
   items: Item[];
 }
+
 /** Two-note (fingered) tremolo: exactly two notes, drawn with `beams` beams between them. */
 export interface TremoloGroup {
   kind: 'tremolo';
   beams: number;
   items: Item[];
 }
+
 export type Item = Event | TupletGroup | BeamGroup | TremoloGroup;
 
 export interface Voice {
@@ -118,8 +129,10 @@ export interface Voice {
 }
 
 export type Placement = 'above' | 'below';
+
 /** Dynamics, hairpins and text can also sit `between` their staff and its neighbour (below the upper one, above the lower one), centred in the gap: for piano parts, where one dynamic serves both hands. */
 export type MarkPlacement = Placement | 'between';
+
 export type MarkBody =
   | { type: 'dynamic'; text: string; placement?: MarkPlacement }
   | { type: 'hairpin'; kind: 'cresc' | 'dim'; id: number; placement?: MarkPlacement }
@@ -132,8 +145,10 @@ export type MarkBody =
   | { type: 'clef'; clef: Clef }
   | { type: 'tempo'; unit: BaseDur; dots: number; bpm: number; text?: string }
   | { type: 'text'; text: string; placement?: MarkPlacement };
+
 /** A mark with a position, as in MusicXML or on a text-format mark line; `anchorMarks` hangs it on an event. */
 export type TimedMark = MarkBody & { tick: number };
+
 /**
  * A mark as the engraver and playback see it, derived from the events carrying it (`marksOf`): `tick` within the measure,
  * `voice`/`idx`/`k` its address (event index in the voice, -1 for the voice's `end` list; position in that list).
@@ -148,6 +163,7 @@ export interface TimeSig {
   beats: number;
   beatType: number;
 }
+
 export interface Clef {
   sign: 'G' | 'F' | 'C';
   line: number;
@@ -169,6 +185,7 @@ export interface StaffDef {
   clef: Clef;
   name?: string;
 }
+
 export interface StaffGroup {
   kind: 'brace' | 'bracket';
   staves: string[];
@@ -180,6 +197,7 @@ export interface Meta {
   composer?: string;
   rights?: string;
 }
+
 export interface PageSetup {
   /** Page size and margin in millimetres. */
   width: number;
@@ -199,7 +217,9 @@ export interface Score {
   measures: Measure[];
 }
 
-// ---------------------------------------------------------------- helpers: durations, flattening, marks
+// Helpers on the model: conversions between durations and ticks, flattening a voice's item tree
+// into a list of events with their positions, and deriving the tick-based marks from the marks
+// that hang on events.
 
 export function gcd(a: number, b: number): number {
   return b ? gcd(b, a % b) : Math.abs(a);
@@ -222,22 +242,25 @@ export function measureTicks(t: TimeSig): number {
 export function isTuplet(i: Item): i is TupletGroup {
   return i.kind === 'tuplet';
 }
+
 export function isBeam(i: Item): i is BeamGroup {
   return i.kind === 'beam';
 }
+
 export function isTremolo(i: Item): i is TremoloGroup {
   return i.kind === 'tremolo';
 }
+
 export function isEvent(i: Item): i is Event {
   return i.kind === 'note' || i.kind === 'rest';
 }
 
 export interface TimedEvent {
   ev: Event;
-  start: number; // ticks from measure start
+  start: number; // This is the number of ticks from the measure start.
   ticks: number;
-  tm: { actual: number; normal: number }[]; // enclosing tuplets, outermost first
-  tuplets: TupletGroup[]; // enclosing tuplets, outermost first
+  tm: { actual: number; normal: number }[]; // These are the enclosing tuplets, outermost first.
+  tuplets: TupletGroup[]; // These are the enclosing tuplets, outermost first.
   beamGroup?: BeamGroup;
   tremolo?: TremoloGroup;
   index: number;
@@ -288,7 +311,9 @@ export function collectMarks(sm: StaffMeasure): Mark[] {
   }
   return out.sort((a, b) => a.tick - b.tick);
 }
+
 const marksCache = new WeakMap<StaffMeasure, Mark[]>();
+
 /** `collectMarks`, cached per staff-measure object (edits replace the objects they change), so mark objects are stable for hit testing. Never call it on an Immer draft. */
 export function marksOf(sm: StaffMeasure | undefined): Mark[] {
   if (!sm) return [];
@@ -341,6 +366,7 @@ export interface LineEnd<T> {
   id: number;
   ref: T;
 }
+
 /**
  * Pairs the starts and stops of lines: in time order, an end meets an open end of the same id and the opposite role.
  * Ends that find no partner (or are replaced by another end of the same role and id) are `loose`.
@@ -375,6 +401,7 @@ export interface LineAt {
   voice: number;
   idx: number;
 }
+
 /** Every start and stop of a line in the score, with the event it hangs on. */
 export function lineEnds(score: Score): LineEnd<LineAt>[] {
   const out: LineEnd<LineAt>[] = [];
@@ -405,6 +432,7 @@ export function pitchMidi(p: Pitch): number {
   const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[p.step];
   return (p.octave + 1) * 12 + base + p.alter;
 }
+
 /** Diatonic position: c0 = 0, d0 = 1, ... */
 export function pitchStep(p: Pitch): number {
   return p.octave * 7 + STEPS.indexOf(p.step);
@@ -414,6 +442,7 @@ export function timeAt(score: Score, mi: number): TimeSig {
   for (let i = mi; i >= 0; i--) if (score.measures[i].time) return must(score.measures[i].time);
   return { beats: 4, beatType: 4 };
 }
+
 export function keyAt(score: Score, mi: number): number {
   for (let i = mi; i >= 0; i--) if (score.measures[i].key !== undefined) return must(score.measures[i].key);
   return 0;

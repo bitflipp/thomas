@@ -4,6 +4,7 @@
 // their codepoints, so adding a glyph means adding it there (and running `checkCodepoints`).
 // Outlines and metrics come from the font file and its metadata.json, loaded lazily on first use
 // (see `loadSmufl`) so that importing the engraver never touches the file system by itself.
+
 import opentype from 'opentype.js';
 
 /** SMuFL glyph name -> codepoint, for exactly the glyphs the engraver uses. */
@@ -118,6 +119,7 @@ export interface Smufl {
 }
 
 let cached: Smufl | null = null;
+
 /** The parts of the font's metadata.json that are used. */
 export interface FontMeta {
   glyphBBoxes: Record<string, { bBoxNE: [number, number]; bBoxSW: [number, number] }>;
@@ -125,6 +127,7 @@ export interface FontMeta {
   glyphsWithAnchors: Record<string, Record<string, [number, number]> | undefined>;
   engravingDefaults: Record<string, number>;
 }
+
 let source: { buf: ArrayBuffer; meta: FontMeta } | null = null;
 
 /** Provide the font data explicitly (browser); without it, loadSmufl reads it from node_modules. */
@@ -164,6 +167,7 @@ function nodeSource(): { buf: ArrayBuffer; meta: FontMeta } {
 export function loadSmufl(): Smufl {
   return facade;
 }
+
 const facade: Smufl = {
   has: (n) => n in CP,
   path: (n) => real().path(n),

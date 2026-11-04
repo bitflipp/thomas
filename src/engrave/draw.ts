@@ -6,7 +6,9 @@
 // (head extents, stem anchor and tip) is kept in `geomOf` for the phases that follow, including the
 // spanner pass. Every primitive pushed here is tagged (`tagFrom`) for collision checking and hit testing,
 // and its occupied area is added to the staff's skyline (`pushBox`) so that spanners and marks can avoid it.
+
 import type { Articulation, NoteEvent, TupletGroup } from '../model.ts';
+
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
 import type { BeamL, EvL, Prepared } from './prep.ts';
@@ -14,6 +16,7 @@ import { beamLevels, posToY, staffPos } from './prep.ts';
 import type { Prim, Skyline } from './scene.ts';
 import { oid, tagFrom } from './scene.ts';
 import type { MeasureSpacing, PlacedMeasure } from './spacing.ts';
+
 import {
   DOT_STEP,
   END_CLEF_GAP,
@@ -27,29 +30,29 @@ import {
 } from './spacing.ts';
 
 const sm = loadSmufl();
-export const D = new Proxy({} as typeof sm.def, { get: (_, k) => sm.def[k as string] }); // lazy: the font may not be loaded yet
+export const D = new Proxy({} as typeof sm.def, { get: (_, k) => sm.def[k as string] }); // The proxy is lazy because the font may not be loaded yet.
 
 export interface SysCtx {
   prep: Prepared;
   index: number;
   a: number;
-  b: number; // first / last measure index (inclusive)
-  spacing: MeasureSpacing[]; // indexed by measure index (the variant actually used)
-  placed: PlacedMeasure[]; // indexed by measure index
-  mx: number[]; // measure left x (system-local), by measure index
-  prefix: number; // width before first measure
+  b: number; // These are the first and last measure index (inclusive).
+  spacing: MeasureSpacing[]; // This is indexed by measure index and holds the variant actually used.
+  placed: PlacedMeasure[]; // This is indexed by measure index.
+  mx: number[]; // This is the left x of each measure (system-local), indexed by measure index.
+  prefix: number; // This is the width before the first measure.
   width: number;
   f: number;
-  prims: Prim[][]; // per staff, staff-local
+  prims: Prim[][]; // There is one list per staff, in staff-local coordinates.
   sky: Skyline[];
-  staffY: number[]; // y of each staff's top line (system-local)
+  staffY: number[]; // This is the y of each staff's top line (system-local).
   barlines: { x: number; type: 'single' | 'final' | 'double'; mi: number }[];
   tupletBoxes: [number, number][];
-  /** staff-to-staff gap (bottom of staff s-1 to top of staff s) that cross-staff geometry is drawn for; finalize must keep it */
+  /** Staff-to-staff gap (bottom of staff s-1 to top of staff s) that cross-staff geometry is drawn for; finalize must keep it */
   gap: number[];
-  /** per staff: gap required by the cross-staff beams drawn with `gap` (may be smaller than `gap`) */
+  /** Per staff: gap required by the cross-staff beams drawn with `gap` (may be smaller than `gap`). */
   gapNeed: number[];
-  pinned?: boolean; // gap[] is final (the system has cross-staff beams)
+  pinned?: boolean; // When set, `gap` is final because the system has cross-staff beams.
   /** The system's content exceeds the line even at the tightest spacing (a warning is due). */
   overflow?: boolean;
   /** What the notes alone occupy, recorded when they are drawn (before spanners and marks are added): `rewindToNotes` returns to it. */
@@ -61,6 +64,7 @@ export interface SysCtx {
   /** The gap was widened after the notes were drawn (for slurs and marks), so `base` no longer applies. */
   widened?: boolean;
 }
+
 export const CROSS_GAP0 = 6;
 
 export function glyphCentered(name: string, cx: number, cy: number): Prim {
@@ -120,7 +124,9 @@ export interface Geom {
   headL: number;
   headR: number;
 }
+
 export const geomOf = new WeakMap<EvL, Geom>();
+
 /** Outer edge (y) of the articulation stack of a note and the side it is on; slurs on that side start beyond it. */
 export const articExtent = new WeakMap<EvL, { above: boolean; edge: number }>();
 
@@ -134,6 +140,7 @@ interface LedgerSeg {
   hx0: number;
   hx1: number;
 }
+
 let ledgerSegs: LedgerSeg[] = [];
 
 /** Neighbouring notes must not have their ledger lines run into each other: leave a gap, trimming both sides evenly. */
@@ -287,7 +294,7 @@ function drawStemsAndBeams(ctx: SysCtx, mi: number, s: number): void {
         if (e.beam.cross) drawCrossBeam(ctx, e.beam, s, beamLevelsOf);
         else drawBeamGroup(ctx, e.beam.notes, e.staff, beamLevelsOf);
       } else if (e.tremPair) {
-        if (e.tremIsFirst) drawTremoloPair(ctx, e, e.tremPair, e.staff); // the second is drawn with the first
+        if (e.tremIsFirst) drawTremoloPair(ctx, e, e.tremPair, e.staff); // The second note of the pair is drawn together with the first.
       } else if (e.stem) drawSingleStem(ctx, e);
     }
   }
@@ -336,8 +343,8 @@ function withHomeGeometry(ctx: SysCtx, evs: EvL[], target: number, fn: () => voi
   for (const e of evs) {
     const g = geomOf.get(e);
     if (!g) continue;
-    const dh = staffOffset(ctx, target, e.staff); // heads are in the coordinates of their own staff
-    const ds = staffOffset(ctx, target, g.homed ? e.home : e.staff); // stems of cross-staff beams are in those of the voice's
+    const dh = staffOffset(ctx, target, e.staff); // Heads are in the coordinates of their own staff.
+    const ds = staffOffset(ctx, target, g.homed ? e.home : e.staff); // Stems of cross-staff beams are in the coordinates of the voice's staff.
     if (!(dh || ds)) continue;
     saved.set(e, g);
     geomOf.set(e, { ...g, yTop: g.yTop + dh, yBot: g.yBot + dh, stemBase: g.stemBase + ds, stemTip: g.stemTip + ds });
@@ -541,7 +548,7 @@ function drawDots(ctx: SysCtx, e: EvL, s: number): void {
     const seen = new Set<number>();
     for (const h of e.heads) {
       if (h.shared && h.skipDots) continue;
-      const p = h.pos % 2 === 0 ? h.pos + 1 : h.pos; // dots go in the space above a line
+      const p = h.pos % 2 === 0 ? h.pos + 1 : h.pos; // Dots go in the space above a line.
       if (seen.has(p)) continue;
       seen.add(p);
       for (let k = 0; k < dots; k++)
@@ -820,6 +827,7 @@ function drawRest(ctx: SysCtx, e: EvL, s: number, ghost = false): void {
   tagFrom(ctx.prims[s], n0, 'rest', e);
   if (ghost) for (let i = n0; i < ctx.prims[s].length; i++) ctx.prims[s][i].ghost = true;
 }
+
 function drawRestPrims(ctx: SysCtx, e: EvL, s: number, ghost: boolean): void {
   const base = e.te.ev.dur.base;
   const name = restGlyph(base, e.ev.kind === 'rest' && e.ev.style === 'measure');
@@ -856,7 +864,8 @@ function drawRestPrims(ctx: SysCtx, e: EvL, s: number, ghost: boolean): void {
   // That case is not handled: such rests are drawn without them.
 }
 
-// ------------------------------------------------------------------ beams
+// Beams: slope and position of a group's beam line, its levels and stubs, and moving the line clear
+// of other things. Stems are shortened or lengthened to meet it.
 /** The beam line y = a + m (x - x0) of a group, before it is moved clear of other things. */
 interface BeamLine {
   a: number;
@@ -952,8 +961,10 @@ function drawBeamGroup(ctx: SysCtx, notes: EvL[], s: number, levelsFor: (e: EvL)
     gs[i].stemTip = lineY(gs[i].stemX);
     drawStem(ctx, n, gs[i], s, false);
   });
-  // Beam polygons: one parallelogram per beam level and run of notes that has that level, offset
-  // from the primary beam by `beamSpacing`; the shorter levels may end in a hook.
+  /**
+   * Beam polygons: one parallelogram per beam level and run of notes that has that level, offset
+   * from the primary beam by `beamSpacing`; the shorter levels may end in a hook.
+   */
   const poly = (xa: number, xb: number, off: number) => {
     const ya = lineY(xa) + inward * off;
     const yb = lineY(xb) + inward * off;
@@ -1058,7 +1069,7 @@ function drawTremoloPair(ctx: SysCtx, e1: EvL, e2: EvL, s: number): void {
   const bs = D.beamSpacing as number;
   const inward = up ? 1 : -1;
   const n = e1.tremBeams ?? 2;
-  const DETACH = 0.3; // tremolo beams stop short of the stems so they read differently from ordinary beams
+  const DETACH = 0.3; // Tremolo beams stop short of the stems so that they read differently from ordinary beams.
   const xa = g1.stemX + STEM_T / 2 + DETACH;
   const xb = g2.stemX - STEM_T / 2 - DETACH;
   const slopeAt = (x: number) =>
@@ -1079,13 +1090,15 @@ function drawTremoloPair(ctx: SysCtx, e1: EvL, e2: EvL, s: number): void {
   pushBox(ctx, s, xa, xb, yMin, yMax);
 }
 
-// ------------------------------------------------------------------ tuplets
+// Tuplets: the bracket and number over (or under) the members of a tuplet group. Their position
+// follows the beam if the group is beamed and the stems otherwise.
 /** Draws the bracket and/or number of a tuplet over (or under) its member events `evs`. */
 function drawTuplet(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): void {
   const n0 = ctx.prims[s].length;
   drawTupletPrims(ctx, t, evs, s);
   tagFrom(ctx.prims[s], n0, 'tuplet', t);
 }
+
 /** Where a tuplet's bracket and number go: the bracket line from (bx0, ya) to (bx1, yb) in the slope of (x0, ya)-(x1, yb), the number centred at (cx, cy). */
 interface TupletPlan {
   bracket: boolean;
@@ -1251,7 +1264,7 @@ function planTuplet(
   const beamSets = new Set(notes.map((n) => n.beam));
   const fullyBeamed = notes.length > 0 && beamSets.size === 1 && !beamSets.has(undefined);
   let bracket = t.bracket ?? !fullyBeamed;
-  if (notes[0]?.beam?.cross && t.bracket !== false) bracket = true; // the number alone is lost among the stems of a beam between the staves
+  if (notes[0]?.beam?.cross && t.bracket !== false) bracket = true; // The number alone would be lost among the stems of a beam between the staves.
   if (!(showNum || bracket)) return;
   const anchor = notes[0] ?? evs[0];
   const crossY = notes[0]?.beam?.crossY;
@@ -1279,7 +1292,7 @@ function planTuplet(
   };
   const { x0, x1, reach } = frame;
   const numberHalfHeight = (sm.bbox('tuplet6').y1 - sm.bbox('tuplet6').y0) / 2;
-  const clearance = bracket ? 1.1 : numberHalfHeight + 0.5; // number sits clear of beams / stems
+  const clearance = bracket ? 1.1 : numberHalfHeight + 0.5; // The number sits clear of beams and stems.
   // The line follows the beam when the tuplet is fully beamed, or when a bracket is drawn. Otherwise
   // (a bare number) it is flat and only decides where the number goes.
   const sloped = (fullyBeamed || bracket) && x1 > x0 && notes.length > 1;
@@ -1291,7 +1304,7 @@ function planTuplet(
   let cy = ya + ((yb - ya) * (cx - x0)) / Math.max(0.001, x1 - x0);
   const box = bracket && showNum && touchesStaffLine(cy, 0.7);
   if (box) {
-    // the box is taller than the bare digit: keep it off the beam and stems
+    // The box is taller than the bare digit: keep it off the beam and stems.
     const d = above ? -0.2 : 0.2;
     ya += d;
     yb += d;
@@ -1304,8 +1317,8 @@ function planTuplet(
 function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
   const { bracket, showNum, above, ya, yb, x0, x1, bx0, bx1, cx, cy, box } = p;
   const textWidth = p.label.length * 1.0;
-  const boxHalfW = Math.max(0.95, textWidth / 2 + 0.45); // radius of the circle round the number
-  const [boxTop, boxBottom] = [-1.07, 0.89]; // relative to cy: the digit (cap height ~1.26) spans -0.72..0.54, with 0.35 padding
+  const boxHalfW = Math.max(0.95, textWidth / 2 + 0.45); // This is the radius of the circle around the number.
+  const [boxTop, boxBottom] = [-1.07, 0.89]; // These are relative to cy: the digit (cap height ~1.26) spans -0.72..0.54, with 0.35 padding.
   const hookLen = 0.75 * (above ? 1 : -1);
   const lineWidth = D.tupletBracketThickness as number;
   const yAt = (x: number) => ya + ((yb - ya) * (x - x0)) / Math.max(0.001, x1 - x0);
@@ -1323,7 +1336,7 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
   }
   if (box) {
     const [ccy, bw] = [cy + (boxTop + boxBottom) / 2, 0.1];
-    const K = 0.5523; // cubic Bezier approximation of a quarter circle
+    const K = 0.5523; // This constant approximates a quarter circle with a cubic Bezier curve.
     const circle = (rad: number, ccw: boolean) => {
       const k = rad * K;
       const pts: [number, number][] = [
@@ -1337,10 +1350,10 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
       for (let i = 0; i < 4; i++) {
         const [p, q] = [pts[i], pts[(i + 1) % 4]];
         const [tx, ty] = [(q[0] - p[0]) / rad, (q[1] - p[1]) / rad];
-        // control points leave p along the tangent, which is perpendicular to the radius at p
+        // Control points leave p along the tangent, which is perpendicular to the radius at p.
         const rp = [(p[0] - cx) / rad, (p[1] - ccy) / rad];
         const rq = [(q[0] - cx) / rad, (q[1] - ccy) / rad];
-        const sgn = tx * -rp[1] + ty * rp[0] > 0 ? 1 : -1; // direction of travel
+        const sgn = tx * -rp[1] + ty * rp[0] > 0 ? 1 : -1; // This is the direction of travel.
         const c1 = [p[0] + sgn * -rp[1] * k, p[1] + sgn * rp[0] * k];
         const c2 = [q[0] - sgn * -rq[1] * k, q[1] - sgn * rq[0] * k];
         d += `C${f(c1[0])} ${f(c1[1])} ${f(c2[0])} ${f(c2[1])} ${f(q[0])} ${f(q[1])}`;
@@ -1367,7 +1380,7 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
     });
   const yLo = Math.min(ya, yb) - (above ? 1.0 : 0);
   const yHi = Math.max(ya, yb) + (above ? 0 : 1.0);
-  if (bracket) pushBox(ctx, s, bx0, bx1, above ? yLo - 0.2 : yLo, above ? yHi : yHi + 0.2); // no bracket, no band
+  if (bracket) pushBox(ctx, s, bx0, bx1, above ? yLo - 0.2 : yLo, above ? yHi : yHi + 0.2); // Without a bracket there is no band.
   if (showNum)
     pushBox(
       ctx,
@@ -1392,7 +1405,8 @@ function drawTupletPrims(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): vo
   paintTuplet(ctx, plan, s);
 }
 
-// ------------------------------------------------------------------ articulations
+// Articulations: staccato, accents, tenuto, marcato and so on, placed on the stem side or the head
+// side of the note depending on the voice, the stem and an explicit `artSide`.
 /**
  * Draws a note's articulations on the side given by `artSide`, else by the voice/stem (marcato goes
  * above). On the stem's side they sit beyond the stem tip; otherwise just beyond the outermost head.
@@ -1402,6 +1416,7 @@ function drawArticulations(ctx: SysCtx, e: EvL, s: number): void {
   drawArticulationPrims(ctx, e, s);
   tagFrom(ctx.prims[s], n0, 'artic', e);
 }
+
 /** Does an articulation go above the note? By `artSide`, else a cross-staff beam's stem, the voice, the stem (marcato goes above). */
 function articulationsAbove(e: EvL & { ev: NoteEvent }, art: Articulation[]): boolean {
   if (e.ev.artSide) return e.ev.artSide === 'above';
@@ -1417,9 +1432,9 @@ function articulationAnchor(e: EvL, g: Geom, above: boolean, nearest: Articulati
     return { cx: g.stemX, y: e.beam ? y + (above ? -0.2 : 0.2) : y };
   }
   const ref = above ? Math.max(...e.heads.map((h) => h.pos)) : Math.min(...e.heads.map((h) => h.pos));
-  let q = above ? ref + 3 : ref - 3; // 1.5 spaces from the head centre leaves a clear gap
-  if (q % 2 === 0 && q >= 0 && q <= 8) q += above ? 1 : -1; // inside the staff: sit in a space, not on a line
-  const y = nearest === 'staccato' ? posToY(ref) + (above ? -1.25 : 1.25) : posToY(q); // dots hug the head a little closer
+  let q = above ? ref + 3 : ref - 3; // A distance of 1.5 spaces from the head centre leaves a clear gap.
+  if (q % 2 === 0 && q >= 0 && q <= 8) q += above ? 1 : -1; // Inside the staff the articulation sits in a space, not on a line.
+  const y = nearest === 'staccato' ? posToY(ref) + (above ? -1.25 : 1.25) : posToY(q); // Staccato dots hug the head a little closer.
   const head = must(e.heads.find((h) => h.pos === ref));
   return { cx: e.x + head.dx + g.hw / 2, y };
 }
@@ -1428,7 +1443,7 @@ function drawArticulationPrims(ctx: SysCtx, e: EvL, s: number): void {
   if (e.ev.kind !== 'note' || !e.ev.art) return;
   const g = must(geomOf.get(e));
   const above = articulationsAbove(e as EvL & { ev: NoteEvent }, e.ev.art);
-  const arts = [...e.ev.art].sort((a, b) => (a === 'staccato' ? -1 : b === 'staccato' ? 1 : 0)); // staccato nearest the head
+  const arts = [...e.ev.art].sort((a, b) => (a === 'staccato' ? -1 : b === 'staccato' ? 1 : 0)); // Staccato goes nearest to the head.
   const { cx, y: y0 } = articulationAnchor(e, g, above, arts[0]);
   let y = y0;
   let edge = y;

@@ -1,7 +1,9 @@
 // Beaming: explicit groups (`BeamGroup`) plus automatic grouping of everything else.
 // Shared by the engraver (prep.ts) and the importer, which uses it to leave out explicit groups
 // that the automatic rules would produce anyway.
+
 import type { Event, Item, TimeSig, TupletGroup, Voice } from './model.ts';
+
 import { flattenVoice, isBeam, isEvent, isTuplet, PPQ } from './model.ts';
 import { must } from './util.ts';
 
@@ -82,7 +84,6 @@ function autoGroups(
   return out;
 }
 
-// ------------------------------------------------------------------ per-note beam modes
 //
 // The model states beaming as explicit groups plus `noBeam` flags (see above). The editor offers the
 // MuseScore view instead: every note has a mode, which is derived from the model and turned back into

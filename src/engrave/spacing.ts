@@ -6,7 +6,9 @@
 // get more but not proportionally more room), and the constraints keep the left extent of a column
 // clear of the right extent of the previous one on every staff. The stretch factor `f` is solved for a
 // whole system in system.ts; `COMPRESS` bounds how far a measure may be squeezed below its ideal.
+
 import type { Score } from '../model.ts';
+
 import { keyAt, PPQ, timeAt } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
@@ -18,19 +20,26 @@ const sm = loadSmufl();
 export function headGlyph(base: number): string {
   return base === 1 ? 'noteheadWhole' : base === 2 ? 'noteheadHalf' : 'noteheadBlack';
 }
+
 /** Notehead width factor (Leland's heads are already MuseScore's full size). */
 export const HEAD_SCALE = 1;
+
 export function headWidth(base: number): number {
   return sm.adv(headGlyph(base)) * HEAD_SCALE;
 }
+
 /** Stem thickness. */
 export const STEM_T = 0.12;
+
 /** Grace notes are drawn at this fraction of the normal size. */
 export const GRACE_SCALE = 0.7;
+
 /** Distance between successive augmentation dots of a multiply dotted note (the first dot sits 0.4 right of the head). */
 export const DOT_STEP = 0.55;
+
 /** Least distance between an up-stem and the following down-stem of a cross-staff beam. */
 export const CROSS_STEM_SEP = 2.0;
+
 /** Minimum stretch factor allowed when fitting measures on a line (0.55: at most 45 % tighter than ideal). */
 export const COMPRESS = 0.55;
 
@@ -55,6 +64,7 @@ export function keyChange(
   for (let i = keep; i < Math.abs(from); i++) nat.push(i);
   return { from, to, nat, add: Math.abs(to) };
 }
+
 export function keyChangeWidth(score: Score, mi: number): number {
   const kc = keyChange(score, mi);
   if (!kc) return 0;
@@ -68,14 +78,14 @@ export const END_CLEF_GAP = 0.5;
 
 export interface Column {
   tick: number;
-  evs: EvL[]; // events starting here (all staves)
-  ideal: number; // ideal distance from previous column (or from measure start for first)
-  L: number[]; // per-staff left extent
-  R: number[]; // per-staff right extent
-  has: boolean[]; // per-staff: occupied
-  clefChange: boolean[]; // per-staff
-  clefW: number[]; // per-staff width reserved for a clef change (added to L)
-  minFrom: { j: number; d: number }[]; // at least d to the right of column j (stems of a cross-staff beam)
+  evs: EvL[]; // These are the events starting here (all staves).
+  ideal: number; // This is the ideal distance from the previous column (or from the measure start for the first).
+  L: number[]; // This is the left extent per staff.
+  R: number[]; // This is the right extent per staff.
+  has: boolean[]; // This says per staff whether the column is occupied.
+  clefChange: boolean[]; // This says per staff whether the column has a clef change.
+  clefW: number[]; // This is the width reserved per staff for a clef change (added to `L`).
+  minFrom: { j: number; d: number }[]; // Each entry requires at least `d` to the right of column `j` (the stems of a cross-staff beam).
 }
 
 /** What system layout needs to know about one measure: its columns and how narrow or wide it can get. */
@@ -83,14 +93,14 @@ export interface MeasureSpacing {
   mi: number;
   cols: Column[];
   endIdeal: number;
-  lead: number; // x of first column at minimum
-  endTrail: number; // required distance from last column to barline (per staff max)
-  endReq: number[]; // per-staff: R of last occupied col
-  endClef: boolean[]; // per-staff: the next measure starts with a clef change, drawn small before the barline
-  prefix: number; // extra leading width (time signature change)
+  lead: number; // This is the x of the first column at minimum.
+  endTrail: number; // This is the required distance from the last column to the barline (the maximum over staves).
+  endReq: number[]; // This is the right extent of the last occupied column, per staff.
+  endClef: boolean[]; // This says per staff whether the next measure starts with a clef change, which is drawn small before the barline.
+  prefix: number; // This is extra leading width (for a time signature change).
   timeSig?: { beats: number; beatType: number };
   minWidth: number;
-  compWidth: number; // width when compressed to COMPRESS
+  compWidth: number; // This is the width when the measure is compressed to `COMPRESS`.
   restOnly: boolean;
 }
 
@@ -151,7 +161,7 @@ function measureColumnExtents(cols: Column[], nStaves: number): void {
   for (let s = 0; s < nStaves; s++) {
     for (const c of cols) {
       const evs = c.evs.filter((e) => e.staff === s);
-      if (c.clefChange[s]) c.clefW[s] = sm.adv('gClefChange') + 1.4; // clef, then clear space before the notes (and their accidentals)
+      if (c.clefChange[s]) c.clefW[s] = sm.adv('gClefChange') + 1.4; // The clef comes first, then clear space before the notes (and their accidentals).
       if (evs.length) layoutColumnStaff(c, s, evs);
       c.L[s] += c.clefW[s];
     }
@@ -232,7 +242,7 @@ export function spaceMeasure(prep: Prepared, mi: number): MeasureSpacing {
   return sp;
 }
 
-/** spaceMeasure runs more than once per measure and writes onto shared EvL/HeadL objects, so start from a clean state each time. */
+/** `spaceMeasure` runs more than once per measure and writes onto shared EvL/HeadL objects, so start from a clean state each time. */
 function resetColumnLayout(evs: EvL[]): void {
   for (const e of evs) {
     e.shiftDx = 0;
@@ -328,7 +338,7 @@ function headExtents(evs: EvL[]): { heads: { h: HeadL; e: EvL }[]; L: number; R:
       heads.push({ h, e });
       L = Math.max(L, -h.dx);
       let r = h.dx + w;
-      if (h.pos <= -2 || h.pos >= 10) r += sm.def.legerLineExtension as number; // its ledger line reaches beyond the head
+      if (h.pos <= -2 || h.pos >= 10) r += sm.def.legerLineExtension as number; // The head's ledger line reaches beyond the head.
       R = Math.max(R, r + dotsWidth(e.te.ev.dur.dots));
     }
     if (e.stem === 'up' && e.te.ev.dur.base >= 8 && !e.beam && !e.tremPair)
@@ -388,13 +398,14 @@ function stackAccidentals(heads: { h: HeadL; e: EvL }[]): number {
     return right;
   });
   info.forEach((it, idx) => {
-    it.head.accX = colRight[colOf[idx]] - it.w; // left edge of the (possibly parenthesised) glyph
+    it.head.accX = colRight[colOf[idx]] - it.w; // This is the left edge of the (possibly parenthesised) glyph.
   });
   return -(edge + ACCIDENTAL_GAP);
 }
 
 /** The arpeggio wiggle sits left of everything, including accidentals: a fixed width (wiggle plus the space between it and the accidentals). */
 const ARPEGGIO_WIDTH = 0.5 + 0.9;
+
 const GRACE_SPACING = 0.45;
 
 /**
@@ -407,7 +418,7 @@ function placeGraces(evs: EvL[], L0: number): number {
   for (const e of evs) {
     if (e.ev.kind !== 'note' || !e.graces?.length) continue;
     const graces = e.graces;
-    // right edge of the nearest grace note (a lone flag reaches out to the right)
+    // Right edge of the nearest grace note (a lone flag reaches out to the right).
     let x = -(L0 + 0.3 + (graces.length === 1 && graces[0].g.base >= 8 ? 0.7 : 0));
     for (let k = graces.length - 1; k >= 0; k--) {
       const gl = graces[k];
@@ -476,6 +487,7 @@ export interface PlacedMeasure {
 
 /** Clearance scale a line may be planned with (squeezing the clearances is otherwise a last resort down to MIN_CLEARANCE). */
 const PLANNED_CLEARANCE = 0.9;
+
 /** Least scale of the clearances between neighbouring columns (see `placeMeasure`'s `z`). */
 export const MIN_CLEARANCE = 0.75;
 
@@ -515,4 +527,5 @@ export function placeMeasure(sp: MeasureSpacing, f: number, z = 1): PlacedMeasur
 export function systemMinWidths(prep: Prepared): MeasureSpacing[] {
   return prep.score.measures.map((_, mi) => spaceMeasure(prep, mi));
 }
+
 export type { Score };

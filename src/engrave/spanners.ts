@@ -30,8 +30,10 @@ function crescent(
   const L = x1 - x0;
   const k = h / 0.75;
   const k2 = Math.max(0, k - thick / 0.75);
-  // The control points sit at fraction `a` of the span in x but follow the chord in y (the 0.3/0.7
-  // factors), so a small `a` gives steep ends and a flat top.
+  /**
+   * The control points sit at fraction `a` of the span in x but follow the chord in y (the 0.3/0.7
+   * factors), so a small `a` gives steep ends and a flat top.
+   */
   const cx = (f: number, kk: number) =>
     `${(x0 + L * f).toFixed(3)} ${(y0 + (y1 - y0) * (f < 0.5 ? 0.3 : 0.7) + s * kk).toFixed(3)}`;
   // The inner edge ends slightly towards the chord (`tip`) so that the tips of the crescent
@@ -185,7 +187,7 @@ function linkUnits(systems: SysCtx[], sysOf: number[]): SpannerUnit[] {
   for (const { start, stop } of pairLines(ends).pairs) {
     const a = start.ref;
     const b = stop.ref;
-    if (a === b || sysOf[a.mi] !== sysOf[b.mi]) continue; // a line is drawn only within one system
+    if (a === b || sysOf[a.mi] !== sysOf[b.mi]) continue; // A line is drawn only within one system.
     const dashed = !!a.ev.lineStart?.find((x) => x.id === start.id)?.dashed;
     out.push({
       sys: [sysOf[a.mi]],
@@ -198,6 +200,7 @@ function linkUnits(systems: SysCtx[], sysOf: number[]): SpannerUnit[] {
 }
 
 const linkOwners = new WeakMap<EvL, Map<number, number>>();
+
 /** Owner tag of a line, stable across drawings (see `slurOwner`). */
 function linkOwner(a: EvL, id: number): number {
   let m = linkOwners.get(a);
@@ -235,7 +238,7 @@ function drawLink(ctx: SysCtx, a: EvL, b: EvL, id: number, dashed: boolean): voi
   if (len < 1e-6) return;
   const ux = (x1 - x0) / len;
   const uy = (y1 - y0) / len;
-  // Distance from a head's centre to its outline along the line (an ellipse), plus clearance.
+  /** Distance from a head's centre to its outline along the line (an ellipse), plus clearance. */
   const reach = (hw: number) => 1 / Math.hypot(ux / (hw / 2), uy / 0.5) + 0.6;
   // The end keeps the same clearance from the note's own stem as from the head: it is pushed along the line until it is
   // out of the stem's neighbourhood (which may mean past the stem).
@@ -427,9 +430,11 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
   const dots = e.te.ev.dur.dots;
   const y = posToY(h.pos) + (above ? -0.38 : 0.38);
   const ledgerExt = D.legerLineExtension as number;
-  // A tie runs in the space next to a ledger line (the first one past the head, whether the head sits
-  // on a line or in a space). When there is one, start and stop the tie beyond that line's extension,
-  // so that the arc between the ends can bulge freely.
+  /**
+   * A tie runs in the space next to a ledger line (the first one past the head, whether the head sits
+   * on a line or in a space). When there is one, start and stop the tie beyond that line's extension,
+   * so that the arc between the ends can bulge freely.
+   */
   const ledgerNear = (ev: EvL, hh: { pos: number }, ab = above): boolean => {
     const q = ab ? (hh.pos % 2 === 0 ? hh.pos + 2 : hh.pos + 1) : hh.pos % 2 === 0 ? hh.pos - 2 : hh.pos - 1;
     const own = ev.heads.filter((x) => !x.shared);
@@ -468,12 +473,12 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
       const f = 4 * t * (1 - t);
       const o = above
         ? sk.top(x - 0.35, x + 0.35, Number.POSITIVE_INFINITY, false, true)
-        : sk.bottom(x - 0.35, x + 0.35, Number.NEGATIVE_INFINITY, false, true); // accidentals are crossed, not avoided
+        : sk.bottom(x - 0.35, x + 0.35, Number.NEGATIVE_INFINITY, false, true); // Accidentals are crossed, not avoided.
       if (!Number.isFinite(o)) continue;
       const gap = above ? y - (o - 0.25) : o + 0.25 - y;
       if (gap > 0 && gap < 3) hgt = Math.max(hgt, gap / (f * 0.95));
     }
-    hgt = Math.min(hgt, 1.6, Math.max(0.4 + len * 0.045, 0.5 + 0.12 * len)); // a short tie never becomes a hump
+    hgt = Math.min(hgt, 1.6, Math.max(0.4 + len * 0.045, 0.5 + 0.12 * len)); // A short tie never becomes a hump.
     return {
       hgt,
       draw: (hh: number) => {
@@ -504,9 +509,9 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
     // A tie broken across systems: the outgoing half runs to the end of the line, the incoming half
     // starts after the next system's prefix (clef, key, time signature).
     const outgoing = place(si, x0, si.width - 0.2, y);
-    const incoming = place(sj, Math.max(0.4, Math.min(Math.max(sj.prefix - 0.6, 0.5), x1 - 2.4)), x1, yN); // a continuation is never a stub
-    // the halves of a broken tie match in height, except that an obstacle-driven outgoing half does not turn the
-    // incoming half into a bowl: that one only follows part of the way
+    const incoming = place(sj, Math.max(0.4, Math.min(Math.max(sj.prefix - 0.6, 0.5), x1 - 2.4)), x1, yN); // A continuation is never a stub.
+    // The halves of a broken tie match in height, except that an obstacle-driven outgoing half does not turn the
+    // incoming half into a bowl: that one only follows part of the way.
     const ho = outgoing?.hgt ?? 0;
     const hi = incoming?.hgt ?? 0;
     outgoing?.draw(Math.max(ho, hi));
@@ -599,7 +604,7 @@ function sampleObstacles(f: SlurFrame, x0: number, x1: number): { t: number; o: 
   const window = 0.7;
   const samples: { t: number; o: number }[] = [];
   for (let x = x0 + 0.3; x <= x1 - 0.3; x += 0.25) {
-    if ((!f.openL && x < x0 + 0.45) || (!f.openR && x > x1 - 0.45)) continue; // attached ends: the note itself is there
+    if ((!f.openL && x < x0 + 0.45) || (!f.openR && x > x1 - 0.45)) continue; // Attached ends are skipped because the note itself is there.
     const o = slurReach(f, x - window / 2, x + window / 2);
     if (Math.abs(o) < 90) samples.push({ t: (x - x0) / L, o });
   }
@@ -619,18 +624,18 @@ function cheapestEndLift(
   y1: number,
   L: number,
 ): { d0: number; d1: number; h: number } {
-  const dir = f.above ? -1 : 1; // direction away from the notes
+  const dir = f.above ? -1 : 1; // This is the direction away from the notes.
   const hPref = Math.max(0.7, Math.min(3.0, 0.09 * L + 0.6));
   const need = (ya: number, yb: number): number => {
     let h = hPref;
     for (const { t, o } of samples) {
       const chord = ya + (yb - ya) * t;
-      const gap = f.above ? chord - (o - 0.4) : o + 0.4 - chord; // positive: the chord is beyond the obstacle edge, the arc must bulge
+      const gap = f.above ? chord - (o - 0.4) : o + 0.4 - chord; // A positive value means the chord is beyond the obstacle edge, so the arc must bulge.
       if (gap > 0) h = Math.max(h, gap / (4 * t * (1 - t) * 0.95));
     }
     return h;
   };
-  const hLimit = Math.max(3.5, 0.07 * L); // long slurs may arch higher before the end points are lifted instead
+  const hLimit = Math.max(3.5, 0.07 * L); // Long slurs may arch higher before the end points are lifted instead.
   let best = { cost: Number.POSITIVE_INFINITY, d0: 0, d1: 0, h: hPref };
   for (let d0 = 0; d0 <= 8; d0 += 0.5) {
     for (let d1 = 0; d1 <= 8; d1 += 0.5) {
@@ -660,6 +665,7 @@ interface SlurPiece {
  * the spot, so that drawing the same slur again gives its primitives the same tag (see `FinalSnapshot`).
  */
 const slurOwners = new WeakMap<EvL, Map<number, number>>();
+
 function slurOwner(a: EvL, id: number): number {
   let m = slurOwners.get(a);
   if (!m) {
@@ -706,7 +712,7 @@ function planSlurPiece(
   const clears = (h: number) =>
     samples.every(({ t, o }) => {
       const y = crescentY(x0, y0, x1, y1, h, st.above, x0 + t * L, 0.2);
-      return st.above ? y + st.thick <= o - 0.15 : y - st.thick >= o + 0.15; // outer edge plus the slur's own thickness
+      return st.above ? y + st.thick <= o - 0.15 : y - st.thick >= o + 0.15; // The outer edge plus the slur's own thickness must clear the obstacle.
     });
   let hMin = 0.3;
   while (hMin < 8 && !clears(hMin)) hMin += 0.1;

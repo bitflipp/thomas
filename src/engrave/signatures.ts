@@ -1,6 +1,8 @@
 // Clefs, key signatures and time signatures: which glyphs, where on the staff, how wide, and the
 // drawing of the signatures that start a system or change inside it.
+
 import type { Clef } from '../model.ts';
+
 import { keyAt, timeAt } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import type { SysCtx } from './draw.ts';
@@ -15,11 +17,13 @@ const sm = loadSmufl();
 
 /** Gap between consecutive accidentals of a key signature (staff spaces). */
 const KEY_ACCIDENTAL_GAP = 0.12;
+
 /** Left margin of the clef at the start of a system. */
 const CLEF_X = 0.9;
 
 /** Staff positions (half spaces above the bottom line) of the sharps and flats of a key signature in the treble clef, in order of fifths; other clefs shift them by whole octaves. */
 const SHARP_POS_TREBLE = [8, 5, 9, 6, 3, 7, 4];
+
 const FLAT_POS_TREBLE = [4, 7, 3, 6, 2, 5, 1];
 
 type TimeSignature = { beats: number; beatType: number };
@@ -137,7 +141,7 @@ function drawKeyChange(P: Prim[], ctx: SysCtx, mi: number, s: number, y0: number
 function drawClefChanges(P: Prim[], ctx: SysCtx, mi: number, s: number, y0: number): void {
   for (const mk of ctx.prep.measures[mi][s].marks) {
     if (mk.type !== 'clef') continue;
-    if (mk.tick === 0) continue; // drawn at the end of the previous measure
+    if (mk.tick === 0) continue; // A change at tick 0 is drawn at the end of the previous measure.
     const g = clefGlyph(mk.clef, true);
     const cx = xAtTick(ctx, mi, mk.tick);
     const col = ctx.spacing[mi].cols.find((c) => c.tick === mk.tick);

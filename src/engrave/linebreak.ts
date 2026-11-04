@@ -1,5 +1,7 @@
 // Line breaking: which measures make up each system.
+
 import type { Prepared } from './prep.ts';
+
 import { prefixWidth } from './signatures.ts';
 import type { MeasureSpacing } from './spacing.ts';
 
@@ -12,8 +14,10 @@ export interface SysPlan {
 
 /** At most this many measures are tried per line. */
 const MAX_MEASURES_PER_LINE = 14;
+
 /** The last line of the piece is not stretched at all when it is less full than this. */
 export const LAST_LINE_MIN_FILL = 0.55;
+
 const COST_PER_SYSTEM = 3;
 
 /**

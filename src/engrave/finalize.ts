@@ -1,6 +1,8 @@
 // Finalising a system once the spanners are placed: staff lines, the notes shifted onto their staves,
 // clefs and signatures, measure numbers, barlines and the brace or bracket. All in system coordinates.
+
 import type { Score, StaffGroup } from '../model.ts';
+
 import { loadSmufl } from '../smufl.ts';
 import type { SysCtx } from './draw.ts';
 import { D } from './draw.ts';
@@ -38,7 +40,7 @@ export function finalizeSystem(ctx: SysCtx, numbering: MeasureNumbering): Finali
   const bottom = ctx.staffY[nStaves - 1] + STAFF_HEIGHT;
   return {
     prims: P,
-    // copies: the lists in `ctx` are rewound and refilled when the system is drawn again, but this result may be kept
+    // Copies: the lists in `ctx` are rewound and refilled when the system is drawn again, but this result may be kept.
     staffPrims: ctx.prims.map((prims, s) => ({ dy: ctx.staffY[s], prims: [...prims] })),
     top: Math.min(0, ...extents.map((e, s) => ctx.staffY[s] + e.top)),
     bottom: Math.max(bottom, ...extents.map((e, s) => ctx.staffY[s] + e.bottom)),

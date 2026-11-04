@@ -19,6 +19,7 @@ m2
   rh.1: c5:1
   lh.1: c3:1
 `;
+
 const load = (t = base): Score => parseText(t);
 const links = (s: Score) => engrave(s).pages.flatMap((p) => p.prims.filter((x) => x.k === 'link'));
 const a = (staff: string, voice: number, idx: number, mi = 0) => ({ mi, staff, voice, idx });
@@ -46,7 +47,7 @@ test('lines: addLine pairs notes of different voices and staves, removeLine drop
   assert.equal(pairs[0].start.ref.staff, 'rh');
   assert.equal(pairs[0].stop.ref.staff, 'lh');
   assert.deepEqual(parseText(writeText(s)), s);
-  // an overlapping line gets another number, a later one reuses the first
+  // An overlapping line gets another number, a later one reuses the first.
   s = C.addLine(s, a('rh', 2, 0), a('lh', 1, 1), true);
   assert.deepEqual(
     pairLines(lineEnds(s))
@@ -94,7 +95,7 @@ test('lines: drawn only when both notes are in one system; incremental engraving
   const split = across(base.replace('m2', 'm2 break=system'));
   assert.equal(links(split).length, 0);
   assert.equal(lineEnds(split).length, 2, 'the line stays in the score');
-  // the incremental engraver keeps up with lines (see also test/incremental.test.ts, whose random edits include them)
+  // The incremental engraver keeps up with lines (see also test/incremental.test.ts, whose random edits include them).
   const cache = createEngraveCache();
   const before = load();
   engrave(before, { cache });

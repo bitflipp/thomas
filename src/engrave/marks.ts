@@ -3,7 +3,9 @@
 // Placed over the whole piece for one staff at a time: the marks are collected into `Item`s per
 // system (spans such as hairpins are split at system breaks), then stacked in rows above and below
 // the staff, each row clearing the skyline and the rows nearer the staff.
+
 import type { Mark, MarkPlacement } from '../model.ts';
+
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
 import type { SysCtx } from './draw.ts';
@@ -40,6 +42,7 @@ interface Item {
 
 /** Gap between a row of marks and what it clears. */
 const ROW_CLEARANCE = 0.55;
+
 /** The hairpin's centre sits this far above the dynamic baseline. */
 const HAIRPIN_OFFSET = 0.55;
 
@@ -135,7 +138,7 @@ function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' })
     x,
     nb === undefined ? undefined : sm0.prep.measures[mi][nb].evs,
   );
-  let left = centre - (run.ink0 + run.ink1) / 2; // origin so that the visible ink is centred on the notehead
+  let left = centre - (run.ink0 + run.ink1) / 2; // This is the origin at which the visible ink is centred on the notehead.
   // Never straddle a barline: slide the run beside it, to the left, except for a dynamic at the
   // start of a measure, which stays in that measure.
   for (let k = sys.a; k <= sys.b; k++) {
@@ -377,7 +380,7 @@ function addHairpins(sm0: StaffMarks, spans: Span[], items: Item[][]): void {
         down: extent,
         row: 0,
         order: 0,
-        // x0 and x1 are read when drawing: placement may shorten the hairpin next to a dynamic
+        // x0 and x1 are read when drawing: placement may shorten the hairpin next to a dynamic.
         draw: (ref) => [
           { t: 'line', x1: item.x0, y1: ref - o0 / 2, x2: item.x1, y2: ref - o1 / 2, w: thickness },
           { t: 'line', x1: item.x0, y1: ref + o0 / 2, x2: item.x1, y2: ref + o1 / 2, w: thickness },
@@ -412,7 +415,7 @@ function addPedals(sm0: StaffMarks, spans: Span[], items: Item[][]): void {
             out.push({ t: 'glyph', name: 'keyboardPedalPed', x: p.x0, y: ref });
             lineX = p.x0 + pedWidth + 0.3;
           } else if (p.x1 - p.x0 > pedWidth + 2) {
-            // continuation of a pedal from the previous system: "(Ped.)"
+            // Continuation of a pedal from the previous system: "(Ped.)".
             const leftParen = sm.adv('keyboardPedalParensLeft');
             out.push({ t: 'glyph', name: 'keyboardPedalParensLeft', x: p.x0, y: ref });
             out.push({ t: 'glyph', name: 'keyboardPedalPed', x: p.x0 + leftParen, y: ref });
@@ -522,6 +525,7 @@ function baselineGroups(list: Item[]): Item[][] {
 
 /** Owner tags of mark pieces by (mark, first measure of the system), so that drawing a mark again tags its primitives the same. */
 const pieceOwners = new WeakMap<object, Map<number, number>>();
+
 function pieceOwner(src: Mark, systemStart: number): number {
   let m = pieceOwners.get(src);
   if (!m) {
@@ -545,7 +549,7 @@ function placeGroup(ctx: SysCtx, s: number, group: Item[], side: Side): void {
       const hairOffset = it.kind === 'hair' ? HAIRPIN_OFFSET : 0;
       ref = Math.max(ref, sky.bottom(it.x0, it.x1, 4) + ROW_CLEARANCE + it.up + hairOffset);
     } else {
-      // a dynamic stays close to the notes, under any slur arching over them
+      // A dynamic stays close to the notes, under any slur arching over them.
       ref = Math.min(ref, sky.top(it.x0, it.x1, 0, it.kind === 'dyn') - ROW_CLEARANCE - it.down);
     }
   }

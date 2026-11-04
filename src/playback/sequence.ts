@@ -5,13 +5,16 @@
 // turned into velocity); finally the intervals become note-on/off messages, plus CC64 for the pedal,
 // sorted by time. Every staff gets its own MIDI channel (`channelOf`), so a synth can give the staves
 // different instruments.
+
 import type { Grace, NoteEvent, Score, TimedEvent, TremoloGroup, Voice } from '../model.ts';
+
 import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, pitchMidi, timeAt } from '../model.ts';
 
 export interface Msg {
   sec: number;
   bytes: number[];
 }
+
 export interface Sequence {
   /** Sorted by time; at one instant, note-offs and pedal-ups come before note-ons (a repeated note must re-articulate). */
   msgs: Msg[];
@@ -26,6 +29,7 @@ export interface Sequence {
 
 /** Every note plays at this velocity: playback is for proofreading, so dynamics are not rendered. */
 const VELOCITY = 80;
+
 const STACCATO = 0.5;
 
 /** MIDI channel of the n-th staff: 0..15 without the percussion channel 9. */
@@ -309,7 +313,7 @@ export function buildSequence(score: Score): Sequence {
     const ch = channelOf(si);
     const velAt = readDynamicsAndPedal(score, staff.id, ch, measureStart, total, pedal);
     const sp: StaffPlayback = { ch, notes, velAt };
-    const openTies = new Map<number, Map<number, Note>>(); // per voice id
+    const openTies = new Map<number, Map<number, Note>>(); // The map is keyed by voice id.
     score.measures.forEach((m, mi) => {
       for (const v of m.staves[staff.id]?.voices ?? []) {
         const open = openTies.get(v.id) ?? new Map<number, Note>();

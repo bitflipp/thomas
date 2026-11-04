@@ -13,6 +13,7 @@ staff rh clef=G2 name="Piano"
 staff lh clef=F4 name="Piano"
 brace rh lh
 `;
+
 const SRC =
   HEAD +
   `
@@ -51,8 +52,8 @@ test('an acciaccatura sounds before the beat, an appoggiatura on it', () => {
     ons.map((m) => m.bytes[1]),
     [72, 71, 72, 74, 76],
   );
-  assert.ok(ons[1].sec < 0.5 && ons[2].sec === 0.5); // slashed: before the second beat, main note on it
-  assert.ok(ons[3].sec === 1 && ons[4].sec > 1); // plain: starts on the beat, the main note follows
+  assert.ok(ons[1].sec < 0.5 && ons[2].sec === 0.5); // A slashed grace note sounds before the second beat, with the main note on it.
+  assert.ok(ons[3].sec === 1 && ons[4].sec > 1); // A plain grace note starts on the beat, and the main note follows.
 });
 
 test('MusicXML grace notes are attached to the following note', () => {

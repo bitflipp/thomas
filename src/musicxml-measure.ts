@@ -1,5 +1,6 @@
 // MusicXML measure reader: one measure of one part -> raw notes (per staff and source voice) and
 // timed marks, with absolute ticks inside the measure. Voices are built from them later.
+
 import type {
   Articulation,
   Clef,
@@ -14,6 +15,7 @@ import type {
   Step,
   TimedMark,
 } from './model.ts';
+
 import { PPQ, STEPS } from './model.ts';
 import type { RawNote, TupletStart } from './musicxml-raw.ts';
 import { TYPE_BASE, ticksToDur } from './musicxml-raw.ts';
@@ -292,7 +294,7 @@ function readNote(r: Reader, el: XNode): void {
   const timeModification = child(el, 'time-modification');
   if (timeModification)
     raw.tmRatio = [Number(text(timeModification, 'actual-notes')), Number(text(timeModification, 'normal-notes'))];
-  if (!isChord && staffIdOf(r, staffN) !== homeId) raw.ev.staff = staffIdOf(r, staffN); // cross-staff note
+  if (!isChord && staffIdOf(r, staffN) !== homeId) raw.ev.staff = staffIdOf(r, staffN); // This note is a cross-staff note.
   const stem = text(el, 'stem');
   if (r.env.keepStems && (stem === 'up' || stem === 'down')) raw.ev.stem = stem;
   raw.beam1 = children(el, 'beam')

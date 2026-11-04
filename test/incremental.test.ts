@@ -1,6 +1,8 @@
 // The incremental engraver (an `EngraveCache` carried from edit to edit) must produce exactly what a
 // fresh engraving of the same score does. Each test applies a series of edits and compares after every one.
+
 import assert from 'node:assert/strict';
+
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import type { EvAddr } from '../src/editor/addr.ts';
@@ -26,7 +28,7 @@ function normalize(res: Engraved): unknown {
     ...p,
     prims: p.prims.map((q) => ({ ...q, o: q.o === undefined ? undefined : id(q.o), g: q.g?.map(id) })),
   }));
-  return { ...res, pages, placed: undefined }; // `placed` holds the same prims as `pages`
+  return { ...res, pages, placed: undefined }; // `placed` holds the same prims as `pages`.
 }
 
 const opts = { respectBreaks: true, measureNumbers: 'system' as const };
@@ -107,7 +109,7 @@ function randomEdit(score: Score, rand: () => number): { score: Score; what: str
       return { score: C.setBreak(score, mi, rand() < 0.5 ? 'system' : undefined), what: `break ${mi}` };
     }
     case 8: {
-      // a line between two notes of any voices and staves, mostly near each other, so that it often stays within a system
+      // A line between two notes of any voices and staves, mostly near each other, so that it often stays within a system.
       const a = pick(notes);
       const near = notes.filter((e) => e.a.mi >= a.a.mi && e.a.mi <= a.a.mi + 1 && e !== a);
       const b = pick(near.length ? near : notes);
@@ -117,7 +119,7 @@ function randomEdit(score: Score, rand: () => number): { score: Score; what: str
       };
     }
     case 9: {
-      // a slur between two notes of one voice, close enough to cross a barline or a system break now and then
+      // A slur between two notes of one voice, close enough to cross a barline or a system break now and then.
       const a = pick(notes);
       const same = notes.filter(
         (e) =>
@@ -159,7 +161,7 @@ for (const name of ['gewitter', 'tango']) {
       try {
         next = randomEdit(score, rand);
       } catch (e) {
-        if (e instanceof C.EditError) continue; // the command refused (nothing to do there)
+        if (e instanceof C.EditError) continue; // The command refused, so there is nothing to do there.
         throw e;
       }
       score = next.score;

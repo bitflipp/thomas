@@ -20,6 +20,7 @@ import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, timeAt } from '../
 import { must } from '../src/util.ts';
 import { measureTick, seek } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
+
 import {
   acc,
   clefArg,
@@ -42,7 +43,8 @@ import {
   zoom,
 } from './state.ts';
 
-// ---------------------------------------------------------------- what is drawn on top of the pages
+// The overlay: ghost notes, marquee boxes and other temporary drawings that the pointer handling
+// below shows on top of the engraved pages. They are not part of the score.
 
 export type Ghost =
   | {
@@ -67,12 +69,14 @@ export type Ghost =
     }
   | { kind: 'rect'; page: number; box: Box }
   | { kind: 'head'; page: number; x: number; y: number; pos: number; top: number; w: number; label: string };
+
 export const ghost = signal<Ghost | null>(null);
 
 /** The element the pointer is over (select tool), shown in light blue as the next thing a click selects. */
 export const hover = signal<Target | null>(null);
 
-// ---------------------------------------------------------------- page geometry
+// Page geometry: zoom, scrolling and the conversion between screen pixels and page coordinates
+// (staff spaces), for which the page elements of the score pane are registered here.
 
 export const pageEls: (HTMLElement | null)[] = [];
 
@@ -88,8 +92,10 @@ export function zoomBy(f: number, at?: { x: number; y: number }): void {
   // `zoomAnchor` carries the cursor position and the zoom ratio to the pane (see `takeZoomAnchor`).
   zoomAnchor = at && zoom.peek() !== z0 ? { ...at, r: zoom.peek() / z0 } : null;
 }
+
 /** Set by `zoomBy`, consumed by the score pane after its next render. */
 export let zoomAnchor: { x: number; y: number; r: number } | null = null;
+
 export const takeZoomAnchor = () => {
   const a = zoomAnchor;
   zoomAnchor = null;
@@ -101,6 +107,7 @@ export interface Where {
   x: number;
   y: number;
 }
+
 /** Client coordinates -> page and staff-space coordinates (the nearest page when outside all). */
 export function locate(cx: number, cy: number): Where | undefined {
   const res = engraved.peek();
@@ -122,11 +129,13 @@ export function locate(cx: number, cy: number): Where | undefined {
   return { page: best, x: ((cx - r.left) / r.width) * p.width, y: ((cy - r.top) / r.height) * p.height };
 }
 
-// ---------------------------------------------------------------- helpers
+// Small helpers shared by the pointer handling and the commands: staff ids, measure lengths, the
+// duration currently chosen in the palette and the selection.
 
 const staffId = (sc: Score, idx: number) => sc.staves[idx].id;
 const lenOf = (sc: Score, mi: number) => measureTicks(timeAt(sc, mi));
 const durTicks = () => baseTicks({ base: dur.value, dots: dots.value });
+
 export const evRefs = (): (EvAddr & { pi?: number })[] =>
   selection.value.filter((r): r is Extract<Ref, { t: 'ev' }> => r.t === 'ev');
 
@@ -183,7 +192,9 @@ function ghostFor(w: Where, alt: boolean): Ghost | null {
   };
 }
 
-// ---------------------------------------------------------------- pointer state machine
+// The pointer state machine: press, move and release are interpreted according to the current tool
+// and what is under the pointer (a drag of a head, a marquee, note input, a span being drawn, ...).
+// `Drag` is the state held between the events.
 
 type Drag =
   | { k: 'none' }
@@ -207,6 +218,7 @@ type Drag =
       from: Extract<Ref, { t: 'ev' }>;
     }
   | { k: 'mark'; ref: Extract<Ref, { t: 'mark' }>; start: Where; cx: number; cy: number; moved: boolean };
+
 let drag: Drag = { k: 'none' };
 
 const MARK_TOOLS = new Set<string>(['dynamic', 'text', 'tempo', 'clef']);
@@ -304,7 +316,7 @@ export function onPointerDown(e: PointerEvent): void {
   else if (MARK_TOOLS.has(t)) addMarkAt(w);
   else if (t === 'tuplet') makeTupletAt(target);
   else if (e.altKey && t === 'select') {
-    // Alt+click: put the playhead here
+    // Alt+click: put the playhead here.
     const g = measureAt(h.layout, w.page, w.x, w.y);
     if (g) seek(measureTick(g.mi) + snapTick(g, lenOf(score.peek(), g.mi), w.x, PPQ / 4).tick);
   } else pressWithSelectTool(e, w, h, target);
@@ -312,6 +324,7 @@ export function onPointerDown(e: PointerEvent): void {
 
 /** What a click on the target selects: a single note as a whole (stem and all), a chord tone on its own. Hover shows the same. */
 const ZERO: Box = { x0: 0, y0: 0, x1: 0, y1: 0 };
+
 /** Hover on the event a mark would hang on at the pointer (on `staff` only when given, else on the staff under it). */
 function eventHover(w: Where, staff?: string, prefer = voice.value): Target | null {
   const h = hit.peek();
@@ -331,6 +344,7 @@ function eventHover(w: Where, staff?: string, prefer = voice.value): Target | nu
   const at = eventAtX(sc, g, staffId(sc, g.staff), lenOf(sc, g.mi), w.x, prefer);
   return at ? { page: g.page, ref: { t: 'ev', ...at }, k: 'head', boxes: [], bbox: ZERO, prio: 0 } : null;
 }
+
 function setHover(t: Target | null): void {
   const cur = hover.peek();
   if (t === cur || (t && cur && t.page === cur.page && t.k === cur.k && refKey(t.ref) === refKey(cur.ref))) return;
@@ -361,7 +375,7 @@ export function onPointerMove(e: PointerEvent): void {
       hover.value = null;
     }
     return;
-  } // the shortcuts dialog covers the score
+  } // The shortcuts dialog covers the score.
   const w = locate(e.clientX, e.clientY);
   const h = hit.peek();
   if (!(w && h)) {
@@ -393,6 +407,7 @@ export function onPointerMove(e: PointerEvent): void {
 
 const DRAG_THRESHOLD_PX = 4;
 const MARQUEE_THRESHOLD = 0.4;
+
 const pastThreshold = (d: { cx: number; cy: number }, e: PointerEvent) =>
   Math.hypot(e.clientX - d.cx, e.clientY - d.cy) >= DRAG_THRESHOLD_PX;
 
@@ -559,7 +574,7 @@ function enter(w: Where, alt: boolean): void {
   if (run((s) => C.enterNote(s, loc, sn.tick, d, pitch, { chord, descend: !alt }))) {
     selectEventAt(loc, sn.tick);
     acc.value = undefined;
-  } // an accidental applies to one note
+  } // An accidental applies to one note.
 }
 
 function addMarkAt(w: Where): void {
@@ -631,7 +646,8 @@ export function tupletsAround(): { label: string; ref: Ref }[] {
   return out;
 }
 
-// ---------------------------------------------------------------- commands shared with the keyboard and Properties panel
+// Commands that are not tied to the pointer: the keyboard shortcuts and the Properties panel call
+// these too, so that every action has one implementation.
 
 /** Select everything in the score that is like the (first) selected element: any dynamic, same hairpin kind, same duration ... */
 export function selectSimilar(): void {
@@ -678,6 +694,7 @@ export const cancelDrag = (): void => {
   drag = { k: 'none' };
   ghost.value = null;
 };
+
 void eventOf;
 void clefArg;
 

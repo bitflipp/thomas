@@ -8,7 +8,9 @@
 //    exact, so box overlap decides;
 //  - otherwise (slanted beams, slurs, hairpins, most glyphs) the bounding boxes only serve as a broad phase and the
 //    outlines are intersected.
+
 import { loadSmufl } from '../smufl.ts';
+
 import { must } from '../util.ts';
 import type { Kind, Page, Prim } from './scene.ts';
 
@@ -51,6 +53,7 @@ export const ALLOW: readonly [Kind, Kind, Scope][] = [
 ];
 
 const allowed = new Map<string, Scope>();
+
 for (const [a, b, s] of ALLOW) {
   allowed.set(`${a}|${b}`, s);
   allowed.set(`${b}|${a}`, s);
@@ -85,10 +88,11 @@ export interface Collision {
 
 const sm = loadSmufl();
 
-// ---- path flattening
+// Path flattening: the collision check works on polygons.
 // Glyph and curve outlines come as SVG path data; to intersect them they are approximated by polygons
 // (Béziers sampled at 6-8 points, which is plenty at the 0.07 tolerance). Rings of a glyph are cached by name.
 const glyphRings = new Map<string, number[][]>();
+
 function flattenPath(d: string): number[][] {
   const tok = d.match(/[MLHVCQZmlhvcqz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
   const rings: number[][] = [];
@@ -266,9 +270,10 @@ function shapeOf(p: Prim): Shape | null {
   }
 }
 
-// ---- outline intersection
-// Two polygon sets overlap if any pair of edges crosses, or if one lies entirely inside the other (no edge
-// crossing then). Edges outside the bounding-box overlap of the two shapes are skipped quickly.
+// Outline intersection: the geometric test behind the collision check. Two polygon sets overlap if any
+// pair of edges crosses, or if one lies entirely inside the other (no edge crossing then). Edges outside
+// the bounding-box overlap of the two shapes are skipped quickly.
+
 function segCross(
   ax: number,
   ay: number,
@@ -285,6 +290,7 @@ function segCross(
   const d4 = (dx - cx) * (by - cy) - (dy - cy) * (bx - cx);
   return d1 * d2 < 0 && d3 * d4 < 0;
 }
+
 function inside(rings: number[][], x: number, y: number): boolean {
   let c = false;
   for (const r of rings) {
@@ -299,6 +305,7 @@ function inside(rings: number[][], x: number, y: number): boolean {
   }
   return c;
 }
+
 function outlinesIntersect(a: Shape, b: Shape): boolean {
   if (edgesCross(a, b)) return true;
   // No crossing edges. The outlines may still overlap if one lies completely inside the other, which
@@ -306,8 +313,9 @@ function outlinesIntersect(a: Shape, b: Shape): boolean {
   return inside(b.rings, a.rings[0][0], a.rings[0][1]) || inside(a.rings, b.rings[0][0], b.rings[0][1]);
 }
 
-// ---- pair policy
-// Whether two primitives are *meant* to touch: parts of one note, members of one beam or tuplet group, ...
+// Pair policy: which overlaps are accepted and which are reported.
+
+/** Whether two primitives are *meant* to touch: parts of one note, members of one beam or tuplet group, ... */
 function related(a: Prim, b: Prim): boolean {
   if (a.o !== undefined && a.o === b.o) return true;
   if (a.o !== undefined && b.g?.includes(a.o)) return true;
@@ -316,7 +324,7 @@ function related(a: Prim, b: Prim): boolean {
 }
 
 function permitted(a: Prim, b: Prim): boolean {
-  if (a.k === b.k && a.o !== undefined && a.o === b.o) return true; // parts of one object
+  if (a.k === b.k && a.o !== undefined && a.o === b.o) return true; // These are parts of one object.
   const scope = allowed.get(`${a.k}|${b.k}`);
   if (scope === undefined) return false;
   return scope === 'any' || related(a, b);

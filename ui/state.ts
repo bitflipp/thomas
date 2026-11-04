@@ -3,7 +3,9 @@
 // Everything is a preact signal. The score signal holds an immutable `Score`; an edit replaces it
 // (`commit`), so undo is just a stack of earlier values (structural sharing keeps that cheap). The
 // engraving, hit index and text are derived by effects from the score, so no component recomputes them.
+
 import { batch, computed, effect, signal } from '@preact/signals';
+
 import type { Ref } from '../src/editor/addr.ts';
 import { EditError } from '../src/editor/commands.ts';
 import type { HitIndex } from '../src/editor/hit.ts';
@@ -14,7 +16,8 @@ import type { BaseDur, Clef, Score } from '../src/model.ts';
 import { validate } from '../src/model.ts';
 import { parseText, writeText, writeTextMap } from '../src/textformat.ts';
 
-// ---------------------------------------------------------------- document
+// The document: the score signal with its undo/redo history, the file name and dirty flag, toast
+// messages, and the functions that change the score (`commit`, `run`, `undo`, `redo`, `load`).
 
 const EMPTY = `page 210x297 margin=10 space=1.75
 staff s1 clef=G2 name="Piano"
@@ -35,16 +38,20 @@ m4 barline=final
   s1.1: R:1
   s2.1: R:1
 `;
+
 export const NEW_SCORE_TEXT = EMPTY;
 
 export const score = signal<Score>(parseText(EMPTY));
 export const fileName = signal('score.txt');
 export const dirty = signal(false);
+
 /** Counts documents opened or created (not edits). */
 export const docId = signal(0);
+
 const past: Score[] = [];
 const future: Score[] = [];
 export const histLen = signal({ undo: 0, redo: 0 });
+
 const syncHist = () => {
   histLen.value = { undo: past.length, redo: future.length };
 };
@@ -52,6 +59,7 @@ const syncHist = () => {
 export const toast = signal<{ msg: string; err: boolean; id: number } | null>(null);
 let toastId = 0;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
+
 export function say(msg: string, err = false): void {
   const id = ++toastId;
   toast.value = { msg, err, id };
@@ -76,6 +84,7 @@ export function commit(next: Score): void {
   });
   syncHist();
 }
+
 /** Run an edit command on the current score; a refusal is shown to the user instead of thrown. Returns whether it applied. */
 export function run(fn: (s: Score) => Score): boolean {
   try {
@@ -91,6 +100,7 @@ export function run(fn: (s: Score) => Score): boolean {
     return false;
   }
 }
+
 export function undo(): void {
   const p = past.pop();
   if (!p) return;
@@ -101,6 +111,7 @@ export function undo(): void {
   });
   syncHist();
 }
+
 export function redo(): void {
   const f = future.pop();
   if (!f) return;
@@ -111,6 +122,7 @@ export function redo(): void {
   });
   syncHist();
 }
+
 /** Replace the whole document (open/new): history restarts. */
 export function load(s: Score, name?: string): void {
   past.length = 0;
@@ -124,6 +136,7 @@ export function load(s: Score, name?: string): void {
     if (name) fileName.value = name;
   });
 }
+
 export function loadText(t: string, name?: string): boolean {
   try {
     const s = parseText(t);
@@ -140,32 +153,40 @@ export function loadText(t: string, name?: string): boolean {
   }
 }
 
-// ---------------------------------------------------------------- view
+// View settings: zoom, which panes are shown, colours and other display options. None of them
+// is part of the score.
 
 export const zoom = signal(1);
-export const shownZoom = signal(1); // the zoom the pages are displayed at (differs from `zoom` while fitting)
-export const fit = signal(true); // fit pages to the pane width
+export const shownZoom = signal(1); // This is the zoom the pages are displayed at (it differs from `zoom` while fitting).
+export const fit = signal(true); // When set, the pages are fitted to the pane width.
 export const showText = signal(false);
 export const showProperties = signal(true);
 export const space = signal<number | null>(null);
 export const showCollisions = signal(false);
+
 /** True while the PDF print dialog is being prepared: every page then generates its SVG, whether near the viewport or not. */
 export const printing = signal(false);
+
 export const voiceColors = signal(true);
+
 /** Ink colour of each voice when voice colours are on (voice 1 stays black). */
 export const VOICE_COLORS: Record<number, string> = { 2: '#1a8f4a', 3: '#d9780a', 4: '#8e44ad' };
+
 export const timing = signal(0);
 
 /** Set once the music font is loaded; nothing is engraved before. */
 export const ready = signal(false);
+
 export const engraved = signal<Engraved | null>(null);
 export const hit = signal<HitIndex | null>(null);
 export const engraveError = signal('');
 
 /** Kept from one edit to the next, so that only what an edit touched is engraved again. */
 const engraveCache = createEngraveCache();
+
 /** The page setup with the staff space of the zoom setting: the same object as long as neither changes (the cache compares it). */
 let spacedPage: { from: Score['page']; sp: number; page: Score['page'] } | undefined;
+
 function pageWithSpace(page: Score['page'], sp: number): Score['page'] {
   if (!(spacedPage && spacedPage.from === page && spacedPage.sp === sp))
     spacedPage = { from: page, sp, page: { ...page, staffSpace: sp } };
@@ -188,7 +209,7 @@ effect(() => {
       ghostRests: true,
     };
     let res = engrave(s, opts);
-    if (res.systems === 1) res = engrave(s, { ...opts, fillLast: true }); // a score of one short line: spread it out, there is room to work in
+    if (res.systems === 1) res = engrave(s, { ...opts, fillLast: true }); // A score of one short line is spread out, because there is room to work in.
     const h = buildHitIndex(s0, res);
     batch(() => {
       engraved.value = res;
@@ -202,7 +223,8 @@ effect(() => {
   timing.value = performance.now() - t0;
 });
 
-// ---------------------------------------------------------------- selection and tools
+// Selection and tools: what is selected in the score and which tool the pointer currently uses,
+// together with the note settings (duration, dots, accidental, voice) that go with note input.
 
 export const selection = signal<Ref[]>([]);
 
@@ -222,11 +244,14 @@ export type Tool =
   | 'tempo'
   | 'clef'
   | 'tuplet';
+
 export const tool = signal<Tool>('select');
 export const dur = signal<BaseDur>(8);
 export const dots = signal(0);
+
 /** Accidental for new notes: undefined = whatever the key and the measure imply. */
 export const acc = signal<number | undefined>(undefined);
+
 export const voice = signal(1);
 export const dynText = signal('mf');
 export const clefArg = signal<Clef>({ sign: 'G', line: 2 });
@@ -234,9 +259,12 @@ export const tupletArg = signal<[number, number]>([3, 2]);
 export const tempoArg = signal({ unit: 4 as BaseDur, dots: 0, bpm: 120 });
 export const textArg = signal('dolce');
 
-// ---------------------------------------------------------------- persistence (per-browser convenience only)
+// Persistence: the score is autosaved to localStorage shortly after each change, so that a reload
+// brings it back. This is a convenience of one browser only; the file the user saves is the real copy,
+// and storage may be unavailable, so every access is guarded.
 
 const KEY = 'thomas.autosave';
+
 export function restore(): string | null {
   try {
     return localStorage.getItem(KEY);
@@ -244,7 +272,9 @@ export function restore(): string | null {
     return null;
   }
 }
+
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
 effect(() => {
   const s = score.value;
   clearTimeout(saveTimer);
@@ -259,5 +289,6 @@ effect(() => {
 
 /** The score as text, with the places of its parts (for showing the selection there). */
 export const textMap = computed(() => writeTextMap(score.value));
+
 export const textOf = computed(() => textMap.value.text);
 export { parseText, validate };

@@ -1,6 +1,8 @@
 // Entry point: load the music font, restore the last document (or the bundled example), mount the app.
 // The engraver needs the font before its first run, so nothing renders until `initFonts` resolves.
+
 import { render } from 'preact';
+
 import { must } from '../src/util.ts';
 import { App } from './App.tsx';
 import { initFonts } from './fonts.ts';
@@ -18,6 +20,6 @@ initFonts().then(() => {
   const saved = restore();
   if (!(saved && loadText(saved, 'score.txt'))) loadText(Object.values(examples)[0] ?? NEW_SCORE_TEXT, 'tango.txt');
   if (location.hash === '#text') showText.value = true;
-  if (import.meta.env.DEV) Object.assign(window, { __t: { ...state, interact } }); // handles for scripted tests
+  if (import.meta.env.DEV) Object.assign(window, { __t: { ...state, interact } }); // These are handles for scripted tests.
   render(<App />, must(document.getElementById('app')));
 });

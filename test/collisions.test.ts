@@ -32,8 +32,8 @@ test('collision policy: overlapping unrelated elements are reported, allowlisted
       height: 10,
       prims: [
         { t: 'line' as const, x1: 1, y1: 0, x2: 1, y2: 5, w: 0.12, k: 'stem' as const, o: 1 },
-        { t: 'line' as const, x1: 0, y1: 2, x2: 3, y2: 2, w: 0.16, k: 'ledger' as const, o: 2 }, // ledger x stem: allowed
-        { t: 'line' as const, x1: 0, y1: 2.05, x2: 3, y2: 2.05, w: 0.16, k: 'ledger' as const, o: 3 }, // ledger x ledger: not allowed
+        { t: 'line' as const, x1: 0, y1: 2, x2: 3, y2: 2, w: 0.16, k: 'ledger' as const, o: 2 }, // A ledger line crossing a stem is allowed.
+        { t: 'line' as const, x1: 0, y1: 2.05, x2: 3, y2: 2.05, w: 0.16, k: 'ledger' as const, o: 3 }, // A ledger line crossing another ledger line is not allowed.
       ],
     },
   ];

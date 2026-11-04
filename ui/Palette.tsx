@@ -3,6 +3,7 @@ import { Dropdown } from './Dropdown.tsx';
 import { CPS, Glyph, Icon, Label } from './icons.tsx';
 import { AccidentalButtons, DurationButtons } from './pickers.tsx';
 import type { Tool } from './state.ts';
+
 import {
   acc,
   clefArg,
@@ -35,6 +36,7 @@ export const DYNAMICS = [
   'rfz',
   'fz',
 ];
+
 const CLEFS: [string, { sign: 'G' | 'F' | 'C'; line: number; octave?: number }][] = [
   ['Treble', { sign: 'G', line: 2 }],
   ['Bass', { sign: 'F', line: 4 }],
@@ -42,6 +44,7 @@ const CLEFS: [string, { sign: 'G' | 'F' | 'C'; line: number; octave?: number }][
   ['Tenor', { sign: 'C', line: 4 }],
   ['Treble 8vb', { sign: 'G', line: 2, octave: -1 }],
 ];
+
 const RATIOS: [number, number][] = [
   [3, 2],
   [2, 1],

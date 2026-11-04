@@ -5,10 +5,13 @@
 // touched. Commands therefore only have to do the main change; consequences such as a slur that lost
 // its end note or a beam group that lost a note are cleaned up in one place. Events are addressed by
 // `EvAddr` (see addr.ts), never by object, because the draft replaces objects.
+
 import type { Draft } from 'immer';
+
 import { produce } from 'immer';
 import type { BeamMode, BeamPlan } from '../beams.ts';
 import { beamGroups, beamLinks, beatTicks, planBeams } from '../beams.ts';
+
 import type {
   Articulation,
   Clef,
@@ -26,6 +29,7 @@ import type {
   TupletGroup,
   Voice,
 } from '../model.ts';
+
 import {
   baseTicks,
   collectMarks,
@@ -39,6 +43,7 @@ import {
   pairLines,
   timeAt,
 } from '../model.ts';
+
 import { must } from '../util.ts';
 import type { EvAddr, MarkAddr } from './addr.ts';
 import { voiceOf } from './addr.ts';
@@ -53,7 +58,8 @@ export interface Loc {
   voice: number;
 }
 
-// ------------------------------------------------------------------ plumbing
+// Shared plumbing of the commands below: `edit` runs a recipe on an Immer draft and re-establishes
+// the model's invariants afterwards, and the helpers locate voices, events and measures by address.
 
 /** Runs `fn` on a draft of the score and tidies what it touched (`tidy` re-establishes the invariants). Returns the same score if nothing changed. */
 function edit(score: Score, fn: (d: Draft<Score>) => void): Score {
@@ -117,6 +123,7 @@ function tidy(d: Score, only?: Set<number>): void {
 
 /** Slur ids of a voice's events in time order (starts and stops of one event together), for events that have any. Voices are never changed in place, so this is kept per object. */
 const slurTokens = new WeakMap<Voice, { stops: number[]; starts: number[] }[]>();
+
 function slurTokensOf(v: Voice): { stops: number[]; starts: number[] }[] {
   let t = slurTokens.get(v);
   if (!t) {
@@ -132,6 +139,7 @@ function slurTokensOf(v: Voice): { stops: number[]; starts: number[] }[] {
 
 /** Line ids of a voice's events in time order, for events that have any. Kept per voice object like `slurTokens`. */
 const lineTokens = new WeakMap<Voice, { tick: number; starts: number[]; stops: number[] }[]>();
+
 function lineTokensOf(v: Voice): { tick: number; starts: number[]; stops: number[] }[] {
   let t = lineTokens.get(v);
   if (!t) {
@@ -199,13 +207,13 @@ function needsTidy(s: Score, only?: Set<number>): boolean {
       if ((!only || only.has(mi)) && withoutBrokenGroups(v.items)) return true;
       for (const t of slurTokensOf(v)) {
         for (const id of t.stops) {
-          if (!open.has(id)) return true; // a stop with no start
+          if (!open.has(id)) return true; // This is a stop with no start.
           open.delete(id);
         }
         for (const id of t.starts) open.add(id);
       }
     }
-    if (open.size) return true; // a start never stopped
+    if (open.size) return true; // This is a start that is never stopped.
   }
   for (const sid of staves) if (hasUnpairedHairpins(s, sid)) return true;
   return hasLooseLines(s);
@@ -335,12 +343,14 @@ function dropUnpairedHairpins(d: Score, staffId: string): void {
 }
 
 type MarkAt = MarkAddr;
+
 /** The list a mark lives in: the marks of an event, or the end marks of a voice (`idx` -1). */
 function markList(d: Draft<Score>, a: MarkAddr): Draft<MarkBody>[] | undefined {
   const v = d.measures[a.mi]?.staves[a.staff]?.voices.find((x) => x.id === a.voice);
   if (!v) return undefined;
   return a.idx < 0 ? v.end : flattenVoice(v as Voice)[a.idx]?.ev.marks;
 }
+
 function setMarkList(d: Draft<Score>, a: MarkAddr, list: Draft<MarkBody>[]): void {
   const v = must(d.measures[a.mi].staves[a.staff].voices.find((x) => x.id === a.voice));
   const target = a.idx < 0 ? v : (flattenVoice(v as Voice)[a.idx].ev as Draft<Event>);
@@ -348,6 +358,7 @@ function setMarkList(d: Draft<Score>, a: MarkAddr, list: Draft<MarkBody>[]): voi
   if (list.length) (target as Record<string, unknown>)[key] = list;
   else delete (target as Record<string, unknown>)[key];
 }
+
 /** Remove marks by address (any order; addresses are resolved before anything is removed). */
 function dropMarks(d: Draft<Score>, addrs: MarkAddr[]): void {
   const groups = new Map<string, MarkAddr[]>();
@@ -367,7 +378,9 @@ function dropMarks(d: Draft<Score>, addrs: MarkAddr[]): void {
   }
 }
 
-// ------------------------------------------------------------------ notes and rests
+// Commands that create, change and remove notes, chords and rests: input at a position, duration,
+// pitch and transposition, moving notes to another staff, ties and articulations. Each leaves every
+// voice as long as its measure.
 
 /** Adds a pitch to a chord, keeping the pitches ordered low to high as the model requires. */
 function insertPitch(n: Draft<NoteEvent>, p: NotePitch): void {
@@ -384,6 +397,7 @@ function toRest(e: Draft<Event>): Event {
     ...(e.marks ? { marks: JSON.parse(JSON.stringify(e.marks)) } : {}),
   };
 }
+
 function replaceInPlace(v: Draft<Voice>, target: Event, repl: Event): void {
   const walk = (items: Draft<Item>[]): boolean => {
     for (let i = 0; i < items.length; i++) {
@@ -498,6 +512,7 @@ export function updateEvents(score: Score, addrs: EvAddr[], fn: (e: Draft<Event>
     for (const a of addrs) fn(eventIn(d, a));
   });
 }
+
 export function updateNotes(score: Score, addrs: EvAddr[], fn: (e: Draft<NoteEvent>) => void): Score {
   return updateEvents(score, addrs, (e) => {
     if (e.kind === 'note') fn(e);
@@ -571,12 +586,14 @@ export function toggleArticulation(score: Score, addrs: EvAddr[], art: Articulat
     }
   });
 }
+
 function flattenEv(score: Score, a: EvAddr): Event | undefined {
   const v = voiceOf(score, a);
   return v ? flattenVoice(v)[a.idx]?.ev : undefined;
 }
 
-// ------------------------------------------------------------------ slurs
+// Slurs join two notes of one voice, possibly across measures. A slur is a start/stop pair of marks
+// sharing an id; the commands pick ids so that overlapping slurs stay distinguishable.
 
 /** Slur between two notes of the same voice (they may be in different measures). */
 export function addSlur(score: Score, from: EvAddr, to: EvAddr, side?: 'above' | 'below'): Score {
@@ -623,7 +640,8 @@ export function addSlur(score: Score, from: EvAddr, to: EvAddr, side?: 'above' |
   });
 }
 
-// ------------------------------------------------------------------ lines
+// Lines (straight connections between two notes, possibly in different voices or staves) are matched
+// score-wide by id, unlike slurs, which are matched per voice.
 
 /** A line between two notes, which may be in different voices or staves (it is drawn only when they are in one system, which the engraver decides). */
 export function addLine(score: Score, from: EvAddr, to: EvAddr, dashed = false): Score {
@@ -658,7 +676,7 @@ export function removeLine(score: Score, from: EvAddr, id: number): Score {
       if (k.length) e.lineStart = k;
       else delete e.lineStart;
     }
-  }); // the matching stop is removed by tidy()
+  }); // Tidy removes the matching stop.
 }
 
 export function setLineDashed(score: Score, from: EvAddr, id: number, dashed: boolean): Score {
@@ -679,7 +697,7 @@ export function removeSlur(score: Score, from: EvAddr, id: number): Score {
       if (k.length) e.slurStart = k;
       else delete e.slurStart;
     }
-  }); // the matching stop is removed by tidy()
+  }); // Tidy removes the matching stop.
 }
 
 export function setSlurSide(score: Score, from: EvAddr, id: number, side: 'above' | 'below' | undefined): Score {
@@ -692,7 +710,8 @@ export function setSlurSide(score: Score, from: EvAddr, id: number, side: 'above
   });
 }
 
-// ------------------------------------------------------------------ marks
+// Marks (dynamics, hairpins, pedal, ottava, clef changes, tempo, text) hang on events; the commands
+// below attach, move, update and remove them, including spans drawn over a range of notes.
 
 /** Hang a mark on the event `at` (the one under the cursor); a dynamic, tempo or clef replaces its kind already there. */
 export function addMark(score: Score, at: EvAddr, body: MarkBody): Score {
@@ -700,6 +719,7 @@ export function addMark(score: Score, at: EvAddr, body: MarkBody): Score {
     hang(d, at, body);
   });
 }
+
 function hang(d: Draft<Score>, at: EvAddr, body: MarkBody): void {
   const sm = staffMeasure(d, at.mi, at.staff);
   const v = sm.voices.find((x) => x.id === at.voice);
@@ -716,6 +736,7 @@ function hang(d: Draft<Score>, at: EvAddr, body: MarkBody): void {
   te.ev.marks ??= [];
   te.ev.marks.push(body as Draft<MarkBody>);
 }
+
 /** Move a mark onto another event of its staff. */
 export function moveMark(score: Score, a: MarkAddr, at: EvAddr): Score {
   return edit(score, (d) => {
@@ -757,6 +778,7 @@ export function updateMarks(
 export function removeMark(score: Score, a: MarkAddr): Score {
   return removeMarks(score, [a]);
 }
+
 export function removeMarks(score: Score, addrs: MarkAddr[]): Score {
   return edit(score, (d) => {
     const gone: MarkAddr[] = [...addrs];
@@ -848,7 +870,8 @@ export function addSpanOver(
   });
 }
 
-// ------------------------------------------------------------------ tuplets
+// Tuplets: turning an event into a tuplet that fills its span, and changing or dissolving one again.
+// Positions inside a tuplet are counted in written ticks of that tuplet's level.
 
 /** Turn the event at `a` into a tuplet filling its span: the event keeps the first slot, the others are rests. */
 export function makeTuplet(score: Score, a: EvAddr, actual: number, normal: number): Score {
@@ -900,6 +923,7 @@ export function removeTuplet(score: Score, a: EvAddr & { depth: number }): Score
     spliceItem(v.items as Draft<Item>[], g, flat as Draft<Item>[]);
   });
 }
+
 function spliceItem(items: Draft<Item>[], target: Item, repl: Draft<Item>[]): boolean {
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
@@ -927,7 +951,8 @@ export function updateTuplet(
   });
 }
 
-// ------------------------------------------------------------------ measures and score
+// Measure-level and score-level commands: inserting and deleting measures, time and key signatures
+// (a new length pads voices with rests or cuts them to fit), barlines, breaks, metadata and clefs.
 
 /** Fit every voice of measure `mi` to `len` ticks: pad with rests or cut. */
 function refit(d: Draft<Score>, mi: number, len: number): void {
@@ -969,7 +994,7 @@ export function insertMeasures(score: Score, at: number, count = 1): Score {
     const fresh = Array.from({ length: count }, () => emptyMeasure(score, Math.max(at - 1, 0)));
     d.measures.splice(at, 0, ...(fresh as Draft<Score['measures'][number]>[]));
     if (at === 0 && d.measures.length > count && d.measures[count].time) {
-      // the new first measure carries the time and key
+      // The new first measure carries the time and key.
       d.measures[0].time = d.measures[count].time;
       if (d.measures[count].key !== undefined) d.measures[0].key = d.measures[count].key;
     }
@@ -982,7 +1007,7 @@ export function deleteMeasures(score: Score, from: number, to: number): Score {
     const gone = d.measures.splice(from, to - from + 1);
     const next = d.measures[from];
     if (next) {
-      // keep time/key changes that were in force
+      // Keep time/key changes that were in force.
       const t = gone
         .map((m) => m.time)
         .filter(Boolean)
@@ -1021,24 +1046,28 @@ export function setKeySig(score: Score, mi: number, fifths: number | undefined):
     else d.measures[mi].key = fifths ?? 0;
   });
 }
+
 export function setBarline(score: Score, mi: number, b: 'single' | 'double' | 'final' | undefined): Score {
   return edit(score, (d) => {
     if (!b || b === 'single') delete d.measures[mi].barline;
     else d.measures[mi].barline = b;
   });
 }
+
 export function setBreak(score: Score, mi: number, b: 'system' | 'page' | undefined): Score {
   return edit(score, (d) => {
     if (b) d.measures[mi].breakBefore = b;
     else delete d.measures[mi].breakBefore;
   });
 }
+
 export function setStaffClef(score: Score, staff: string, clef: Clef): Score {
   return edit(score, (d) => {
     const s = d.staves.find((x) => x.id === staff);
     if (s) s.clef = { ...clef };
   });
 }
+
 export function setMeta(score: Score, patch: Partial<Score['meta']>): Score {
   return edit(score, (d) => {
     for (const [k, v] of Object.entries(patch)) {
@@ -1048,9 +1077,12 @@ export function setMeta(score: Score, patch: Partial<Score['meta']>): Score {
   });
 }
 
-// ------------------------------------------------------------------ staves
+// Staff commands: adding, removing, moving and duplicating staves, names, measure numbering and
+// page settings, and brace/bracket groups (`connections` presents the groups as the kind of link
+// between neighbouring staves).
 
 export type Connection = 'brace' | 'bracket' | undefined;
+
 /** Which kind of group joins staff i with staff i+1 (the natural way to edit groups). */
 export function connections(score: Score): Connection[] {
   const ids = score.staves.map((s) => s.id);
@@ -1064,6 +1096,7 @@ export function connections(score: Score): Connection[] {
   }
   return out;
 }
+
 function groupsFrom(ids: string[], conn: Connection[]): Score['groups'] {
   const groups: Score['groups'] = [];
   for (let i = 0; i < conn.length; i++) {
@@ -1192,12 +1225,14 @@ const F: Clef = { sign: 'F', line: 4 };
 const C3: Clef = { sign: 'C', line: 3 };
 const C4: Clef = { sign: 'C', line: 4 };
 const G8: Clef = { sign: 'G', line: 2, octave: -1 };
+
 export interface InstrumentPreset {
   key: string;
   label: string;
   staves: { clef: Clef; name?: string }[];
   join?: 'brace' | 'bracket';
 }
+
 export const INSTRUMENTS: InstrumentPreset[] = [
   { key: 'treble', label: 'Treble staff', staves: [{ clef: G }] },
   { key: 'bass', label: 'Bass staff', staves: [{ clef: F }] },
@@ -1237,6 +1272,7 @@ export const INSTRUMENTS: InstrumentPreset[] = [
     join: 'bracket',
   },
 ];
+
 void C4;
 
 /** Insert the staves of a preset (with names and joins) at position `at` (default: last), as one edit. */
@@ -1313,7 +1349,9 @@ export function pasteEvents(score: Score, loc: Loc, tick: number, evs: Event[]):
   });
 }
 
-// ------------------------------------------------------------------ beams and tremolos
+// Beam and tremolo groups wrap a run of sibling events of one voice (the same tuplet or the voice
+// itself); the commands below create and dissolve them, set the per-note beam modes and make
+// tremolos.
 
 /** Wrap the events from `a` to `b` (flat indices, siblings in one list: same tuplet or the voice itself) in a group. */
 function wrapRange(d: Draft<Score>, loc: Loc, a: number, b: number, make: (items: Item[]) => Item): void {
@@ -1341,6 +1379,7 @@ function wrapRange(d: Draft<Score>, loc: Loc, a: number, b: number, make: (items
 export function makeBeam(score: Score, loc: Loc, from: number, to: number): Score {
   return edit(score, (d) => wrapRange(d, loc, from, to, (items) => ({ kind: 'beam', items })));
 }
+
 /** The first and last event below an item. */
 const edgeEvents = (it: Item): [Event, Event] => {
   const flat = flattenVoice({ id: 0, items: [it] });
@@ -1512,6 +1551,7 @@ export function makeTremolo(score: Score, loc: Loc, from: number, to: number, be
     if (!inBeam(v.items as Draft<Item>[])) wrapRange(d, loc, from, to, (items) => ({ kind: 'tremolo', beams, items }));
   });
 }
+
 /** Dissolve the beam group or tremolo that holds the event. */
 export function ungroup(score: Score, a: EvAddr): Score {
   return edit(score, (d) => {

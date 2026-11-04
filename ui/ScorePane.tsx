@@ -4,7 +4,9 @@
 // Re-engraving happens in state.ts; this pane only draws its result. To stay fast on a big piece, SVG is
 // generated only for pages near the viewport, and again only when the page's own part of the selection
 // changed; hover and selection recolour primitives in place instead of regenerating the SVG.
+
 import { effect } from '@preact/signals';
+
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Ref } from '../src/editor/addr.ts';
 import { refKey } from '../src/editor/addr.ts';
@@ -17,6 +19,7 @@ import { pageToSvg } from '../src/render.ts';
 import { loadSmufl } from '../src/smufl.ts';
 import { must } from '../src/util.ts';
 import type { Ghost } from './interact.ts';
+
 import {
   cancelDrag,
   ghost,
@@ -29,7 +32,9 @@ import {
   takeZoomAnchor,
   zoomBy,
 } from './interact.ts';
+
 import { playhead, playing } from './player.ts';
+
 import {
   engraved,
   fit,
@@ -47,13 +52,14 @@ import {
 
 const MM_PX = 96 / 25.4;
 const SEL = '#2f6fed';
-const GHOST = '#c4c4c4'; // a hidden rest, drawn faintly in the editor only
-const HOVER = '#6b9af0'; // the selection colour, lighter
+const GHOST = '#c4c4c4'; // A hidden rest is drawn faintly in the editor only.
+const HOVER = '#6b9af0'; // This is the selection colour, but lighter.
 
 type GhostOf<K extends Ghost['kind']> = Extract<Ghost, { kind: K }>;
 
 const BAD = '#d33';
 const GHOST_FONT = 'system-ui, sans-serif';
+
 const ACCIDENTAL_GLYPHS = [
   'accidentalDoubleFlat',
   'accidentalFlat',
@@ -191,7 +197,7 @@ function PageView({
   const svg = useMemo(() => {
     if (!near) return '';
     const colorFor = (q: Prim): string | undefined => {
-      if (!q.r || printing.value) return undefined; // print output is plain black: no selection or voice colours
+      if (!q.r || printing.value) return undefined; // Print output is plain black, so it has no selection or voice colours.
       const r = primRef(h.index, q);
       if (!r) return undefined;
       if (keys.size && q.k !== 'beam') {
@@ -242,7 +248,7 @@ function PageView({
     const undo: (() => void)[] = [];
     for (const n of hovered) {
       const el = root.querySelector<SVGElement>(`[data-p="${n}"]`);
-      if (!el || el.getAttribute('fill') === SEL || el.getAttribute('stroke') === SEL) continue; // selected: keep its colour
+      if (!el || el.getAttribute('fill') === SEL || el.getAttribute('stroke') === SEL) continue; // A selected element keeps its colour.
       const prop = el.tagName === 'line' ? 'stroke' : 'fill';
       const old = el.style.getPropertyValue(prop);
       el.style.setProperty(prop, HOVER);
@@ -354,7 +360,7 @@ export function ScorePane() {
   const sel = selection.value;
   const z = zoom.value;
   const box = useRef<HTMLDivElement>(null);
-  const [paneW, setPaneW] = useState(0); // measured pane width: the first render happens before the pane exists
+  const [paneW, setPaneW] = useState(0); // This is the measured pane width; the first render happens before the pane exists.
   useEffect(() => {
     const el = must(box.current);
     const ro = new ResizeObserver(() => setPaneW(el.clientWidth));
@@ -454,4 +460,5 @@ export function ScorePane() {
     </div>
   );
 }
+
 void score;

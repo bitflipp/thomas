@@ -32,6 +32,7 @@ export function chooseDuration(base: BaseDur): void {
   dur.value = base;
   if (evRefs().length) setDurationSel({ base, dots: dots.peek() });
 }
+
 export function chooseDots(n: number): void {
   dots.value = n;
   const refs = evRefs();
@@ -131,7 +132,9 @@ export function stepSelection(dir: -1 | 1, extend = false): void {
   const ref = { t: 'ev' as const, mi, staff: last.staff, voice: last.voice, idx };
   selection.value = extend ? [...selection.peek(), ref] : [ref];
 }
+
 function countEvents(it: import('../src/model.ts').Item): number {
   return 'items' in it ? it.items.reduce((n, x) => n + countEvents(x), 0) : 1;
 }
+
 void transposeSemis;

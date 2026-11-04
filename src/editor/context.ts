@@ -33,6 +33,7 @@ export function ottavaAt(score: Score, staff: string, mi: number, tick: number):
 export function stepAtPos(pos: number, clef: Clef): number {
   return clefBottomStep(clef) + pos;
 }
+
 /** Inverse of `stepAtPos` for a sounding pitch; `shift` is the `ottavaAt` shift of its position. */
 export function posOf(p: Pitch, clef: Clef, shift = 0): number {
   return pitchStep({ ...p, octave: p.octave + shift }) - clefBottomStep(clef);
@@ -81,6 +82,7 @@ const SHARPS: [Step, number][] = [
   ['a', 1],
   ['b', 0],
 ];
+
 const FLATS: [Step, number][] = [
   ['c', 0],
   ['d', -1],
@@ -95,6 +97,7 @@ const FLATS: [Step, number][] = [
   ['b', -1],
   ['b', 0],
 ];
+
 /** Chromatic transposition by semitones: sharps going up, flats going down. */
 export function transposeSemis(p: Pitch, semis: number): Pitch {
   const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[p.step];
@@ -104,9 +107,11 @@ export function transposeSemis(p: Pitch, semis: number): Pitch {
   const stepBase = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[step];
   return { step, alter, octave: Math.round((midi - stepBase - alter) / 12) - 1 };
 }
+
 /** Diatonic transposition: the same alteration, `steps` letter names up. */
 export function transposeSteps(p: Pitch, steps: number): Pitch {
   const st = pitchStep(p) + steps;
   return { step: STEPS[((st % 7) + 7) % 7], octave: Math.floor(st / 7), alter: p.alter };
 }
+
 export const comparePitch = (a: Pitch, b: Pitch): number => pitchStep(a) - pitchStep(b) || a.alter - b.alter;

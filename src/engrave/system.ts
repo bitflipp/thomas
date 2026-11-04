@@ -3,7 +3,9 @@
 // Prepare the score, space every measure, choose the systems (`planSystems`), justify and draw each
 // system's notes, run the spanners over all systems, then finalise each system (staff distances from the
 // skylines, staff lines, clefs, barlines, brace) and paginate.
+
 import type { Score } from '../model.ts';
+
 import { must } from '../util.ts';
 import type { SysCtx } from './draw.ts';
 import type { FinalizedSystem, MeasureNumbering } from './finalize.ts';
@@ -120,6 +122,7 @@ export interface Engraved {
 
 /** Width of the brace area left of the systems, with and without a braced staff group. */
 const BRACE_ROOM = 2.4;
+
 const NO_BRACE_ROOM = 0.8;
 
 /** Engraves the whole score. Vertical sizes are only known after the spanners are placed, so the staff distances come last. */
@@ -132,7 +135,9 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const braceRoom = score.groups.some((g) => g.kind === 'brace') ? BRACE_ROOM : NO_BRACE_ROOM;
   const lineWidth = (score.page.width - 2 * score.page.margin) / S - braceRoom;
 
-  // Both variants of a measure's spacing are made together (they write onto the same records), and kept with its cache entry.
+  /**
+   * Both variants of a measure's spacing are made together (they write onto the same records), and kept with its cache entry.
+   */
   const spacing = (mi: number): [MeasureSpacing, MeasureSpacing] => {
     const e = prep.entries?.[mi];
     if (!e) {

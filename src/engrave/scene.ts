@@ -32,6 +32,7 @@ export type Kind =
   | 'measurenum'
   | 'arpeggio'
   | 'brace';
+
 /** Metadata attached to a primitive where it is pushed (via `tagFrom`); everything after drawing reads these instead of guessing. */
 export interface Tag {
   k?: Kind;
@@ -51,11 +52,14 @@ export interface Tag {
 
 const ids = new WeakMap<object, number>();
 const byId = new Map<number, WeakRef<object>>();
+
 /** Inverse of oid (diagnostics). */
 export function objOf(id: number): object | undefined {
   return byId.get(id)?.deref();
 }
+
 let nextId = 1;
+
 /** Stable numeric identity for any object, used for Tag.o / Tag.g. */
 export function oid(x: object): number {
   let i = ids.get(x);
@@ -66,6 +70,7 @@ export function oid(x: object): number {
   }
   return i;
 }
+
 /**
  * Tags prims[from..] in place: call it right after the drawing code that pushed them, with the
  * object they belong to (`o`; also gives `r`, the model object they depict) and optional groups.

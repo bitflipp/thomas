@@ -4,13 +4,16 @@
 // the ticks the contents would have without the tuplet's scaling, and `putEvent` converts when it
 // descends. All functions work on plain objects or Immer drafts and return new item lists; they
 // never leave a voice too short or too long, so callers can rely on the measure staying full.
+
 import type { BaseDur, Dur, Event, Item, RestEvent, TupletGroup } from '../model.ts';
+
 import { baseTicks, isBeam, isEvent, isTuplet } from '../model.ts';
 
 /** A refusal with a message fit for the user; the UI shows it in the status line instead of changing anything. */
 export class EditError extends Error {}
 
 const BASES: BaseDur[] = [1, 2, 4, 8, 16, 32, 64, 128];
+
 /** Every plain or single-dotted note value with its length, longest first (double dots are never produced). */
 const CANDS = BASES.flatMap((base) =>
   [0, 1]
@@ -52,6 +55,7 @@ export function itemTicks(it: Item): number {
   const inner = it.items.reduce((a, x) => a + itemTicks(x), 0);
   return isTuplet(it) ? (inner * it.normal) / it.actual : inner;
 }
+
 export const itemsTicks = (items: Item[]): number => items.reduce((a, x) => a + itemTicks(x), 0);
 
 /** The pieces of event `e` (which spans [a, b)) that remain over [from, to): rests, except the head of a note which stays a (tied) note. */

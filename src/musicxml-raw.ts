@@ -1,6 +1,8 @@
 // What the MusicXML reader produces before voices are built: notes with absolute ticks inside the
 // measure, and the shared name tables.
+
 import type { BaseDur, Dur, Event } from './model.ts';
+
 import { baseTicks } from './model.ts';
 
 /** A note or rest as read from the file, before it is placed into a voice tree. */

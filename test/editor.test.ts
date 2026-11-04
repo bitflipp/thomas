@@ -18,15 +18,19 @@ m2
   rh.1: R:2
   lh.1: R:2
 `;
+
 const load = (t = base()): Score => parseText(t);
+
 const ok = (s: Score) => {
   assert.deepEqual(validate(s), []);
   assert.equal(writeText(parseText(writeText(s))), writeText(s));
   return s;
 };
+
 const loc = { mi: 0, staff: 'rh', voice: 1 };
 const PPQ4 = 3360;
 const c4 = { step: 'c' as const, alter: 0, octave: 4 };
+
 const show = (s: Score, mi = 0, st = 'rh') =>
   writeText(s)
     .split('\n')
@@ -36,6 +40,7 @@ test('enterNote into a measure rest leaves rests around it', () => {
   const s = ok(C.enterNote(load(), loc, PPQ4 / 2, { base: 8, dots: 0 }, c4));
   assert.match(show(s), /r:8 c4 r:4/);
 });
+
 test('a longer note swallows what follows, a shorter one leaves rests', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4);
@@ -44,6 +49,7 @@ test('a longer note swallows what follows, a shorter one leaves rests', () => {
   s = ok(C.setDuration(s, { ...loc, idx: 0 }, { base: 8, dots: 0 }));
   assert.match(show(s), /c4:8 r r:4/);
 });
+
 test('chord toggling and delete', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = ok(C.enterNote(s, loc, 0, { base: 4, dots: 0 }, { ...c4, step: 'e' }, { chord: true }));
@@ -53,15 +59,17 @@ test('chord toggling and delete', () => {
   s = ok(C.deleteEvents(s, [{ ...loc, idx: 0 }]));
   assert.match(show(s), /r:4/);
 });
+
 test('tuplets: make, enter inside, refuse to overflow', () => {
   let s = C.makeTuplet(load(), { ...loc, idx: 0 }, 3, 2);
   ok(s);
-  const q = (PPQ4 * 2) / 3; // third of the half-note span... tuplet written 4th
+  const q = (PPQ4 * 2) / 3; // This is a third of the half-note span, for a tuplet written as a 4th.
   void q;
   s = ok(C.enterNote(s, loc, 0, { base: 4, dots: 0 }, c4));
   assert.match(show(s), /3:2\{c4:4 /);
   assert.throws(() => C.enterNote(s, loc, 0, { base: 1, dots: 0 }, c4), /fit/);
 });
+
 test('slurs get free numbers and tidy removes dangling ones', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4);
@@ -70,6 +78,7 @@ test('slurs get free numbers and tidy removes dangling ones', () => {
   s = ok(C.deleteEvents(s, [{ ...loc, idx: 1 }]));
   assert.doesNotMatch(show(s), /\(/);
 });
+
 test('marks and spans', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'mf' }));
@@ -80,11 +89,12 @@ test('marks and spans', () => {
   s = ok(C.removeMark(s, idx.mark.get(mk)!));
   assert.equal(marksOf(s.measures[1].staves.rh).length, 0);
 });
+
 test('a mark is added to and moved between events', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4);
   s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'mf' }));
-  s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'f' })); // replaces the one on that event
+  s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'f' })); // The new dynamic replaces the one on that event.
   const dyn = () =>
     marksOf(s.measures[0].staves.rh)
       .filter((m) => m.type === 'dynamic')
@@ -94,23 +104,25 @@ test('a mark is added to and moved between events', () => {
   s = ok(C.moveMark(s, { ...loc, idx: 0, k: 0 }, { ...loc, idx: 1 }));
   assert.equal(dyn(), `f@${PPQ4}`);
 });
+
 test('marks hang on events: they follow a changed note, and a hairpin goes when the note carrying one end is replaced', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4);
   s = ok(C.addMark(s, { ...loc, idx: 0 }, { type: 'dynamic', text: 'mf' }));
-  s = ok(C.addSpanOver(s, 'cresc', { ...loc, idx: 0 }, { ...loc, idx: 0 })); // ends where the second note starts
+  s = ok(C.addSpanOver(s, 'cresc', { ...loc, idx: 0 }, { ...loc, idx: 0 })); // The span ends where the second note starts.
   const types = () =>
     marksOf(s.measures[0].staves.rh)
       .map((m) => `${m.type}@${m.tick}`)
       .join();
   assert.equal(types(), `dynamic@0,hairpin@0,stop@${PPQ4}`);
-  s = ok(C.enterNote(s, loc, 0, { base: 4, dots: 0 }, { step: 'd', alter: 0, octave: 4 })); // another note in place of the first
+  s = ok(C.enterNote(s, loc, 0, { base: 4, dots: 0 }, { step: 'd', alter: 0, octave: 4 })); // This puts another note in place of the first.
   assert.equal(types(), `dynamic@0,hairpin@0,stop@${PPQ4}`);
   s = ok(C.setDuration(s, { ...loc, idx: 0 }, { base: 8, dots: 0 }));
-  assert.equal(types(), `dynamic@0,hairpin@0,stop@${PPQ4}`); // the note after it stays where it was
-  s = ok(C.enterNote(s, loc, 0, { base: 2, dots: 0 }, c4)); // the half note covers the event that carried the stop
+  assert.equal(types(), `dynamic@0,hairpin@0,stop@${PPQ4}`); // The note after it stays where it was.
+  s = ok(C.enterNote(s, loc, 0, { base: 2, dots: 0 }, c4)); // The half note covers the event that carried the stop.
   assert.equal(types(), 'dynamic@0');
 });
+
 test('measures: time change refits, delete and insert', () => {
   let s = C.enterNote(load(), loc, PPQ4, { base: 4, dots: 0 }, c4);
   s = ok(C.setTimeSig(s, 0, { beats: 3, beatType: 4 }));
@@ -121,6 +133,7 @@ test('measures: time change refits, delete and insert', () => {
   assert.equal(s.measures.length, 2);
   assert.throws(() => C.deleteMeasures(s, 0, 1), /at least one/);
 });
+
 test('ties, transposition, cross-staff', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = ok(C.toggleTie(s, [{ ...loc, idx: 0 }]));
@@ -152,6 +165,7 @@ test('hit index: every note head of the example is found where it is drawn', () 
   assert.ok(heads > 500);
   assert.ok(found / heads > 0.97, `${found}/${heads}`);
 });
+
 test('slots: a point in a measure maps to the measure, staff and a nearby column', () => {
   const s = parseText(readFileSync(new URL('../examples/tango.txt', import.meta.url), 'utf8'));
   const res = engrave(s, { respectBreaks: true });
@@ -174,14 +188,14 @@ test('beam groups and tremolos', () => {
   s = ok(C.ungroup(s, { ...loc, idx: 1 }));
   assert.doesNotMatch(show(s), /\[/);
   s = ok(C.makeBeam(s, loc, 0, 3));
-  s = ok(C.makeTremolo(s, loc, 0, 1, 2)); // dissolves the longer beam group around the pair
+  s = ok(C.makeTremolo(s, loc, 0, 1, 2)); // This dissolves the longer beam group around the pair.
   assert.doesNotMatch(show(s), /\[/);
   s = ok(C.ungroup(s, { ...loc, idx: 1 }));
   s = ok(C.makeBeam(s, loc, 0, 1));
-  s = ok(C.makeTremolo(s, loc, 0, 1, 2)); // replaces the two-note beam
+  s = ok(C.makeTremolo(s, loc, 0, 1, 2)); // This replaces the two-note beam.
   assert.doesNotMatch(show(s), /\[/);
   assert.match(show(s), /trem2\{/);
-  s = ok(C.makeTremolo(s, loc, 0, 1, 3)); // changes the beams, no nesting
+  s = ok(C.makeTremolo(s, loc, 0, 1, 3)); // This changes the beams without nesting.
   assert.match(show(s), /trem3\{/);
   assert.doesNotMatch(show(s), /trem\d\{trem/);
   assert.throws(() => C.makeTremolo(s, loc, 2, 4), /exactly two/);
@@ -203,7 +217,7 @@ test('paste copies events one after another and drops slur flags', () => {
 test('staves: add, connect, move, remove', () => {
   let s = ok(C.addStaff(load(), { clef: { sign: 'F', line: 4 }, name: 'Bass' }));
   assert.equal(s.staves.length, 3);
-  assert.equal(s.groups.length, 1); // the original brace is kept
+  assert.equal(s.groups.length, 1); // The original brace is kept.
   s = ok(C.setConnection(s, 1, 'bracket'));
   assert.deepEqual(C.connections(s), ['brace', 'bracket']);
   s = ok(C.moveStaff(s, 's3', -1));
@@ -220,6 +234,7 @@ test('staves: add, connect, move, remove', () => {
   s = ok(C.setMeasureNumbers(s, 'all'));
   assert.match(writeText(s), /numbers=all/);
 });
+
 test('cross-staff references vanish with their staff', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = C.setStaffOf(s, [{ ...loc, idx: 0 }], 'lh');
@@ -242,7 +257,7 @@ test('a selected hairpin names the events it hangs on, and the text format keeps
       [2, 1],
     ],
   );
-  assert.equal(marksOf(s.measures[0].staves.rh).find((m) => m.type === 'stop')!.idx, -1); // the end of the measure, on voice 2
+  assert.equal(marksOf(s.measures[0].staves.rh).find((m) => m.type === 'stop')!.idx, -1); // The stop is at the end of the measure, on voice 2.
   assert.deepEqual(JSON.parse(JSON.stringify(parseText(writeText(s)))), JSON.parse(JSON.stringify(s)));
 });
 
@@ -254,9 +269,9 @@ test('a line drawn from note to note hangs on those events (a stop goes before t
     { base: 4, dots: 0 },
     c4,
   );
-  s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4); // a quarter, a quarter, a half rest
-  s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 2 }, { ...loc, idx: 2 })); // ends on the last event of the voice
-  s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 1 }, { ...loc, idx: 0 })); // drawn backwards, and ending where the first one starts
+  s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4); // The voice is a quarter, a quarter and a half rest.
+  s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 2 }, { ...loc, idx: 2 })); // The span ends on the last event of the voice.
+  s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 1 }, { ...loc, idx: 0 })); // The span is drawn backwards and ends where the first one starts.
   const m = marksOf(s.measures[0].staves.rh).map((x) => `${x.type === 'stop' ? 'stop' : x.type}@${x.tick}`);
   assert.deepEqual(m, ['pedal@0', `stop@${2 * PPQ4}`, `pedal@${2 * PPQ4}`, `stop@${4 * PPQ4}`]);
   assert.throws(() => C.addSpanOver(s, 'cresc', { ...loc, idx: 0 }, { ...loc, staff: 'lh', idx: 0 }), /one staff/);
@@ -274,7 +289,7 @@ test('a hairpin that stops before a note belongs to the note before it, also acr
       [32, 2],
       [33, 3],
     ],
-  ); // eb2 in m33, the last 16th before the quintuplet in m34
+  ); // The note is eb2 in m33, the last 16th before the quintuplet in m34.
 });
 
 test('the end of a slur on a unison head shared with another voice is still found (gewitter m78-79, voice 2)', async () => {
@@ -319,7 +334,7 @@ test('beam modes per note', () => {
   const at = (idx: number) => ({ ...loc, idx });
   const modes = () => beamModes(s.measures[0].staves.rh.voices[0], beatTicks({ beats: 2, beatType: 4 }));
   assert.deepEqual(modes(), ['auto', 'auto', 'auto', 'auto']);
-  s = ok(C.setBeamMode(s, [at(2)], 'join')); // across the beat
+  s = ok(C.setBeamMode(s, [at(2)], 'join')); // This joins across the beat.
   assert.match(show(s), /\[c4:8 c4 c4 c4\]/);
   assert.deepEqual(modes(), ['auto', 'auto', 'join', 'auto']);
   s = ok(C.setBeamMode(s, [at(2)], 'auto'));
@@ -330,19 +345,19 @@ test('beam modes per note', () => {
   s = ok(C.setBeamMode(s, [at(1)], 'auto'));
   assert.doesNotMatch(show(s), /nobeam/);
   s = ok(C.setBeamMode(s, [at(2)], 'none'));
-  s = ok(C.setBeamMode(s, [at(2)], 'break')); // flag gone, the note starts a beam with its successor
+  s = ok(C.setBeamMode(s, [at(2)], 'break')); // The flag is gone, and the note starts a beam with its successor.
   assert.doesNotMatch(show(s), /nobeam|\[/);
-  s = ok(C.setBeamMode(s, [at(1)], 'break')); // alone, so is its partner in the beat: one flag does both
+  s = ok(C.setBeamMode(s, [at(1)], 'break')); // The note is alone, and so is its partner in the beat, so one flag does both.
   assert.deepEqual(beamLinks(s.measures[0].staves.rh.voices[0], 3360), [false, false, false, true]);
   assert.deepEqual(modes(), ['auto', 'none', 'auto', 'auto']);
   s = ok(C.setBeamMode(s, [at(1)], 'auto'));
   s = ok(C.setBeamMode(s, [at(1)], 'none'));
-  s = ok(C.setBeamMode(s, [at(2)], 'join')); // joining takes the flag of the previous note away
+  s = ok(C.setBeamMode(s, [at(2)], 'join')); // Joining takes the flag of the previous note away.
   assert.deepEqual(modes(), ['auto', 'auto', 'join', 'auto']);
   assert.throws(() => C.setBeamMode(s, [at(0)], 'join'), /previous measure/);
-  s = ok(C.setBeamMode(s, [at(1), at(3)], 'break')); // cuts two of the three links of the beam over four notes
+  s = ok(C.setBeamMode(s, [at(1), at(3)], 'break')); // This cuts two of the three links of the beam over four notes.
   assert.deepEqual(beamLinks(s.measures[0].staves.rh.voices[0], 3360), [false, false, true, false]);
-  s = ok(C.setBeamMode(s, [at(1), at(3)], 'auto')); // back to the beam over four notes
+  s = ok(C.setBeamMode(s, [at(1), at(3)], 'auto')); // This goes back to the beam over four notes.
   assert.match(show(s), /\[c4:8 c4 c4 c4\]/);
   s = ok(C.setBeamMode(s, [at(2)], 'auto'));
   assert.doesNotMatch(show(s), /\[|nobeam/);
@@ -368,7 +383,7 @@ test('select similar finds equal marks across the score, and one edit changes th
   s = ok(C.addMark(s, { ...loc, mi: 1, idx: 0 }, { type: 'dynamic', text: 'p' }));
   const first = marksOf(s.measures[0].staves.rh).find((m) => m.type === 'dynamic' && m.text === 'p')!;
   const refs = similarTo(s, { t: 'mark', ...loc, idx: first.idx, k: first.k });
-  assert.equal(refs.length, 3); // all dynamics, not just the p's
+  assert.equal(refs.length, 3); // These are all dynamics, not just the p's.
   s = ok(C.updateMarks(s, refs as never, { text: 'mp' } as never));
   const texts = [0, 1].flatMap((mi) =>
     marksOf(s.measures[mi].staves.rh).flatMap((m) => (m.type === 'dynamic' ? [m.text] : [])),

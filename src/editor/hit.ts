@@ -20,6 +20,7 @@ export interface Box {
   x1: number;
   y1: number;
 }
+
 export interface Target {
   page: number;
   ref: Ref;
@@ -32,6 +33,7 @@ export interface Target {
   /** Lower wins when several targets are under the pointer: a head beats the stem and a slur over it. */
   prio: number;
 }
+
 export interface HitIndex {
   targets: Target[];
   byPage: Target[][];
@@ -303,7 +305,9 @@ export function marquee(h: HitIndex, page: number, r: Box): Ref[] {
   return [...out.values()];
 }
 
-// ---------------------------------------------------------------- slots
+// Slots: mapping a pointer position to where a note would go. That is a staff-measure, a rhythmic
+// position (snapped to the engraver's columns) and a pitch row.
+//
 // Mapping a point to where a note would go: staff-measure, rhythmic position (snapped to columns) and pitch row.
 
 /** The staff-measure under a point: the nearest staff (vertically) of the system there, then the measure by x. */
@@ -366,6 +370,7 @@ export function snapTick(
 
 /** Staff position (half spaces above the bottom line) of a y on the staff whose top line is at `top`. */
 export const posAtY = (top: number, y: number): number => Math.round((top + 4 - y) * 2);
+
 export const yAtPos = (top: number, pos: number): number => top + 4 - pos / 2;
 
 /** The measure of a given staff nearest to a point (used when a drag must stay on one staff). */
@@ -389,7 +394,9 @@ export function measureAtStaff(
   return best;
 }
 
-// ---------------------------------------------------------------- dependents
+// Dependents: selecting a slur, tie, tuplet or mark highlights the notes it depends on, and this
+// part of the file finds them.
+//
 // Selecting a slur, tie, tuplet or mark highlights the notes it depends on; this finds them.
 
 /** All notes of a tuplet (and the event the ref points at). */
@@ -471,7 +478,7 @@ function anchorOf(score: Score, staff: string, mi: number, m: Mark): EvAddr | un
   for (let i = mi - 1; i >= 0; i--) {
     const n = count(i);
     if (n) return { mi: i, ...at, idx: n - 1 };
-  } // the previous measure's last event
+  } // This is the last event of the previous measure.
   return { mi, ...at, idx: 0 };
 }
 

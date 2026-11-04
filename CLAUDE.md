@@ -8,8 +8,8 @@ TypeScript runs directly on Node (≥ 22.18, type stripping; no build step). For
 
 ```
 npm test                                          # all tests (node --test test/)
-npm run lint                                      # biome check: format + lint + import order (all rules are errors)
-npm run lint:fix                                  # apply safe fixes and formatting
+npm run lint                                      # biome check (format + lint + import order, all rules are errors) + tools/blanklines.ts
+npm run lint:fix                                  # apply safe fixes, formatting and missing blank lines
 node --test --test-name-pattern="ledger" test/    # a single test by name
 node src/cli.ts render examples/gewitter.txt out/gewitter --pdf   # -> out/gewitter-N.svg + .pdf
 node src/cli.ts check examples/gewitter.txt --collisions --mark out/mk   # list overlaps; out/mk-N.svg boxes them in red
@@ -18,6 +18,8 @@ node src/cli.ts check <file>                      # validate measure lengths
 python3 tools/crop.py out/gewitter-2.svg x y w h out.png [px]      # render a region (staff spaces) to PNG
 npm run ui                                        # editor UI (Vite dev server, ui/); npm run ui:build -> out/ui
 ```
+
+`tools/blanklines.ts` checks what Biome cannot: top-level items are separated by one blank line (a run of one-line declarations may stay together), a doc comment sits directly above its declaration, a comment above the imports is a file header followed by a blank line. Comments are full sentences starting with a capital letter (unless they start with an identifier), and comments on functions use `/** */`.
 
 Biome enforces the type-stripping constraints (`noEnum`, `noParameterProperties`, `useImportType`) and bans `!` non-null assertions: use `must(x)` from `src/util.ts` (throws on a violated invariant). `noDelete`, `noParameterAssign` and `useDefaultSwitchClause` are off on purpose (optional model fields must be absent, not `undefined`; numeric code reassigns parameters; switches are checked by the types).
 

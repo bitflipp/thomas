@@ -3,7 +3,9 @@
 // Steps: (1) hidden rests fill gaps and pad the voice to the measure length; (2) tuplets, tremolos and
 // beams become ranges of event indices; (3) ranges are sorted outermost first and (4) nested into
 // groups with a stack.
+
 import type { BaseDur, BeamGroup, Dur, Event, Item, TremoloGroup, TupletGroup } from './model.ts';
+
 import { baseTicks } from './model.ts';
 import type { RawNote, TupletStart } from './musicxml-raw.ts';
 import { ALL_BASES } from './musicxml-raw.ts';

@@ -18,6 +18,7 @@ import { commit, parseText, score, selection, textMap, textOf, validate } from '
 // the notes they depend on (`cm-ref-dep`), such as a slur's ends. Marks are decorations, so
 // they move with the text as it is edited.
 const setMarks = StateEffect.define<{ from: number; to: number; cls: string }[]>();
+
 const marks = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(set, tr) {
@@ -105,9 +106,11 @@ export function TextPane() {
       setErr('');
       showSelection();
     });
-    // The selection of the score pane, when the editor still shows exactly the text it was
-    // computed for. While the user has edits that are not yet parsed, the ranges would point
-    // at the wrong places, so then the marks are cleared instead.
+    /**
+     * The selection of the score pane, when the editor still shows exactly the text it was
+     * computed for. While the user has edits that are not yet parsed, the ranges would point
+     * at the wrong places, so then the marks are cleared instead.
+     */
     function showSelection(): void {
       if (v.state.doc.toString() !== textMap.peek().text) {
         v.dispatch({ effects: setMarks.of([]) });

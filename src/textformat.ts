@@ -5,7 +5,9 @@
 // needs a writer branch, a parser branch and an importer change together. The writer can additionally
 // record where each event, mark, tuplet and measure landed in the output (`writeTextMap`), which the
 // editor's text pane uses to show the score selection in the text.
+
 import { refKey } from './editor/addr.ts';
+
 import type {
   BaseDur,
   BeamGroup,
@@ -27,6 +29,7 @@ import type {
   TremoloGroup,
   TupletGroup,
 } from './model.ts';
+
 import { anchorMarks, isBeam, isTremolo, isTuplet, PPQ } from './model.ts';
 import { must } from './util.ts';
 
@@ -54,7 +57,8 @@ const DYNAMICS = new Set([
   'z',
 ]);
 
-// ------------------------------------------------------------------ writing
+// Writing: `write` turns a Score into text. It must stay the exact inverse of `parse` below (the
+// round-trip test checks both directions), so every model field is written here and read there.
 
 /** Parses a position in quarter notes, an integer or a fraction like `3/2`; it must land on a whole tick. */
 function fracParse(s: string): number {
@@ -68,17 +72,21 @@ export function pitchStr(p: Pitch): string {
   const acc = p.alter > 0 ? '#'.repeat(p.alter) : 'b'.repeat(-p.alter);
   return `${p.step}${acc}${p.octave}`;
 }
+
 function clefStr(c: Clef): string {
   return `${c.sign}${c.line}${c.octave ? (c.octave > 0 ? '^' : '_') + Math.abs(c.octave * 8) : ''}`;
 }
+
 function durStr(d: Dur): string {
   return `${d.base}${'.'.repeat(d.dots)}`;
 }
+
 function quote(s: string): string {
   return JSON.stringify(s);
 }
 
 const sideStr = (p?: MarkPlacement) => (p === 'above' ? '^' : p === 'below' ? '_' : p === 'between' ? '=' : '');
+
 /** Slur and hairpin ids are written only when they are not 1: the common case of one span at a time needs no number. */
 const idStr = (n: number | undefined) => (n && n !== 1 ? String(n) : '');
 
@@ -93,6 +101,7 @@ const SIMPLE: Record<string, MarkBody> = {
   '8vb': { type: 'ottava', dir: 'down' },
   '8off': { type: 'stop', of: 'ottava' },
 };
+
 const simpleKey = (m: MarkBody) => JSON.stringify([m.type, 'of' in m ? m.of : '', 'dir' in m ? m.dir : '']);
 const SIMPLE_NAME = new Map(Object.entries(SIMPLE).map(([name, m]) => [simpleKey(m), name]));
 
@@ -132,6 +141,7 @@ class Tags {
   }
   static close = '\uE002';
 }
+
 const tagged = (t: Tags | undefined, key: string, s: string): string => (t ? t.tag(key, s) : s);
 
 class VoiceWriter {
@@ -337,7 +347,7 @@ export function writeTextMap(score: Score): { text: string; ranges: Map<string, 
   return { text, ranges };
 }
 
-// ------------------------------------------------------------------ parsing
+// Parsing: `parse` turns the text back into a Score.
 // A hand-written scanner over the text, one voice line at a time; errors carry the line (`where`).
 
 class Scanner {
@@ -380,6 +390,7 @@ function parsePitch(sc: Scanner): Pitch {
   const alter = accs.split('').reduce((a, c) => a + (c === '#' ? 1 : -1), 0);
   return { step, alter, octave };
 }
+
 function parseClef(s: string): Clef {
   const m = /^([GFC])(\d)(?:([\^_])(\d+))?$/.exec(s);
   if (!m) throw new Error(`bad clef ${s}`);
@@ -387,6 +398,7 @@ function parseClef(s: string): Clef {
   if (m[3]) c.octave = (m[3] === '^' ? 1 : -1) * (Number(m[4]) / 8);
   return c;
 }
+
 function parseDur(sc: Scanner): Dur {
   const m = sc.take(/\d+\.*/y);
   if (!m) sc.fail('duration expected');
@@ -398,12 +410,14 @@ function parseDur(sc: Scanner): Dur {
 }
 
 type Side = 'above' | 'below';
+
 interface PendingEv {
   stem?: 'up' | 'down';
   arpeggio?: boolean;
   noBeam?: boolean;
   graces?: Grace[];
 }
+
 type Frame = { kind: 'root' | 'tuplet' | 'beam' | 'tremolo'; items: Item[] };
 
 /** The result of parsing one voice line. */
@@ -487,7 +501,7 @@ class VoiceLineParser {
       this.open('beam', { kind: 'beam', items: [] });
     } else if (c === ']') this.close('beam', ']');
     else if (this.top.kind !== 'tremolo')
-      this.close('tuplet', '}'); // '}' closes a tuplet or a tremolo
+      this.close('tuplet', '}'); // The character '}' closes a tuplet or a tremolo.
     else this.close('tremolo', '}');
   }
 
@@ -811,7 +825,8 @@ function kv(tokens: string[]): Record<string, string> {
   }
   return o;
 }
-/** split on whitespace but keep "quoted strings" together */
+
+/** Splits on whitespace but keeps "quoted strings" together. */
 function tokens(line: string): string[] {
   return line.match(/(?:[^\s"]|"(?:[^"\\]|\\.)*")+/g) ?? [];
 }
@@ -843,7 +858,7 @@ function parseVoiceStatement(st: TextState, raw: string, where: string): void {
 /** `m<N> time=3/4 key=2 break=system barline=final`: starts a measure. */
 function parseMeasureStatement(st: TextState, t: string[]): void {
   const o = kv(t.slice(1));
-  const measure: Measure = { staves: {} }; // the number in `m<N>` is only a label
+  const measure: Measure = { staves: {} }; // The number in `m<N>` is only a label.
   if (o.time) {
     const [beats, beatType] = o.time.split('/').map(Number);
     measure.time = { beats, beatType };
