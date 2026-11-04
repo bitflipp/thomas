@@ -19,7 +19,7 @@ python3 tools/crop.py out/gewitter-2.svg x y w h out.png [px]      # render a re
 npm run ui                                        # editor UI (Vite dev server, ui/); npm run ui:build -> out/ui
 ```
 
-`tools/blanklines.ts` checks what Biome cannot: top-level items are separated by one blank line (a run of one-line declarations may stay together), a doc comment sits directly above its declaration, a comment above the imports is a file header followed by a blank line. Comments are full sentences starting with a capital letter (unless they start with an identifier), and comments on functions use `/** */`.
+`tools/blanklines.ts` checks the blank lines Biome does not (see Comment and blank-line style below); `lint:fix` repairs them.
 
 Biome enforces the type-stripping constraints (`noEnum`, `noParameterProperties`, `useImportType`) and bans `!` non-null assertions: use `must(x)` from `src/util.ts` (throws on a violated invariant). `noDelete`, `noParameterAssign` and `useDefaultSwitchClause` are off on purpose (optional model fields must be absent, not `undefined`; numeric code reassigns parameters; switches are checked by the types).
 
@@ -69,3 +69,11 @@ Pipeline: text/MusicXML → `Score` model → `prepare` → per-measure spacing 
 
 - `examples/gewitter.txt` is generated from `gewitter.musicxml` (the reference piece covering every supported feature; see `FEATURES.md`). Regenerate it with `import` after importer changes.
 - Engraving tests assert on emitted primitives (`engrave(...).pages[0].prims`), not on pixels. Visual checks are done by rendering and viewing crops; `out/` is git-ignored.
+
+## Comment and blank-line style
+
+- Every comment is a complete sentence that starts with a capital letter and ends with punctuation. The exception is a comment that starts with an identifier or code (`` `placed` holds ``, `x0 and x1 are read ...`, `eb2 in m33 ...`). This includes trailing comments on fields and statements (`// This is the voice id.`), not only block comments.
+- Comments on functions (declarations, and arrow functions bound to a `const`) use `/** ... */`, not `//`. A `//` comment is for explaining code inside a body or for a section.
+- No `// ---- name ---` banner headers. A section of a file starts with a plain `//` comment of a few lines that says what the section is for and how it relates to the rest, followed by a blank line, so that it cannot be mistaken for the doc comment of the first function below it.
+- A file starts with a header comment (what the module is for, how it fits the pipeline), then a blank line, then the imports.
+- Blank lines on the top level of a file (checked by `tools/blanklines.ts`, part of `npm run lint`): items are separated by exactly one blank line, except a run of one-line declarations without comments (imports, constants, type aliases); a doc comment sits directly above its declaration; a `/** */` comment is never left standing alone. Biome already collapses repeated blank lines and cleans up the edges of blocks; blank lines inside functions and classes are not checked.
