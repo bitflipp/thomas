@@ -206,7 +206,8 @@ button.mini {
 }
 
 .palette {
-  width: 180px; /* Four columns of 36px buttons with 4px gaps, plus the padding and a thin scrollbar. */
+  width: max-content; /* As wide as the largest button group, up to four columns. */
+  max-width: 180px; /* Four columns of 36px buttons with 4px gaps, plus the padding and a thin scrollbar. */
   box-sizing: border-box;
   scrollbar-width: thin;
   flex: none;
@@ -224,8 +225,8 @@ button.mini {
   color: var(--muted);
 }
 .palette .grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, 36px);
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--gap) 4px;
 }
 .palette .grid button {

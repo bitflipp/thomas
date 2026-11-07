@@ -27,6 +27,13 @@ function createWindow() {
   });
   win.setMenuBarVisibility(false);
   const w = win;
+  // F12 toggles the DevTools (the page uses Ctrl+Shift+I for itself).
+  w.webContents.on('before-input-event', (e, input) => {
+    if (input.type === 'keyDown' && input.key === 'F12') {
+      w.webContents.toggleDevTools();
+      e.preventDefault();
+    }
+  });
   // The page reports unsaved changes; closing then asks first.
   w.on('close', (e) => {
     if (!unsaved) return;
