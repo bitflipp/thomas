@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { must } from '../src/util.ts';
 
+/** One entry of a dropdown: its value, the text (and optional icon) shown for it, and whether it can be picked. */
 export type DropdownOpt<T> = {
   value: T;
   label: string;
@@ -16,20 +17,18 @@ export type DropdownOpt<T> = {
 
 type Place = { x: number; w: number; top?: number; bottom?: number; max: number };
 
+/** A select-like control over `opts`; the button shows the entry whose value equals `value`. */
 export function Dropdown<T>({
   value,
   opts,
   onChange,
   title,
-  placeholder,
 }: {
-  /** The current value, or `'mixed'` for a selection whose members differ (the button then shows the placeholder). */
+  /** The current value, or `'mixed'` for a selection whose members differ (the button then shows no entry). */
   value: T | 'mixed';
   opts: DropdownOpt<T>[];
   onChange: (v: T) => void;
   title?: string;
-  /** Shown instead of an entry when `value` matches none (an action menu such as "Examples…"). */
-  placeholder?: string;
 }) {
   const cur = opts.findIndex((o) => o.value === value);
   const [open, setOpen] = useState(false);
@@ -115,7 +114,7 @@ export function Dropdown<T>({
       >
         <span class="dd-val">
           {o ? o.icon : null}
-          {o ? o.label : (placeholder ?? '')}
+          {o ? o.label : ''}
         </span>
       </button>
       {open && (

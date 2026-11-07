@@ -51,12 +51,6 @@ export interface Tag {
 }
 
 const ids = new WeakMap<object, number>();
-const byId = new Map<number, WeakRef<object>>();
-
-/** Inverse of oid (diagnostics). */
-export function objOf(id: number): object | undefined {
-  return byId.get(id)?.deref();
-}
 
 let nextId = 1;
 
@@ -66,7 +60,6 @@ export function oid(x: object): number {
   if (i === undefined) {
     i = nextId++;
     ids.set(x, i);
-    byId.set(i, new WeakRef(x));
   }
   return i;
 }

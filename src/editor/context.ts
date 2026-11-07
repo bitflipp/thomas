@@ -34,11 +34,6 @@ export function stepAtPos(pos: number, clef: Clef): number {
   return clefBottomStep(clef) + pos;
 }
 
-/** Inverse of `stepAtPos` for a sounding pitch; `shift` is the `ottavaAt` shift of its position. */
-export function posOf(p: Pitch, clef: Clef, shift = 0): number {
-  return pitchStep({ ...p, octave: p.octave + shift }) - clefBottomStep(clef);
-}
-
 /** The alteration a plain (unmarked) note on this step has here: the key signature, then accidentals earlier in the measure. */
 export function alterIn(score: Score, staff: string, mi: number, tick: number, step: Step, octave: number): number {
   let alter = keyAlter(keyAt(score, mi), step);

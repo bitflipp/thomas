@@ -29,8 +29,6 @@ import { flattenVoice, marksOf, measureTicks, pitchStep, STEPS } from '../model.
 import { must } from '../util.ts';
 import type { MeasureSpacing } from './spacing.ts';
 
-export const HALF = 1; // Staff positions are counted in half spaces above the bottom line.
-
 export function clefBottomStep(c: Clef): number {
   const sign = c.sign === 'G' ? { s: 'g', o: 4 } : c.sign === 'F' ? { s: 'f', o: 3 } : { s: 'c', o: 4 };
   const signStep = sign.o * 7 + STEPS.indexOf(sign.s as never);

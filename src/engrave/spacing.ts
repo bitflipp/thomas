@@ -524,8 +524,4 @@ export function placeMeasure(sp: MeasureSpacing, f: number, z = 1): PlacedMeasur
   return { xs, width: endX, endX };
 }
 
-export function systemMinWidths(prep: Prepared): MeasureSpacing[] {
-  return prep.score.measures.map((_, mi) => spaceMeasure(prep, mi));
-}
-
 export type { Score };

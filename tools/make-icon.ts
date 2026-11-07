@@ -18,6 +18,7 @@ const X1 = SIZE - 150;
 const lines = [0, 1, 2, 3, 4]
   .map((i) => `<line x1="${X0}" x2="${X1}" y1="${TOP + i * S}" y2="${TOP + i * S}"/>`)
   .join('');
+
 const smufl = loadSmufl();
 const gAdv = smufl.adv('gClef');
 const x0 = CX - ((gAdv + GAP + smufl.adv('fClef')) * S) / 2; // The pair is centred on the icon.

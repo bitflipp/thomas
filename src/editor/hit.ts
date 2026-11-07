@@ -371,8 +371,6 @@ export function snapTick(
 /** Staff position (half spaces above the bottom line) of a y on the staff whose top line is at `top`. */
 export const posAtY = (top: number, y: number): number => Math.round((top + 4 - y) * 2);
 
-export const yAtPos = (top: number, pos: number): number => top + 4 - pos / 2;
-
 /** The measure of a given staff nearest to a point (used when a drag must stay on one staff). */
 export function measureAtStaff(
   layout: Layout,

@@ -5,6 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 
+// The Vite dev server to load instead of the built UI (set by `npm run app:dev`).
 const DEV_URL = process.env.THOMAS_DEV_URL;
 
 const SCORE_FILTERS = [
@@ -12,7 +13,9 @@ const SCORE_FILTERS = [
   { name: 'All files', extensions: ['*'] },
 ];
 
+// The one window (null while closed) and whether its document has unsaved changes, as last reported by the page.
 let win: BrowserWindow | null = null;
+
 let unsaved = false;
 
 /** Creates the main window and loads the UI (the Vite dev server in development, else the built files). */
