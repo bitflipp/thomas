@@ -9,9 +9,31 @@
   --err: #c0302a;
   --hover: #ebebf0;
   --accent-soft: #dce6fc;
-  --h: 28px;
-  --gap: 6px;
-  --radius: 5px;
+  /* Spacing scale: every padding, margin and gap is one of these. */
+  --sp-1: 6px;
+  --sp-2: 10px;
+  --sp-3: 14px;
+  --sp-4: 24px;
+  /* Control heights: default, small (mini buttons, rows, list options) and large (palette cells). */
+  --h: 30px;
+  --h-sm: 26px;
+  --h-lg: 38px;
+  /* Icon sizes inside controls. */
+  --icon-sm: 16px;
+  --icon: 18px;
+  --icon-lg: 26px;
+  /* Type sizes: body, small (compact controls, code) and extra small (section headings, hints). */
+  --fs: 13px;
+  --fs-sm: 12px;
+  --fs-xs: 11px;
+  /* Widths: a standard button, and the side panes. */
+  --w-btn: calc(var(--h) * 3);
+  --w-pane: 324px;
+  --radius: 4px;
+  --radius-lg: 8px;
+  --shadow-sm: 0 1px 6px rgba(0, 0, 0, 0.3);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.4);
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -41,7 +63,7 @@ body {
   background: var(--bg);
   color: var(--fg);
   font:
-    13px / 1.4 system-ui,
+    var(--fs) / 1.4 system-ui,
     sans-serif;
   overflow: hidden;
 }
@@ -53,8 +75,8 @@ body {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: var(--gap);
-  padding: 5px 10px;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   flex-wrap: wrap;
@@ -63,7 +85,7 @@ body {
   width: 1px;
   align-self: stretch;
   background: var(--line);
-  margin: 0 4px;
+  margin: 0 var(--sp-1);
 }
 .toolbar .grow {
   flex: 1;
@@ -75,15 +97,15 @@ input {
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 3px 9px;
+  padding: var(--sp-1) var(--sp-2);
 }
 button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: var(--sp-1);
   height: var(--h);
-  padding: 0 10px;
+  padding: 0 var(--sp-2);
   white-space: nowrap;
 }
 input[type="text"],
@@ -92,8 +114,8 @@ input:not([type]) {
   height: var(--h);
 }
 button svg {
-  width: 18px;
-  height: 18px;
+  width: var(--icon);
+  height: var(--icon);
   flex: none;
 }
 button.icon {
@@ -107,7 +129,7 @@ input[type="text"],
 input:not([type]),
 input[type="number"] {
   background: var(--panel);
-  padding: 3px 6px;
+  padding: var(--sp-1);
   min-width: 0;
 }
 button:hover:not(:disabled) {
@@ -136,8 +158,8 @@ button.danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--err) 10%, var(--bg));
 }
 button.mini {
-  width: 24px;
-  height: 24px;
+  width: var(--h-sm);
+  height: var(--h-sm);
   padding: 0;
 }
 /* Segmented group: joined buttons; `.fill` stretches it over the row, `.big` is for glyph icons. */
@@ -169,7 +191,7 @@ button.mini {
   align-items: center;
   justify-content: center;
   min-width: 3.6em;
-  padding: 0 6px;
+  padding: 0 var(--sp-2);
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--muted);
@@ -181,12 +203,12 @@ button.mini {
 .seg.fill > button {
   flex: 1;
   min-width: 0;
-  padding: 0 4px;
-  font-size: 12px;
+  padding: 0 var(--sp-1);
+  font-size: var(--fs-sm);
 }
 .seg.big > button svg {
-  width: 26px;
-  height: 26px;
+  width: var(--icon-lg);
+  height: var(--icon-lg);
 }
 .status {
   color: var(--muted);
@@ -211,13 +233,13 @@ button.mini {
   box-sizing: border-box;
   scrollbar-width: thin;
   flex: none;
-  padding: 8px;
+  padding: var(--sp-2);
   background: var(--panel);
   border-right: 1px solid var(--line);
 }
 .palette h4 {
-  margin: 12px 0 5px;
-  font-size: 11px;
+  margin: var(--sp-3) 0 var(--sp-1);
+  font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -228,31 +250,31 @@ button.mini {
 }
 .palette .grid {
   display: grid;
-  grid-template-columns: repeat(4, 36px); /* Fixed columns give the group a max-content width of its own. */
-  gap: var(--gap) 4px;
+  grid-template-columns: repeat(4, var(--h-lg)); /* Fixed columns give the group a max-content width of its own. */
+  gap: var(--sp-1);
 }
 .palette .grid button {
-  width: 36px;
-  height: 36px;
+  width: var(--h-lg);
+  height: var(--h-lg);
   padding: 0;
   display: grid;
   place-items: center;
   overflow: hidden;
 }
 .palette .grid button svg {
-  width: 36px;
-  height: 36px;
+  width: var(--h-lg);
+  height: var(--h-lg);
 }
 .palette .grid .dotlbl {
-  font-size: 24px;
+  font-size: calc(var(--h-lg) * 2 / 3);
   line-height: 1;
   font-weight: 700;
 }
 .args {
-  margin-top: 8px;
+  margin-top: var(--sp-2);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 .args .dd,
 .args input {
@@ -260,8 +282,8 @@ button.mini {
 }
 .hint {
   color: var(--muted);
-  font-size: 11.5px;
-  margin: 12px 0 0;
+  font-size: var(--fs-xs);
+  margin: var(--sp-3) 0 0;
   width: 0; /* The text wraps to the width the button groups give the pane instead of widening it. */
   min-width: 100%;
 }
@@ -269,14 +291,14 @@ button.mini {
 .scroll {
   flex: 1;
   overflow: auto;
-  padding: 20px 24px;
+  padding: var(--sp-4);
   min-width: 0;
   background: var(--bg);
 }
 .page {
-  margin: 0 auto 20px;
+  margin: 0 auto var(--sp-4);
   background: #fff;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-sm);
   position: relative;
   touch-action: none;
   user-select: none;
@@ -295,37 +317,37 @@ button.mini {
 }
 
 .properties {
-  width: 324px;
+  width: var(--w-pane);
   flex: none;
   overflow-y: auto;
   background: var(--panel);
   border-left: 1px solid var(--line);
-  padding: 0 12px 16px;
+  padding: 0 var(--sp-3) var(--sp-4);
 }
 .properties h3 {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
-  margin: 14px 0 8px;
+  margin: var(--sp-3) 0 var(--sp-2);
 }
 .properties .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin: 5px 0;
-  min-height: 26px;
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0;
+  min-height: var(--h-sm);
 }
 .properties .row > span {
   color: var(--muted);
   flex: none;
-  width: 86px;
+  width: calc(var(--h) * 3);
 }
 .properties .ctl {
   display: flex;
-  gap: 4px;
+  gap: var(--sp-1);
   align-items: center;
   flex-wrap: wrap;
   flex: 1;
@@ -336,9 +358,9 @@ button.mini {
 }
 .properties .btns {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-  gap: var(--gap);
-  margin: 6px 0;
+  grid-template-columns: repeat(auto-fill, minmax(var(--w-btn), 1fr));
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0;
 }
 .tabs {
   display: flex;
@@ -347,7 +369,7 @@ button.mini {
   z-index: 1;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
-  margin: 0 -12px;
+  margin: 0 calc(-1 * var(--sp-3));
 }
 .tabs button {
   height: auto;
@@ -360,7 +382,7 @@ button.mini {
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: none;
-  padding: 9px 4px;
+  padding: var(--sp-2) var(--sp-1);
   color: var(--muted);
 }
 .tabs button.on {
@@ -373,14 +395,14 @@ button.mini {
 }
 .properties .ctx {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 .properties .ctx .chip {
-  margin-left: 5px;
+  margin-left: var(--sp-1);
   color: var(--fg);
 }
 .sec {
-  padding: 10px 0 8px;
+  padding: var(--sp-2) 0;
 }
 .sec + .sec {
   border-top: 1px solid var(--line);
@@ -389,8 +411,8 @@ button.mini {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 0 0 6px;
-  font-size: 11px;
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -405,19 +427,19 @@ button.mini {
   margin-top: 0;
 }
 .seg.fill {
-  margin: 4px 0 var(--gap);
+  margin: var(--sp-1) 0 var(--sp-2);
 }
 .chip {
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 0 7px;
+  border-radius: var(--radius-lg);
+  padding: 0 var(--sp-2);
   font-variant-numeric: tabular-nums;
 }
 
 .textpane {
   width: 40%;
-  min-width: 280px;
+  min-width: var(--w-pane);
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--line);
@@ -433,23 +455,23 @@ button.mini {
 }
 .textpane .cm-ref-sel {
   background: rgba(47, 111, 237, 0.28);
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 .textpane .cm-ref-dep {
   background: rgba(245, 159, 0, 0.32);
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 .textpane .cm-scroller {
   font:
-    12.5px / 1.45 ui-monospace,
+    var(--fs-sm) / 1.45 ui-monospace,
     monospace;
 }
 .diag {
-  padding: 6px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border-top: 1px solid var(--line);
   color: var(--err);
   font:
-    12px ui-monospace,
+    var(--fs-sm) ui-monospace,
     monospace;
   white-space: pre-wrap;
   max-height: 25%;
@@ -459,13 +481,13 @@ button.mini {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 22px;
+  bottom: var(--sp-4);
   transform: translateX(-50%);
   background: #26262c;
   color: #fff;
-  padding: 8px 16px;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
   z-index: 30;
   max-width: 70vw;
 }
@@ -519,19 +541,19 @@ button.mini {
 .modal .card {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px 22px 18px;
+  border-radius: var(--radius-lg);
+  padding: var(--sp-2) var(--sp-4);
   max-width: 640px;
   max-height: 86vh;
   overflow: auto;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-lg);
 }
 .modal table {
   border-collapse: collapse;
   width: 100%;
 }
 .modal td {
-  padding: 3px 8px 3px 0;
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
   vertical-align: top;
 }
 .modal td:first-child {
@@ -539,12 +561,12 @@ button.mini {
 }
 kbd {
   font:
-    12px ui-monospace,
+    var(--fs-sm) ui-monospace,
     monospace;
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 1px 6px;
+  border-radius: var(--radius);
+  padding: 1px var(--sp-1);
 }
 
 .viewmenu {
@@ -552,38 +574,38 @@ kbd {
 }
 .popover {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + var(--sp-1));
   left: 0;
   z-index: 35;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
-  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: var(--sp-2) var(--sp-3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-width: 230px;
+  gap: var(--sp-2);
+  min-width: calc(var(--h) * 8);
   white-space: nowrap;
 }
 .popover label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   justify-content: space-between;
 }
 .popover input[type="checkbox"] {
-  margin: 0 8px 0 0;
+  margin: 0 var(--sp-2) 0 0;
 }
 
 .staves {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 .staffrow {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-2);
   align-items: center;
   margin: 0;
 }
@@ -594,7 +616,7 @@ kbd {
 }
 .staffrow .dd {
   flex: none;
-  max-width: 92px;
+  max-width: var(--w-btn);
   margin: 0;
 }
 .staffrow .mini {
@@ -604,7 +626,7 @@ kbd {
   cursor: grab;
   color: var(--muted);
   user-select: none;
-  width: 12px;
+  width: var(--sp-3);
   text-align: center;
 }
 .staffrow .sname {
@@ -622,15 +644,15 @@ kbd {
   opacity: 0.4;
 }
 .staffrow.dropto {
-  box-shadow: 0 -2px 0 var(--accent, #3b82f6);
+  box-shadow: 0 -2px 0 var(--accent);
 }
 .joinrow {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 0 0 0 18px;
+  gap: var(--sp-2);
+  margin: 0 0 0 var(--sp-4);
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 .joinrow .dd {
   margin: 0;
@@ -638,7 +660,7 @@ kbd {
 .staves .btns {
   margin: 0;
   display: flex;
-  gap: var(--gap);
+  gap: var(--sp-2);
 }
 .staves .btns .dd {
   flex: 1;
@@ -650,37 +672,37 @@ kbd {
 }
 .staves .btns.staffacts {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-  margin: 2px 0 6px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--w-btn), 1fr));
+  margin: var(--sp-1) 0 var(--sp-2);
 }
 
 /* The dropdown (ui/Dropdown.tsx): a button with a chevron, used for every choice from a list */
 button.dd {
-  padding: 3px 24px 3px 9px;
+  padding: var(--sp-1) var(--sp-4) var(--sp-1) var(--sp-2);
   background-image:
     linear-gradient(45deg, transparent 50%, var(--muted) 50%),
     linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position:
-    calc(100% - 13px) 50%,
-    calc(100% - 9px) 50%;
-  background-size: 4px 4px;
+    calc(100% - var(--sp-3)) 50%,
+    calc(100% - var(--sp-2)) 50%;
+  background-size: var(--sp-1) var(--sp-1);
   background-repeat: no-repeat;
 }
 button.dd {
   justify-content: flex-start;
-  min-width: 84px;
+  min-width: var(--w-btn);
   font-weight: normal;
   text-align: left;
 }
 .dd-val {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--sp-1);
 }
 .dd-val svg,
 .dd-list svg {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 .dd-list {
   position: fixed;
@@ -688,16 +710,16 @@ button.dd {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-  padding: 3px;
+  box-shadow: var(--shadow);
+  padding: var(--sp-1);
 }
 .dd-list [role="option"] {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 26px;
-  padding: 0 9px 0 7px;
-  border-radius: 3px;
+  gap: var(--sp-2);
+  height: var(--h-sm);
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius);
   cursor: pointer;
   white-space: nowrap;
 }
