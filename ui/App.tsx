@@ -48,11 +48,6 @@ import {
 const viewOpen = signal(false);
 const TextPane = lazy(() => import('./TextPane.tsx').then((m) => ({ default: m.TextPane })));
 
-const examples = import.meta.glob('../examples/*.txt', { query: '?raw', import: 'default', eager: true }) as Record<
-  string,
-  string
->;
-
 /** Saves the score to its file, or asks for one when it has none yet (or when `as` is set). */
 async function saveFile(as = false) {
   const r = await native.save(writeText(score.peek()), fileName.peek(), as ? null : filePath.peek());
@@ -143,24 +138,15 @@ export function App() {
             New
           </button>
           <button type="button" title="Open a score (.txt) or MusicXML (Ctrl O)" onClick={() => openFile()}>
-            Open…
+            Open
           </button>
           <button type="button" title="Save (Ctrl S); Ctrl Shift S saves under a new name" onClick={() => saveFile()}>
             Save{dirty.value ? ' •' : ''}
           </button>
           <button type="button" title="Export as PDF" onClick={exportPdf}>
-            PDF
+            Export PDF
           </button>
         </div>
-        <Dropdown
-          value={undefined}
-          title="Open an example"
-          placeholder="Examples…"
-          opts={Object.keys(examples).map((k) => ({ value: k, label: k.replace(/^.*\//, '') }))}
-          onChange={(v) => {
-            if (!dirty.value || confirm('Discard unsaved changes?')) loadText(examples[v], v.replace(/^.*\//, ''));
-          }}
-        />
         <span class="sep" />
         <button
           type="button"
