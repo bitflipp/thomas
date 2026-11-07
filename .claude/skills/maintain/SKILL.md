@@ -25,8 +25,9 @@ Trace each step: write one line per step to the user when it starts and a one-li
 10. **Docs in sync.** If structure, commands or conventions changed, update `CLAUDE.md`, and `FORMAT.md` / `FEATURES.md` if the text format or features were touched. Do not describe things the code does not do.
 11. **Format and lint.** `npm run lint:fix`, then `npm run lint` must be clean (Biome, import order, `tools/blanklines.ts`). Fix remaining findings by hand; do not disable rules or relax `biome.json`.
 12. **Verify behaviour is unchanged.** `npm test` must give the same result as the baseline (all green unless it was red before). For engraver changes also confirm the output is identical: render `examples/gewitter.txt` before and after (`node src/cli.ts render ... out/before` / `out/after`) and `diff` the SVGs. `examples/gewitter.txt` must not change. The UI must still build (`npm run ui:build`) if `ui/` was touched.
-13. **Commit.** Only if the user asked for it: one commit, message in the style `Maintainability pass: <what changed, comma-separated>` (for a narrower pass, `Comment style pass: ...`). Split into separate commits when a refactor (step 9) is independent of the comment work. Never commit with failing lint or tests.
-14. **Report.** Summarise per step what changed, the test/lint/diff results, and the list of things deliberately left alone.
+13. **Dependency audit.** Run `npm audit` and report the result. Do not run `npm audit fix --force` or change dependencies as part of the pass (that is not behaviour-preserving): list the findings and let the user decide. Known and accepted: 6 moderate findings from `minimatch` via `electron-builder` (installer tooling only, accepted on 2026-11-07); report only changes beyond that.
+14. **Commit.** Only if the user asked for it: one commit, message in the style `Maintainability pass: <what changed, comma-separated>` (for a narrower pass, `Comment style pass: ...`). Split into separate commits when a refactor (step 9) is independent of the comment work. Never commit with failing lint or tests.
+15. **Report.** Summarise per step what changed, the test/lint/diff results, the audit result, and the list of things deliberately left alone.
 
 ## Rules
 
