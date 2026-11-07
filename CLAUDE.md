@@ -17,6 +17,10 @@ node src/cli.ts import gewitter.musicxml examples/gewitter.txt     # MusicXML ->
 node src/cli.ts check <file>                      # validate measure lengths
 python3 tools/crop.py out/gewitter-2.svg x y w h out.png [px]      # render a region (staff spaces) to PNG
 npm run ui                                        # editor UI (Vite dev server, ui/); npm run ui:build -> out/ui
+npm run app                                       # build and start the desktop app (Electron)
+npm run app:dev                                   # desktop app on the running `npm run ui` dev server (hot reload)
+npm run icon                                      # regenerate build/icon.svg + icon.png (tools/make-icon.ts)
+npm run app:dist                                  # installers via electron-builder -> out/dist
 ```
 
 `tools/blanklines.ts` checks the blank lines Biome does not (see Comment and blank-line style below); `lint:fix` repairs them.
@@ -64,6 +68,12 @@ Pipeline: text/MusicXML → `Score` model → `prepare` → per-measure spacing 
 - The engraver runs in the page: `ui/fonts.ts` feeds Leland to `setSmuflSource`; `loadSmufl()` is a lazy facade (and `D` in `draw.ts` a lazy proxy), so engraver modules may touch the font at import time. Nothing under `src/` may import `node:*` at top level. UI files are `.tsx` and Vite-only.
 - **Playback**: `src/playback/sequence.ts` (headless, tested) turns a `Score` into timed MIDI messages (tempo map, ties merged, constant velocity 80 (dynamics ignored), pedal -> CC64, channel per staff); `ui/player.ts` sends them to a Web MIDI output with a look-ahead scheduler and owns `playTick`/`playhead` (absolute ticks, kept across stops so play resumes). Edits while playing rebuild the sequence and carry on; a new document (`docId`) resets to the start. No built-in synth.
 - Not done: MIDI keyboard input, range selection of measures, multi-staff-part scores beyond the model's own limits.
+
+## Desktop app (`electron/`)
+
+- The editor is an Electron app; `ui/` only runs inside it. `electron/main.ts` (window, MIDI permission, open/save dialogs, PDF via `printToPDF` with `preferCSSPageSize`, unsaved-changes prompt on close) and `electron/preload.ts` (exposes `window.native`; typed in `ui/native.ts`) are bundled by `tools/build-app.ts` (esbuild, into `out/app`; the main script is ESM, the preload CJS). The built UI is loaded from `out/ui` (Vite `base: './'`); with `THOMAS_DEV_URL` set, from the dev server instead.
+- File handling is native only: `openFile`/`saveFile` in `ui/App.tsx`, the path is `filePath` in `state.ts`. Autosave to `localStorage` stays as crash recovery.
+- Scripted checks: `_electron.launch` from `playwright-core` with `--no-sandbox`.
 
 ## Conventions worth knowing
 

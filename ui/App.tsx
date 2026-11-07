@@ -1,16 +1,17 @@
 // The application shell: toolbar (file, view, playback), the palette, score pane, Properties panel and the
-// optional text pane. It owns file handling (open/save text, MusicXML import, printing to PDF) and
+// optional text pane. It owns file handling (open/save text through the native dialogs, MusicXML import, PDF export) and
 // otherwise only wires the panes to the signals in state.ts.
 
 import { signal } from '@preact/signals';
 import { lazy, Suspense } from 'preact/compat';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect } from 'preact/hooks';
 import { importMusicXml } from '../src/musicxml.ts';
 import { parseText, writeText } from '../src/textformat.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
 import { zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
+import { native } from './native.ts';
 import { Palette } from './Palette.tsx';
 import { Properties } from './Properties.tsx';
 import { chooseOutput, midiOut, midiPorts, playing, toggle } from './player.ts';
@@ -22,6 +23,7 @@ import {
   engraved,
   engraveError,
   fileName,
+  filePath,
   fit,
   histLen,
   load,
@@ -51,45 +53,47 @@ const examples = import.meta.glob('../examples/*.txt', { query: '?raw', import: 
   string
 >;
 
-function download(name: string, data: string, type = 'text/plain') {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([data], { type }));
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+/** Saves the score to its file, or asks for one when it has none yet (or when `as` is set). */
+async function saveFile(as = false) {
+  const r = await native.save(writeText(score.peek()), fileName.peek(), as ? null : filePath.peek());
+  if (!r) return;
+  filePath.value = r.path;
+  fileName.value = r.name;
+  dirty.value = false;
 }
 
-async function openFile(f: File) {
+async function openFile() {
   if (dirty.value && !confirm('Discard unsaved changes?')) return;
-  const src = await f.text();
+  const f = await native.open();
+  if (!f) return;
   if (/\.(musicxml|xml)$/i.test(f.name)) {
     try {
-      load(importMusicXml(src, { warn: (m) => console.warn(m) }), f.name.replace(/\.(musicxml|xml)$/i, '.txt'));
+      load(importMusicXml(f.data, { warn: (m) => console.warn(m) }), f.name.replace(/\.(musicxml|xml)$/i, '.txt'));
     } catch (e) {
       say(`Import failed: ${(e as Error).message}`, true);
     }
-  } else loadText(src, f.name);
+  } else if (loadText(f.data, f.name)) filePath.value = f.path;
 }
 
-function printPdf() {
+/** Renders every page, sets the sheet size through `@page` and lets the main process write the PDF. */
+async function exportPdf() {
   const res = engraved.value;
   if (!res) return;
   const st =
     document.getElementById('print-page') ??
     document.head.appendChild(Object.assign(document.createElement('style'), { id: 'print-page' }));
   st.textContent = `@page { size: ${res.pages[0].width * res.staffSpace}mm ${res.pages[0].height * res.staffSpace}mm; margin: 0 }\n@media print { .page { height: ${res.pages[0].height * res.staffSpace - 1}mm !important; } }`; // The page is a hair shorter than the sheet, because rounding must not push an empty page after each one.
-  // Pages far from the viewport have no SVG yet: render all of them, wait for the DOM, then print.
+  // Pages far from the viewport have no SVG yet: render all of them and wait for the DOM before the export.
   printing.value = true;
-  const done = () => {
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 300)));
+  try {
+    await native.pdf(fileName.peek());
+  } finally {
     printing.value = false;
-    removeEventListener('afterprint', done);
-  };
-  addEventListener('afterprint', done);
-  requestAnimationFrame(() => setTimeout(() => print(), 300));
+  }
 }
 
 export function App() {
-  const fileIn = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const off = installKeys();
     const close = (e: Event) => {
@@ -97,23 +101,27 @@ export function App() {
       if (!t.closest?.('.viewmenu')) viewOpen.value = false;
     };
     addEventListener('pointerdown', close, true);
-    const beforeUnload = (e: BeforeUnloadEvent) => {
-      if (dirty.peek()) e.preventDefault();
-    };
-    addEventListener('beforeunload', beforeUnload);
+    const unsaved = dirty.subscribe((d) => native.setUnsaved(d));
     const save = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        download(fileName.value, writeText(score.peek()));
-        dirty.value = false;
+        saveFile(e.shiftKey);
+      }
+    };
+    const open = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        openFile();
       }
     };
     addEventListener('keydown', save);
+    addEventListener('keydown', open);
     return () => {
       off();
       removeEventListener('pointerdown', close, true);
-      removeEventListener('beforeunload', beforeUnload);
+      unsaved();
       removeEventListener('keydown', save);
+      removeEventListener('keydown', open);
     };
   }, []);
   const res = engraved.value;
@@ -122,7 +130,6 @@ export function App() {
   return (
     <div class="app">
       <header class="toolbar">
-        <strong class="brand">Thomas</strong>
         <div class="seg">
           <button
             type="button"
@@ -135,34 +142,16 @@ export function App() {
           >
             New
           </button>
-          <button type="button" title="Open a score (.txt) or MusicXML" onClick={() => fileIn.current?.click()}>
+          <button type="button" title="Open a score (.txt) or MusicXML (Ctrl O)" onClick={() => openFile()}>
             Open…
           </button>
-          <button
-            type="button"
-            title="Save as text file (Ctrl S)"
-            onClick={() => {
-              download(fileName.value, writeText(score.value));
-              dirty.value = false;
-            }}
-          >
+          <button type="button" title="Save (Ctrl S); Ctrl Shift S saves under a new name" onClick={() => saveFile()}>
             Save{dirty.value ? ' •' : ''}
           </button>
-          <button type="button" title="Print, or save as PDF from the print dialog" onClick={printPdf}>
-            Print
+          <button type="button" title="Export as PDF" onClick={exportPdf}>
+            PDF
           </button>
         </div>
-        <input
-          ref={fileIn}
-          type="file"
-          accept=".txt,.musicxml,.xml"
-          hidden
-          onChange={(e) => {
-            const f = (e.target as HTMLInputElement).files?.[0];
-            if (f) openFile(f);
-            (e.target as HTMLInputElement).value = '';
-          }}
-        />
         <Dropdown
           value={undefined}
           title="Open an example"

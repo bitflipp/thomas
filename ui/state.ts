@@ -43,6 +43,10 @@ export const NEW_SCORE_TEXT = EMPTY;
 
 export const score = signal<Score>(parseText(EMPTY));
 export const fileName = signal('score.txt');
+
+/** The path of the file the score was opened from or saved to, null for a score that has no file yet. */
+export const filePath = signal<string | null>(null);
+
 export const dirty = signal(false);
 
 /** Counts documents opened or created (not edits). */
@@ -132,6 +136,7 @@ export function load(s: Score, name?: string): void {
     score.value = s;
     selection.value = [];
     dirty.value = false;
+    filePath.value = null;
     docId.value++;
     if (name) fileName.value = name;
   });
