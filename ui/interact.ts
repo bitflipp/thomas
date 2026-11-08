@@ -220,7 +220,7 @@ type Drag =
   | { k: 'marquee'; start: Where; additive: boolean; moved: boolean; base: Ref[] }
   | {
       k: 'span';
-      tool: 'slur' | 'line' | 'cresc' | 'dim' | 'pedal' | '8va' | '8vb';
+      tool: 'slur' | 'line' | 'cresc' | 'dim' | 'pedal' | 'trill' | '8va' | '8vb';
       start: Where;
       cx: number;
       cy: number;
@@ -232,7 +232,7 @@ let drag: Drag = { k: 'none' };
 
 const MARK_TOOLS = new Set<string>(['dynamic', 'text', 'tempo', 'clef']);
 type SpanTool = Extract<Drag, { k: 'span' }>['tool'];
-const SPAN_TOOLS = new Set<string>(['slur', 'line', 'cresc', 'dim', 'pedal', '8va', '8vb']);
+const SPAN_TOOLS = new Set<string>(['slur', 'line', 'cresc', 'dim', 'pedal', 'trill', '8va', '8vb']);
 
 /** Do both events lie in one system? A line between notes is drawn only then. */
 export function sameSystem(h: HitIndex, a: EvAddr, b: EvAddr): boolean {

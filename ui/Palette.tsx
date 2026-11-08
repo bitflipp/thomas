@@ -213,6 +213,9 @@ export function Palette() {
         <ToolBtn t="pedal" title="Pedal: drag from note to note">
           <Glyph cp={CPS.ped} />
         </ToolBtn>
+        <ToolBtn t="trill" title="Trill line: drag from note to note">
+          <Label italic>tr</Label>
+        </ToolBtn>
         <ToolBtn t="8va" title="8va: drag from note to note">
           <Label italic>8va</Label>
         </ToolBtn>
@@ -253,6 +256,7 @@ const HINTS: Record<Tool, string> = {
   cresc: 'Drag from the first note to the last.',
   dim: 'Drag from the first note to the last.',
   pedal: 'Drag from the note where the pedal goes down to the last note under it.',
+  trill: 'Drag from the first note to the last to trill them with a wavy line.',
   '8va': 'Drag from the first note to the last to shift.',
   '8vb': 'Drag from the first note to the last to shift.',
   dynamic: 'Click a note or rest: the mark hangs on it (above the staff centre puts it above).',

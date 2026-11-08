@@ -21,7 +21,7 @@ type Side = 'above' | 'below';
 
 /** One mark as laid out on a system: extent for stacking and a drawing function taking its reference y. */
 interface Item {
-  kind: 'dyn' | 'hair' | 'pedal' | 'ott' | 'tempo' | 'text';
+  kind: 'dyn' | 'hair' | 'pedal' | 'ott' | 'trl' | 'tempo' | 'text';
   x0: number;
   x1: number;
   side: Side;
@@ -240,6 +240,7 @@ interface Spans {
   hairpins: Span[];
   pedals: Span[];
   octaveShifts: Span[];
+  trillLines: Span[];
 }
 
 /**
@@ -248,10 +249,11 @@ interface Spans {
  * kind; a span without a stop runs to the end of the piece.
  */
 function collectMarks(sm0: StaffMarks, items: Item[][]): Spans {
-  const spans: Spans = { hairpins: [], pedals: [], octaveShifts: [] };
+  const spans: Spans = { hairpins: [], pedals: [], octaveShifts: [], trillLines: [] };
   const openHairpins = new Map<number, Span>();
   let openPedal: Span | null = null;
   let openOctave: Span | null = null;
+  let openTrill: Span | null = null;
   sm0.prep.measures.forEach((measure, mi) => {
     const si = sm0.sysOf[mi];
     for (const m of measure[sm0.staff].marks) {
@@ -280,6 +282,11 @@ function collectMarks(sm0: StaffMarks, items: Item[][]): Spans {
           openOctave = { mark: m, mi };
           spans.octaveShifts.push(openOctave);
           break;
+        case 'trill':
+          if (openTrill && !openTrill.end) openTrill.end = { mark: m, mi };
+          openTrill = { mark: m, mi };
+          spans.trillLines.push(openTrill);
+          break;
         case 'stop':
           if (m.of === 'hairpin') {
             const span = openHairpins.get(m.id);
@@ -291,6 +298,11 @@ function collectMarks(sm0: StaffMarks, items: Item[][]): Spans {
             if (openPedal) {
               openPedal.end = { mark: m, mi };
               openPedal = null;
+            }
+          } else if (m.of === 'trill') {
+            if (openTrill) {
+              openTrill.end = { mark: m, mi };
+              openTrill = null;
             }
           } else if (openOctave) {
             openOctave.end = { mark: m, mi };
@@ -473,6 +485,43 @@ function addOctaveShifts(sm0: StaffMarks, spans: Span[], items: Item[][]): void 
   }
 }
 
+/**
+ * Trill lines: the `tr` sign at the start and a wavy line of repeated `wiggleTrill` segments to the end, above the staff. A
+ * continuation on a later system has the line only. The line is cut to whole segments, so it ends a little short of the last note.
+ */
+function addTrillLines(sm0: StaffMarks, spans: Span[], items: Item[][]): void {
+  const sign = sm.bbox('ornamentTrill');
+  const signWidth = sm.adv('ornamentTrill');
+  const wiggle = sm.bbox('wiggleTrill');
+  const segment = sm.adv('wiggleTrill');
+  for (const sp of spans)
+    for (const p of spanPieces(sm0, sp, -0.2, 0.7, { end: 'headR', endPad: 0.3 }))
+      items[p.si].push({
+        src: sp.mark as Mark,
+        kind: 'trl',
+        x0: p.x0,
+        x1: p.x1,
+        side: 'above',
+        up: Math.max(sign.y1, wiggle.y1),
+        down: Math.max(-sign.y0, -wiggle.y0, 0),
+        row: 0,
+        order: 0,
+        draw: (ref) => {
+          const out: Prim[] = [];
+          let lineX = p.x0;
+          if (p.first) {
+            out.push({ t: 'glyph', name: 'ornamentTrill', x: p.x0, y: ref });
+            lineX = p.x0 + signWidth;
+          }
+          // The wiggle's vertical middle sits on the middle of the sign.
+          const y = ref - (sign.y0 + sign.y1) / 2 + (wiggle.y0 + wiggle.y1) / 2;
+          const count = Math.max(1, Math.floor((p.x1 - lineX) / segment));
+          for (let i = 0; i < count; i++) out.push({ t: 'glyph', name: 'wiggleTrill', x: lineX + i * segment, y });
+          return out;
+        },
+      });
+}
+
 /** A hairpin stops short of a dynamic that follows it and starts after one that precedes it, leaving 0.3 spaces; the dynamic itself never moves. */
 function keepHairpinsOffDynamics(its: Item[]): void {
   for (const hp of its.filter((i) => i.kind === 'hair')) {
@@ -565,7 +614,8 @@ function placeGroup(ctx: SysCtx, s: number, group: Item[], side: Side): void {
   }
   for (const it of group) {
     const y = it.kind === 'hair' ? ref - HAIRPIN_OFFSET : ref;
-    const kind: Kind = it.kind === 'hair' ? 'hairpin' : it.kind === 'ott' ? 'ottava' : it.kind;
+    const kind: Kind =
+      it.kind === 'hair' ? 'hairpin' : it.kind === 'ott' ? 'ottava' : it.kind === 'trl' ? 'trill' : it.kind;
     const owner = it.src ? pieceOwner(it.src, ctx.a) : oid(it);
     for (const p of it.draw(y)) {
       p.k = kind;
@@ -603,6 +653,7 @@ export function drawMarks(systems: SysCtx[], sysOf: number[], s: number): void {
   addHairpins(sm0, spans.hairpins, items);
   addPedals(sm0, spans.pedals, items);
   addOctaveShifts(sm0, spans.octaveShifts, items);
+  addTrillLines(sm0, spans.trillLines, items);
   systems.forEach((ctx, si) => {
     stackItems(ctx, s, items[si]);
   });

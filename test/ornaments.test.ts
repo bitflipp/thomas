@@ -125,3 +125,40 @@ test('mordents and turns: text round trip, drawing and playback', () => {
   assert.deepEqual(pitches(one('+tu')), [77, 76, 74, 76]);
   assert.deepEqual(pitches(one('+ti')), [74, 76, 77, 76]);
 });
+
+const LINE = `page 210x297 margin=10 space=1.75
+staff rh clef=G2 name="Piano"
+
+m1 time=4/4 key=0
+  rh.1: \\trill e5:4 f5:4 e5:4 \\trilloff g5:4
+`;
+
+test('a trill line round-trips, is drawn as a sign and wavy segments, and trills the notes under it', () => {
+  const sc = parseText(LINE);
+  assert.ok(writeText(sc).includes('\\trill e5:4 f5 e5 \\trilloff g5'));
+  assert.deepEqual(parseText(writeText(sc)), sc);
+  const out = engrave(sc);
+  const prims = out.pages[0].prims.filter((p) => p.k === 'trill');
+  assert.equal(prims.filter((p) => p.t === 'glyph' && p.name === 'ornamentTrill').length, 1);
+  assert.ok(prims.filter((p) => p.t === 'glyph' && p.name === 'wiggleTrill').length >= 3);
+  assert.deepEqual(findCollisions(out.pages), []);
+  const ons = buildSequence(sc).msgs.filter((m) => (m.bytes[0] & 0xf0) === 0x90);
+  // Three trilled quarter notes make many notes; the last, plain quarter note is one.
+  assert.equal(ons.length, 25);
+  assert.equal(ons[ons.length - 1].bytes[1], 79);
+  const plain = buildSequence(parseText(LINE.replace('\\trill ', '').replace('\\trilloff ', '')));
+  assert.equal(plain.msgs.filter((m) => (m.bytes[0] & 0xf0) === 0x90).length, 4);
+});
+
+test('a trill line continues over a system break', () => {
+  const notes = Array.from({ length: 40 }, (_, i) =>
+    i === 0 ? '\\trill c5:4' : i === 39 ? '\\trilloff c5:4' : 'c5:4',
+  );
+  const bar = (n: number) => `m${n} time=4/4\n  rh.1: ${notes.slice((n - 1) * 4, n * 4).join(' ')}\n`;
+  const text = `page 100x297 margin=10 space=1.75\nstaff rh clef=G2\n\n${Array.from({ length: 10 }, (_, i) => bar(i + 1)).join('')}`;
+  const out = engrave(parseText(text));
+  assert.ok(out.layout.systems.length > 1);
+  const signs = out.pages.flatMap((p) => p.prims).filter((p) => p.k === 'trill' && p.t === 'glyph');
+  assert.equal(signs.filter((p) => p.t === 'glyph' && p.name === 'ornamentTrill').length, 1);
+  assert.deepEqual(findCollisions(out.pages), []);
+});

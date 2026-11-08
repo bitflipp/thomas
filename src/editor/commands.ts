@@ -977,7 +977,7 @@ export function removeMarks(score: Score, addrs: MarkAddr[]): Score {
   });
 }
 
-export type SpanKind = 'cresc' | 'dim' | 'pedal' | '8va' | '8vb';
+export type SpanKind = 'cresc' | 'dim' | 'pedal' | 'trill' | '8va' | '8vb';
 
 /** The start and stop marks of a line; a hairpin gets the lowest id not used on the staff. */
 function spanBodies(
@@ -1000,6 +1000,7 @@ function spanBodies(
     };
   }
   if (kind === 'pedal') return { start: { type: 'pedal' }, stop: { type: 'stop', of: 'pedal' } };
+  if (kind === 'trill') return { start: { type: 'trill' }, stop: { type: 'stop', of: 'trill' } };
   return { start: { type: 'ottava', dir: kind === '8va' ? 'up' : 'down' }, stop: { type: 'stop', of: 'ottava' } };
 }
 

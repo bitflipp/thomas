@@ -82,6 +82,7 @@ beam covers the whole group; `bracket`/`nobracket` override that. The importer w
 |---|---|
 | Dynamics | `\pppp \ppp \pp \p \mp \mf \f \ff \fff \ffff \sf \sfz \fp \rfz ...`; `^`/`_` forces above/below, `=` puts it between the staves (centred in the gap; below the upper staff or above the lower one) |
 | Hairpin | `\<` crescendo, `\>` diminuendo, `\!` end. With a number to overlap: `\<2` ... `\!2`. Optional `^`/`_` |
+| Trill line | `\trill` starts the `tr` sign and wavy line, `\trilloff` ends it (may span measures); every note under the line is trilled in playback. The note needs no `+tr` |
 | Pedal | `\ped` press, `\unped` release (a change is `\unped \ped`) |
 | Octave shift | `\8va` (written an octave lower, line above), `\8vb` (line below), `\8off` ends it. May span measures |
 | Clef change | `\clef G2`, `\clef F4`, ... (a change at the first note of a system becomes the system's clef) |

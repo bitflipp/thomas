@@ -213,6 +213,26 @@ function readDynamicsAndPedal(
   };
 }
 
+/** The tick spans of the trill lines of a staff; a line without a stop runs to the end of the piece, a new start ends the previous line. */
+function trillLinesOf(score: Score, staffId: string, measureStart: number[], total: number): [number, number][] {
+  const spans: [number, number][] = [];
+  let from: number | undefined;
+  score.measures.forEach((m, mi) => {
+    for (const mk of marksOf(m.staves[staffId])) {
+      const t = measureStart[mi] + mk.tick;
+      if (mk.type === 'trill') {
+        if (from !== undefined) spans.push([from, t]);
+        from = t;
+      } else if (mk.type === 'stop' && mk.of === 'trill' && from !== undefined) {
+        spans.push([from, t]);
+        from = undefined;
+      }
+    }
+  });
+  if (from !== undefined) spans.push([from, total]);
+  return spans;
+}
+
 /** Collects the sounding notes of one voice, merging ties. */
 interface VoiceNotes {
   /**
@@ -255,6 +275,8 @@ interface StaffPlayback {
   ch: number;
   notes: Note[];
   velAt: (tick: number) => number;
+  /** Absolute tick spans [from, to) of the staff's trill lines; every note starting inside one is trilled. */
+  trillLines: [number, number][];
   /** The key signature (fifths) of the measure being read; the upper note of a trill without accidental follows it. */
   key: number;
 }
@@ -415,11 +437,12 @@ function addChord(sink: VoiceNotes, sp: StaffPlayback, te: TimedEvent & { ev: No
   const step = te.ev.arpeggio && n > 1 ? Math.min(PPQ / 8, (end - mainOn) / (3 * (n - 1))) : 0;
   te.ev.pitches.forEach((np, k) => {
     const on = mainOn + k * step;
-    if (te.ev.ornament && !te.ev.trill && k === n - 1) {
+    const trilled = te.ev.trill || sp.trillLines.some(([a, b]) => a <= start && start < b);
+    if (te.ev.ornament && !trilled && k === n - 1) {
       addOrnament(sink, np.pitch, te.ev.ornament, sp.key, vel, on, end);
       return;
     }
-    if (te.ev.trill && k === n - 1) {
+    if (trilled && k === n - 1) {
       addTrill(sink, np.pitch, te.ev.trillAcc, sp.key, vel, on, end);
       return;
     }
@@ -480,7 +503,13 @@ export function buildSequence(score: Score): Sequence {
   score.staves.forEach((staff, si) => {
     const ch = channelOf(si);
     const velAt = readDynamicsAndPedal(score, staff.id, ch, measureStart, total, pedal);
-    const sp: StaffPlayback = { ch, notes, velAt, key: 0 };
+    const sp: StaffPlayback = {
+      ch,
+      notes,
+      velAt,
+      key: 0,
+      trillLines: trillLinesOf(score, staff.id, measureStart, total),
+    };
     const openTies = new Map<number, Map<number, Note>>(); // The map is keyed by voice id.
     score.measures.forEach((m, mi) => {
       sp.key = keyAt(score, mi);

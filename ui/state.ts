@@ -252,6 +252,7 @@ export type Tool =
   | 'cresc'
   | 'dim'
   | 'pedal'
+  | 'trill'
   | '8va'
   | '8vb'
   | 'dynamic'

@@ -504,7 +504,7 @@ function markNotes(score: Score, ref: Extract<Ref, { t: 'mark' }>): EvAddr[] {
   const ends =
     m.type === 'hairpin'
       ? (x: Mark) => x.type === 'stop' && x.of === 'hairpin' && x.id === m.id
-      : m.type === 'pedal' || m.type === 'ottava'
+      : m.type === 'pedal' || m.type === 'ottava' || m.type === 'trill'
         ? (x: Mark) => x.type === 'stop' && x.of === m.type
         : undefined;
   if (ends)

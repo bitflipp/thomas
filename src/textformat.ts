@@ -126,6 +126,8 @@ const SIMPLE: Record<string, MarkBody> = {
   '8va': { type: 'ottava', dir: 'up' },
   '8vb': { type: 'ottava', dir: 'down' },
   '8off': { type: 'stop', of: 'ottava' },
+  trill: { type: 'trill' },
+  trilloff: { type: 'stop', of: 'trill' },
 };
 
 /** The key under which a parameterless mark is looked up in `SIMPLE_NAME`. */
@@ -145,6 +147,7 @@ function markStr(m: MarkBody): string {
       return `\\${SIMPLE_NAME.get(simpleKey(m))}`;
     case 'pedal':
     case 'ottava':
+    case 'trill':
       return `\\${SIMPLE_NAME.get(simpleKey(m))}`;
     case 'clef':
       return `\\clef ${clefStr(m.clef)}`;

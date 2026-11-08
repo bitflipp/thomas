@@ -162,7 +162,9 @@ export type MarkBody =
   | { type: 'pedal' }
   /** `up` = 8va: written an octave lower than it sounds, line above the staff. */
   | { type: 'ottava'; dir: 'up' | 'down' }
-  | { type: 'stop'; of: 'pedal' | 'ottava' }
+  /** A trill line: the `tr` sign and a wavy line to the matching stop; every note under it is trilled. */
+  | { type: 'trill' }
+  | { type: 'stop'; of: 'pedal' | 'ottava' | 'trill' }
   | { type: 'stop'; of: 'hairpin'; id: number }
   | { type: 'clef'; clef: Clef }
   | { type: 'tempo'; unit: BaseDur; dots: number; bpm: number; text?: string }

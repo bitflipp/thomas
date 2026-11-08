@@ -23,7 +23,7 @@ Repeat signs (`Measure.repeatStart`, `barline=repeat-end`) and voltas (`Measure.
 
 ## Smaller follow-ups
 - **Grace notes in the editor:** click to select or drag a grace head (hit targets via the existing `r`/`n` tags), a palette tool to place one on the staff, chord graces.
-- **Trills:** (key-aware upper note in playback is done; accidentals earlier in the measure are not considered), a wavy line for long trills across several notes, a trill-start/stop mark. Mordent and turn are done (`NoteEvent.ornament`, `+mo`/`+mi`/`+tu`/`+ti`, kind `ornament`, Properties "Ornament" row, playback in `addOrnament`); other ornaments (schleifer, tremblement, ...) would follow the same pattern.
+- **Trills:** (key-aware upper note in playback is done; accidentals earlier in the measure are not considered), trill lines (`\trill`/`\trilloff`, MusicXML `<wavy-line>`, palette tool, `addTrillLines` in `marks.ts`) are done; open: an accidental over a trill line, a note's own `+tr` inside a line is drawn twice. Mordent and turn are done (`NoteEvent.ornament`, `+mo`/`+mi`/`+tu`/`+ti`, kind `ornament`, Properties "Ornament" row, playback in `addOrnament`); other ornaments (schleifer, tremblement, ...) would follow the same pattern.
 - **Fermata:** shapes (short/triangle, long/square) and placement below are done (`fermataShape`, `fermataBelow`; `+fms`, `+fml`, `_`; Properties "Fermata" row; playback holds 1.5x/2x/3x). Open: fermata on barlines, the other MusicXML shapes (double-angled, double-square, half-curve ...).
 - **Playback:** dynamics are done (`velAt`; `sf`/`fp` are not shaped within a note); no built-in synth (decided against), repeat/fermata aware tempo handling.
 - **Editor:** MIDI keyboard input, range selection of measures, copy and paste of marks and graces.

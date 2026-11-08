@@ -74,6 +74,7 @@ export const CP: Record<string, number> = {
   fermataLongAbove: 0xe4c6,
   fermataLongBelow: 0xe4c7,
   ornamentTrill: 0xe566,
+  wiggleTrill: 0xeaa4,
   ornamentTurn: 0xe567,
   ornamentTurnInverted: 0xe568,
   ornamentShortTrill: 0xe56c,

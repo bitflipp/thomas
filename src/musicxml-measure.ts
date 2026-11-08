@@ -334,6 +334,7 @@ function readNote(r: Reader, el: XNode): void {
     raw.trem = readNotations(el, ev, false);
     readLyrics(el, ev);
     raw.ev = ev;
+    readWavyLine(r, el, raw, ev, homeId);
   }
   const timeModification = child(el, 'time-modification');
   if (timeModification)
@@ -415,6 +416,21 @@ function readArticulations(articulations: XNode, ev: NoteEvent): void {
   ev.art = list;
   const side = articulations.children.map((a) => a.attrs.placement).find((x) => x === 'above' || x === 'below');
   if (side) ev.artSide = side as 'above' | 'below';
+}
+
+/**
+ * A `<wavy-line>` in the ornaments is a trill line: its start becomes a `trill` mark at the note (which replaces the note's own
+ * trill sign, since the line draws one) and its stop a `stop` mark at the end of the note it is on.
+ */
+function readWavyLine(r: Reader, el: XNode, raw: RawNote, ev: NoteEvent, staffId: string): void {
+  const wavy = child(child(child(el, 'notations'), 'ornaments'), 'wavy-line');
+  if (!wavy) return;
+  if (wavy.attrs.type === 'start') {
+    delete ev.trill;
+    delete ev.trillAcc;
+    r.sink.marks.push({ staffId, mark: { type: 'trill', tick: raw.tick } });
+  } else if (wavy.attrs.type === 'stop')
+    r.sink.marks.push({ staffId, mark: { type: 'stop', of: 'trill', tick: raw.tick + raw.ticks } });
 }
 
 /** Reads slurs, arpeggio, articulations and tremolo from <notations> into `ev`. Only the first note of a chord carries slurs and articulations. Returns a two-note tremolo's role, if any. */

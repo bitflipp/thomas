@@ -61,3 +61,13 @@ test('a beam that starts after the leading rest of a tuplet nests the tuplet ins
   assert.equal(items[0].kind, 'beam');
   assert.equal((items[0] as { items: { kind: string }[] }).items[0].kind, 'tuplet');
 });
+
+test('a MusicXML wavy line becomes a trill line', () => {
+  const wavy = (type: string) =>
+    `<notations><ornaments>${type === 'start' ? '<trill-mark/>' : ''}<wavy-line type="${type}"/></ornaments></notations>`;
+  const n = (step: string, extra: string) => note(step, 480, 'quarter').replace('</note>', `${extra}</note>`);
+  const imp = importMusicXml(xmlOf(`${n('C', wavy('start'))}${n('D', '')}${n('E', wavy('stop'))}${n('F', '')}`));
+  const text = writeText(imp);
+  assert.match(text, /\\trill c4:4 d4 e4 \\trilloff f4/);
+  assert.doesNotMatch(text, /\+tr/);
+});
