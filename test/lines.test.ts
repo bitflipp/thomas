@@ -1,3 +1,5 @@
+// Lines between notes (`&` and `;`): pairing, editing, engraving and the text format.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as C from '../src/editor/commands.ts';
@@ -62,7 +64,7 @@ test('lines: addLine pairs notes of different voices and staves, removeLine drop
 
 test('lines: deleting an end note removes the whole line; notes only; two different notes', () => {
   let s = C.addLine(load(), a('rh', 1, 0), a('rh', 2, 0));
-  s = C.deleteEvents(s, [{ t: 'ev', ...a('rh', 2, 0) }]);
+  s = C.deleteEvents(s, [a('rh', 2, 0)]);
   assert.equal(lineEnds(s).length, 0);
   assert.throws(() => C.addLine(load(), a('rh', 1, 0), a('rh', 1, 0)), C.EditError);
   assert.throws(() => C.addLine(load(), a('rh', 1, 0), a('rh', 1, 0)), /different/);

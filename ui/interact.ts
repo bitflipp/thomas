@@ -143,7 +143,7 @@ const lenOf = (sc: Score, mi: number) => measureTicks(timeAt(sc, mi));
 const durTicks = () => baseTicks({ base: dur.value, dots: dots.value });
 
 /** The selected events. */
-export const evRefs = (): (EvAddr & { pi?: number })[] =>
+export const evRefs = (): Extract<Ref, { t: 'ev' }>[] =>
   selection.value.filter((r): r is Extract<Ref, { t: 'ev' }> => r.t === 'ev');
 
 /** Selects `refs`. With `additive` each one is toggled in the current selection instead. */
@@ -485,7 +485,7 @@ function continueDrag(d: Drag, e: PointerEvent, w: Where, h: HitIndex): void {
         ? tg.k === 'head' && sameSystem(h, d.from, tg.ref) && eventOf(score.peek(), tg.ref)?.kind === 'note'
         : tg.ref.staff === d.from.staff);
     ghost.value = { kind: 'span', from: d.start, to: w, bad: !ok };
-    setHover(ok && tg ? asSelected(tg) : null);
+    setHover((ok && tg ? asSelected(tg) : undefined) ?? null);
   } else if (d.k === 'mark') {
     if (!(d.moved || pastThreshold(d, e))) return;
     d.moved = true;

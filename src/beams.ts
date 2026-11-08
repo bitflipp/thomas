@@ -33,7 +33,7 @@ export function beamGroups(v: Voice, beatLen: number): Event[][] {
     }
   };
   walk(v.items);
-  out.push(...autoGroups(flat, beatLen, grouped, (e) => !!e.noBeam));
+  out.push(...autoGroups(flat, beatLen, grouped, (e) => e.kind === 'note' && !!e.noBeam));
   return out;
 }
 

@@ -554,7 +554,7 @@ function beamState(sc: Score, refs: Ref[]) {
 }
 
 /** The heading of the event section: Note, Chord, Rest or a count when several events are selected. */
-function eventTitle(sc: Score, refs: Ref[]): string {
+function eventTitle(sc: Score, refs: Extract<Ref, { t: 'ev' }>[]): string {
   const evs = refs.map((r) => eventOf(sc, r)).filter((e): e is Event => !!e);
   if (evs.length !== 1) return `${evs.length} events`;
   return evs[0].kind === 'note' ? (evs[0].pitches.length > 1 ? 'Chord' : 'Note') : 'Rest';
@@ -941,6 +941,7 @@ function EventPitch({ ctx }: { ctx: EvSel }) {
 /** The buttons that act on the selected events: similar, slur, line, tremolo, tuplets, stem flip and delete. */
 function EventActions({ ctx }: { ctx: EvSel }) {
   const { refs, beam } = ctx;
+  const tremolo = beam?.inTremolo;
   const sorted = [...refs].sort((p, q) => p.idx - q.idx);
   return (
     <Group title="Actions">
@@ -966,8 +967,8 @@ function EventActions({ ctx }: { ctx: EvSel }) {
               Trem {b}
             </button>
           ))}
-        {beam?.inTremolo && (
-          <button type="button" title="Remove the tremolo" onClick={() => run((x) => C.ungroup(x, beam.inTremolo))}>
+        {tremolo && (
+          <button type="button" title="Remove the tremolo" onClick={() => run((x) => C.ungroup(x, tremolo))}>
             No tremolo
           </button>
         )}

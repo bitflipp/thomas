@@ -11,6 +11,7 @@ import type { Engraved, Layout, MeasureGeom } from '../engrave/system.ts';
 import type { Mark, Score } from '../model.ts';
 import { flattenVoice, lineEnds, marksOf, pairLines } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
+import { must } from '../util.ts';
 import type { EvAddr, Ref, ScoreIndex } from './addr.ts';
 import { eventOf, indexScore, markOf, refKey, tupletOf, voiceOf } from './addr.ts';
 
@@ -207,7 +208,8 @@ function addToTarget(byKey: Map<string, Target>, page: number, p: Prim, ref: Ref
   const { key, head } = targetKey(page, p, ref);
   let t = byKey.get(key);
   if (!t) {
-    t = { page, ref, k: head ? 'head' : p.k, boxes: [], bbox: bb, prio: PRIO[head ? 'head' : p.k] ?? 3 };
+    const k = head ? 'head' : must(p.k);
+    t = { page, ref, k, boxes: [], bbox: bb, prio: PRIO[k] ?? 3 };
     byKey.set(key, t);
   }
   if (isCurveKind(p.k)) {

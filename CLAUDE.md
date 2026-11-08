@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-TypeScript runs directly on Node (≥ 22.18, type stripping; no build step). Formatting and linting: Biome (`biome.json`). PDF output needs `rsvg-convert`.
+TypeScript runs directly on Node (≥ 22.18, type stripping; no build step); `tsc --noEmit` only checks the types (`tsconfig.json`, strict, `erasableSyntaxOnly`), it is part of `npm run lint`. Formatting and linting: Biome (`biome.json`). PDF output needs `rsvg-convert`.
 
 ```
 npm test                                          # all tests (node --test test/)
-npm run lint                                      # biome check (format + lint + import order, all rules are errors) + tools/blanklines.ts
+npm run lint                                      # biome check (format + lint + import order, all rules are errors) + tools/blanklines.ts + tsc --noEmit
+npm run typecheck                                 # tsc --noEmit alone (tsconfig.json; strict, nothing is emitted)
 npm run lint:fix                                  # apply safe fixes, formatting and missing blank lines
 node --test --test-name-pattern="ledger" test/    # a single test by name
 node src/cli.ts render examples/gewitter.txt out/gewitter --pdf   # -> out/gewitter-N.svg + .pdf

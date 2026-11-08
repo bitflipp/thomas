@@ -10,7 +10,7 @@ import type { Ref } from '../src/editor/addr.ts';
 import { EditError } from '../src/editor/commands.ts';
 import type { HitIndex } from '../src/editor/hit.ts';
 import { buildHitIndex } from '../src/editor/hit.ts';
-import type { Engraved } from '../src/engrave/system.ts';
+import type { Engraved, EngraveOptions } from '../src/engrave/system.ts';
 import { createEngraveCache, engrave } from '../src/engrave/system.ts';
 import type { BaseDur, Clef, Score } from '../src/model.ts';
 import { validate } from '../src/model.ts';
@@ -216,7 +216,7 @@ effect(() => {
   const s = sp ? { ...s0, page: pageWithSpace(s0.page, sp) } : s0;
   const t0 = performance.now();
   try {
-    const opts = {
+    const opts: EngraveOptions = {
       respectBreaks: true,
       measureNumbers: nums,
       warn: (m: string) => console.warn(m),

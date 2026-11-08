@@ -193,7 +193,7 @@ function cutAcross(n: RawNote, mlen: number, number: number, warn: (msg: string)
       if (!first) {
         delete ev.marks;
         delete ev.slurStart;
-        delete ev.graces;
+        delete (ev as { graces?: unknown }).graces;
         delete (ev as { lyrics?: unknown }).lyrics;
         delete (ev as { art?: unknown }).art;
         delete (ev as { arpeggio?: unknown }).arpeggio;
