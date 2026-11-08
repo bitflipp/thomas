@@ -180,7 +180,7 @@ function measureColumnExtents(cols: Column[], nStaves: number): void {
  * on), and the first and last syllables of the measure may reach beyond their columns.
  */
 function separateLyrics(cols: Column[]): void {
-  const prev = new Map<string, { j: number; w: number; joins: boolean }>();
+  const prev = new Map<string, { j: number; w: number; joins: boolean; staff: number; hw: number }>();
   const first = new Set<string>();
   cols.forEach((c, j) => {
     for (const e of c.evs) {
@@ -195,11 +195,16 @@ function separateLyrics(cols: Column[]): void {
           first.add(key);
           c.L[e.staff] = Math.max(c.L[e.staff], w / 2 - hw / 2);
         }
-        prev.set(key, { j, w, joins: y.syllabic === 'begin' || y.syllabic === 'middle' });
+        prev.set(key, { j, w, joins: y.syllabic === 'begin' || y.syllabic === 'middle', staff: e.staff, hw });
         c.R[e.staff] = Math.max(c.R[e.staff], j === cols.length - 1 ? w / 2 + hw / 2 : 0);
       }
     }
   });
+  // A word that goes on in the next measure puts its hyphen between the last syllable and the barline
+  // (never on the barline), so the measure must end that much after the syllable.
+  for (const p of prev.values())
+    if (p.joins && p.j === cols.length - 1)
+      cols[p.j].R[p.staff] = Math.max(cols[p.j].R[p.staff], p.w / 2 + p.hw / 2 + HYPHEN_ROOM);
 }
 
 /**

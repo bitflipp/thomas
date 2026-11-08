@@ -119,3 +119,29 @@ test('neighbourNote skips rests and tied notes, across measures', () => {
   assert.deepEqual(neighbourNote(s, at(1, 0), -1), at(0, 4));
   assert.equal(neighbourNote(s, at(1, 0), 1), undefined);
 });
+
+test('a hyphen across a barline stays clear of it', () => {
+  const src = `# music typesetter score
+page 210x297 margin=10 space=1.75
+staff rh clef=G2
+
+m1 time=4/4 key=0
+  rh.1: c5:4"a" d5"b" e5"c" f5"Won-"
+m2
+  rh.1: g5:4"-der" a5"x" b5"y" c6"z"
+m3 barline=final
+  rh.1: c5:1
+`;
+  const out = engrave(parseText(src));
+  const bars = out.pages[0].prims
+    .filter((p) => p.k === 'barline' && p.t === 'line')
+    .map((p) => (p.t === 'line' ? p.x1 : 0));
+  const hyphens = out.pages[0].prims.filter(
+    (p) => p.k === 'lyric' && p.t === 'line' && p.y1 === p.y2 && p.x2 - p.x1 < 1,
+  );
+  assert.equal(hyphens.length, 1);
+  for (const h of hyphens) {
+    if (h.t !== 'line') continue;
+    for (const b of bars) assert.ok(b < h.x1 - 0.2 || b > h.x2 + 0.2, `barline ${b} touches hyphen ${h.x1}..${h.x2}`);
+  }
+});

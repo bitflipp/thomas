@@ -89,6 +89,28 @@ export function drawLyrics(systems: SysCtx[], sysOf: number[]): void {
   }
 }
 
+/** Half the width of a hyphen and the clear space kept between it and a barline. */
+const HYPHEN_HALF = 0.25;
+
+const BAR_CLEAR = 0.3;
+
+/**
+ * A hyphen centred at `x` between `from` and `to` is moved beside a barline it would touch: to the
+ * left of the barline if that fits between the syllables, else to the right.
+ */
+function clearOfBarlines(ctx: SysCtx, x: number, from: number, to: number): number {
+  let hx = x;
+  for (let mi = ctx.a; mi <= ctx.b; mi++) {
+    const bar = ctx.mx[mi] + ctx.placed[mi].endX;
+    if (Math.abs(hx - bar) >= HYPHEN_HALF + BAR_CLEAR) continue;
+    const left = bar - HYPHEN_HALF - BAR_CLEAR;
+    const right = bar + HYPHEN_HALF + BAR_CLEAR;
+    const fits = (c: number) => c - HYPHEN_HALF >= from && c + HYPHEN_HALF <= to;
+    hx = fits(left) ? left : fits(right) ? right : hx;
+  }
+  return hx;
+}
+
 /** One verse of one system: the syllables, then the hyphens and extenders that join them. */
 function drawVerse(ctx: SysCtx, s: number, base: number, list: Placed[], here: SysCtx): void {
   const P = ctx.prims[s];
@@ -103,7 +125,7 @@ function drawVerse(ctx: SysCtx, s: number, base: number, list: Placed[], here: S
       const to = sameSystem ? next.cx - next.w / 2 : from + 2 * LYRIC_GAP + 0.6;
       const n = Math.max(1, Math.floor((to - from) / 6));
       for (let k = 0; k < n; k++) {
-        const hx = from + ((to - from) * (k + 0.5)) / n;
+        const hx = clearOfBarlines(ctx, from + ((to - from) * (k + 0.5)) / n, from, to);
         P.push({ t: 'line', x1: hx - 0.25, x2: hx + 0.25, y1: base - 0.3, y2: base - 0.3, w: 0.1 });
       }
     }
