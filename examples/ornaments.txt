@@ -1,0 +1,13 @@
+page 210x297 margin=10 space=1.75
+staff rh clef=G2 name="Piano"
+
+m1 time=4/4 key=1
+  rh.1: \p e5:4+tr f#5:4 \< g5:4+mo a5:4+mi
+m2 time=4/4
+  rh.1: \! \f b4:4+tu c5:4+ti \> d5:4 e5:4
+m3 time=4/4
+  rh.1: \! \mp \trill g5:2 a5:4 b5:4
+m4 time=4/4
+  rh.1: \trilloff \p c5:4+fm d5:4+fms e5:4+fml f#5:4+fm_
+m5 time=4/4
+  rh.1: \ff g5:4+fms_ a5:4+fml_ r:4+fm_ c6:4+tr#+fm
