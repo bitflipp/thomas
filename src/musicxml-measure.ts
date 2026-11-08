@@ -363,6 +363,10 @@ function readPitch(el: XNode, mi: number): NotePitch {
   if (!Number.isInteger(pitch.alter)) throw new Error(`m${mi + 1}: microtones unsupported`);
   const np: NotePitch = { pitch };
   if (children(el, 'tie').some((t) => t.attrs.type === 'start')) np.tie = true;
+  const orientation = children(child(el, 'notations') ?? el, 'tied').find((t) => t.attrs.type === 'start')?.attrs
+    .orientation;
+  if (np.tie && (orientation === 'over' || orientation === 'under'))
+    np.tieSide = orientation === 'over' ? 'above' : 'below';
   const acc = child(el, 'accidental');
   if (acc?.attrs.cautionary === 'yes') np.acc = 'force';
   return np;

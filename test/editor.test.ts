@@ -140,6 +140,29 @@ test('measures: time change refits, delete and insert', () => {
   assert.throws(() => C.deleteMeasures(s, 0, 1), /at least one/);
 });
 
+test('tie sides: flip, text round trip, and the drawn tie follows', () => {
+  let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
+  s = ok(C.toggleTie(s, [{ ...loc, idx: 0 }]));
+  s = ok(C.flipTie(s, [{ ...loc, idx: 0 }], () => 'below'));
+  assert.match(show(s), /c4:4~\^/);
+  s = ok(C.flipTie(s, [{ ...loc, idx: 0 }], () => 'below'));
+  assert.match(show(s), /c4:4~_/);
+  assert.match(writeText(parseText(writeText(s))), /<c4~_|c4:4~_/);
+  const chord = load(base('  rh.1: <c4~^ e4~_>:2\n  lh.1: R:2'));
+  assert.match(writeText(chord), /<c4~\^ e4~_>/);
+  s = ok(C.setTieSide(s, [{ ...loc, idx: 0 }], undefined));
+  assert.doesNotMatch(show(s), /~[_^]/);
+  const tieY = (side: string) => {
+    const t = base(`  rh.1: c4:4~${side} c4:4\n  lh.1: R:2`);
+    const ps = engrave(parseText(t)).pages[0].prims.filter((x) => x.k === 'tie');
+    assert.ok(ps.length > 0);
+    return ps;
+  };
+  const up = tieY('^').flatMap((x) => (x.t === 'path' ? [x.d] : []));
+  const down = tieY('_').flatMap((x) => (x.t === 'path' ? [x.d] : []));
+  assert.notDeepEqual(up, down);
+});
+
 test('ties, transposition, cross-staff', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = ok(C.toggleTie(s, [{ ...loc, idx: 0 }]));

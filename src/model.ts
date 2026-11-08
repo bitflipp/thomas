@@ -32,6 +32,7 @@ export type AccOverride = 'force' | 'cautionary';
 export interface NotePitch {
   pitch: Pitch;
   tie?: boolean; // The note is tied to the next note of the same pitch.
+  tieSide?: 'above' | 'below'; // The tie arches to this side instead of the automatic one.
   acc?: AccOverride;
 }
 

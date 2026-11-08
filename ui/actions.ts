@@ -3,9 +3,10 @@
 // event and commits the result as one undoable step; a refusal (`EditError`) is shown in the status
 // line instead of changing anything.
 
-import type { EvAddr } from '../src/editor/addr.ts';
+import type { EvAddr, Ref } from '../src/editor/addr.ts';
 import { eventOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
+import { drawnTieSide } from '../src/editor/hit.ts';
 import type { BaseDur, Dur } from '../src/model.ts';
 import { evRefs, graceRefs, sameSystem } from './interact.ts';
 import { commit, dots, dur, hit, run, say, score, selection } from './state.ts';
@@ -124,6 +125,21 @@ export function lineSelection(): void {
 export function tieSelection(): void {
   const refs = evRefs();
   if (refs.length) run((s) => C.toggleTie(s, refs));
+}
+
+/** Flips the side of the selected ties, or of the ties of the selected notes. */
+export function flipTie(): void {
+  const h = hit.peek();
+  const ties = selection.peek().filter((r): r is Extract<Ref, { t: 'tie' }> => r.t === 'tie');
+  const refs: (EvAddr & { pi?: number })[] = ties.length ? ties : evRefs();
+  if (!refs.length) return;
+  run((s) => C.flipTie(s, refs, (a, pi) => (h && drawnTieSide(h, a, pi)) || 'above'));
+}
+
+/** X: flips the selected ties when there are any, else the stems of the selected notes. */
+export function flipStemOrTie(): void {
+  if (selection.peek().some((r) => r.t === 'tie')) flipTie();
+  else flipStem();
 }
 
 /** Toggles a fermata or a trill on the selected events (a trill only on notes). */

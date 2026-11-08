@@ -1315,6 +1315,42 @@ function LineSection() {
   );
 }
 
+/** Properties of the selected ties. */
+function TieSection() {
+  const group = selection.value.filter((x): x is Extract<Ref, { t: 'tie' }> => x.t === 'tie');
+  const side = same(
+    group.map((g) => {
+      const e = eventOf(score.value, g);
+      return e?.kind === 'note' ? e.pitches[g.pi]?.tieSide : undefined;
+    }),
+  );
+  return (
+    <section>
+      <Group title="Properties">
+        <Row label="Side">
+          <Pick
+            value={side}
+            opts={[
+              [undefined, 'auto'],
+              ['above', 'above'],
+              ['below', 'below'],
+            ]}
+            onChange={(v) => run((x) => C.setTieSide(x, group, v))}
+          />
+        </Row>
+      </Group>
+      <Group title="Actions">
+        <div class="btns">
+          <SimilarButton />
+          <button type="button" class="danger" onClick={() => deleteSelection()}>
+            Delete
+          </button>
+        </div>
+      </Group>
+    </section>
+  );
+}
+
 /** Properties of the selected slurs. */
 function SlurSection() {
   // Every selected slur is edited along with the first.
@@ -1503,18 +1539,7 @@ export function Properties() {
             {first?.t === 'slur' && <SlurSection />}
             {first?.t === 'line' && <LineSection />}
             {first?.t === 'tuplet' && <TupletSection r={first} />}
-            {first?.t === 'tie' && (
-              <section>
-                <Group title="Actions">
-                  <div class="btns">
-                    <SimilarButton />
-                    <button type="button" class="danger" onClick={() => deleteSelection()}>
-                      Delete
-                    </button>
-                  </div>
-                </Group>
-              </section>
-            )}
+            {first?.t === 'tie' && <TieSection />}
           </>
         )}
         {active === 'measure' && lo !== undefined && <MeasureSection mi={lo} to={hi ?? lo} />}

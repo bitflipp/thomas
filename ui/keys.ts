@@ -11,7 +11,7 @@ import { flattenVoice } from '../src/model.ts';
 import {
   chooseDots,
   chooseDuration,
-  flipStem,
+  flipStemOrTie,
   nudge,
   slurSelection,
   stepSelection,
@@ -235,7 +235,7 @@ function onToolKey(e: KeyboardEvent): void {
   else if (letter === 's') slurSelection();
   else if (letter === 'f') toggleOrnament('fermata');
   else if (letter === 't' && e.shiftKey) toggleOrnament('trill');
-  else if (letter === 'x') flipStem();
+  else if (letter === 'x') flipStemOrTie();
   else if (letter === 'q') voice.value = Math.max(1, voice.value - 1);
   else if (letter === 'w') voice.value = Math.min(MAX_VOICE, voice.value + 1);
 }

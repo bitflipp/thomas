@@ -53,6 +53,7 @@ export interface HeadL {
   pos: number; // This is the written staff position.
   pitch: Pitch; // This is the sounding pitch.
   tie: boolean;
+  tieSide?: 'above' | 'below'; // The side the tie is forced to, if any.
   acc?: { glyph: string; cautionary: boolean };
   displaced: boolean; // The head is moved to the other side of the stem.
   dx: number; // This is the x offset relative to the event's notehead x (set during layout).
@@ -287,6 +288,7 @@ function layoutEvent(
     const mkHead = (np: NoteEvent['pitches'][number]): HeadL => ({
       pitch: np.pitch,
       tie: !!np.tie,
+      ...(np.tie && np.tieSide ? { tieSide: np.tieSide } : {}),
       displaced: false,
       dx: 0,
       pos: staffPos({ ...np.pitch, octave: np.pitch.octave + shift }, clef),

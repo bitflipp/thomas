@@ -43,7 +43,7 @@ Voice numbers are local to a staff (`s1.1`, `s1.2`, `s2.1`, ...). Every voice of
 | Rest | `r` (visible), `s` (invisible spacer), `R` (whole-measure rest) | `r:8` `s:4` `R:2` |
 | Displaced rest | `r@<pitch>` | `r@b4:4` |
 | Chord | `<pitches>` then duration | `<c4 e4 g4>:2` |
-| Tie | `~` after the duration of a single note; inside a chord after each tied pitch | `c4:2~ c4:4` `<c4~ e4>:2` |
+| Tie | `~` after the duration of a single note; inside a chord after each tied pitch. A trailing `^` or `_` forces it above/below | `c4:2~ c4:4` `<c4~ e4>:2` `c4:2~_` |
 | Slur | `(` before the first note, `)` after the last. Optional number (overlap) and side `^` `_` | `(c5:8 d5 e5)` `(2^c5 ... d5)2` |
 | Line | `&` before the first note, `;` after the second (any two notes of one system, also in other voices or staves; `&` and `;` pair by number). Optional number (lines that overlap in time need different ones), `&.` dashed | `&c5:4 ... e3;` `&2.g4 ... c3;2` |
 | Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |

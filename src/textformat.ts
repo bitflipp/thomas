@@ -230,8 +230,8 @@ class VoiceWriter {
         tie: '',
       };
     const ps = e.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : ''));
-    if (e.pitches.length === 1) return { core: ps[0], tie: e.pitches[0].tie ? '~' : '' };
-    return { core: `<${ps.map((x, i) => x + (e.pitches[i].tie ? '~' : '')).join(' ')}>`, tie: '' };
+    if (e.pitches.length === 1) return { core: ps[0], tie: tieStr(e.pitches[0]) };
+    return { core: `<${ps.map((x, i) => x + tieStr(e.pitches[i])).join(' ')}>`, tie: '' };
   }
 
   eventStr(e: Event): string {
@@ -298,6 +298,24 @@ class VoiceWriter {
   }
 }
 
+/** The tie of a pitch: `~`, with `^` or `_` after it when the side is forced; empty when untied. */
+function tieStr(p: NotePitch): string {
+  return p.tie ? `~${p.tieSide === 'above' ? '^' : p.tieSide === 'below' ? '_' : ''}` : '';
+}
+
+/** Reads the `^` or `_` that forces the side of a tie just read. */
+function tieSideAfter(sc: Scanner): 'above' | 'below' | undefined {
+  if (sc.peek() === '^') {
+    sc.i++;
+    return 'above';
+  }
+  if (sc.peek() === '_') {
+    sc.i++;
+    return 'below';
+  }
+  return undefined;
+}
+
 /** Runs of grace notes with the same slash: `\\acc{d5:8 e5:8}` (struck through) or `\\grace{...}`. */
 function graceStrs(gs: Grace[]): string[] {
   const out: string[] = [];
@@ -307,7 +325,7 @@ function graceStrs(gs: Grace[]): string[] {
     while (j < gs.length && !!gs[j].slash === slash) j++;
     const body = gs.slice(i, j).map((g) => {
       const ps = g.pitches.map(
-        (p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : '') + (p.tie ? '~' : ''),
+        (p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : '') + tieStr(p),
       );
       return `${ps.length === 1 ? ps[0] : `<${ps.join(' ')}>`}:${g.base}`;
     });
@@ -747,6 +765,8 @@ class VoiceLineParser {
     if (sc.peek() === '~') {
       sc.i++;
       np.tie = true;
+      const side = tieSideAfter(sc);
+      if (side) np.tieSide = side;
     }
     return np;
   }
@@ -834,6 +854,8 @@ class VoiceLineParser {
       if (note.pitches.length !== 1) sc.fail('tie the pitches of a chord inside <>');
       sc.i++;
       note.pitches[0].tie = true;
+      const side = tieSideAfter(sc);
+      if (side) note.pitches[0].tieSide = side;
     }
     for (;;) {
       const art = sc.take(/->/y) ? 'accent' : sc.take(/-\^/y) ? 'marcato' : sc.take(/-\./y) ? 'staccato' : undefined;

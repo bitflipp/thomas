@@ -178,7 +178,7 @@ function tieUnits(
       const second = next && nh >= 0 ? sysOf[next.mi] : sysOf[e.mi];
       out.push({
         sys: [sysOf[e.mi], second],
-        key: `t${e.id}.${hi}>${next ? next.id : -1}.${nh}`,
+        key: `t${e.id}.${hi}${e.heads[hi].tieSide ?? ''}>${next ? next.id : -1}.${nh}`,
         cross: false,
         draw: () => drawTie(systems, e, hi, next, nh),
       });
@@ -466,9 +466,10 @@ function headPoint(e: EvL, side: 'above' | 'below'): { x: number; y: number; ste
   };
 }
 
-/** Does the tie of head `hi` arch above it? By voice with several voices, by position within a chord, else opposite to the stem. */
+/** Does the tie of head `hi` arch above it? As forced, else by voice with several voices, by position within a chord, else opposite to the stem. */
 function tieAbove(e: EvL, hi: number): boolean {
   const h = e.heads[hi];
+  if (h.tieSide) return h.tieSide === 'above';
   if (e.nVoices > 1) return e.voiceRank === 0;
   if (e.heads.length > 1) {
     // The upper half of a chord ties upwards, the lower half downwards, so that the ties fan
@@ -603,6 +604,8 @@ function slurSide(a: EvL, b: EvL, explicit: Side | undefined, voice: EvL[]): Sid
 /** The side a tie of `e` arches to, if it has one. */
 function tieSideOf(e: EvL): Side | null {
   if (!e.heads.some((h) => h.tie)) return null;
+  const forced = e.heads.find((h) => h.tie && h.tieSide)?.tieSide;
+  if (forced) return forced;
   if (e.nVoices > 1) return e.voiceRank === 0 ? 'above' : 'below';
   return e.stem === 'down' ? 'above' : 'below';
 }

@@ -195,6 +195,18 @@ export function primRef(index: ScoreIndex, p: Prim): Ref | undefined {
   return undefined;
 }
 
+/** The side the drawn tie of head `pi` of the event at `a` arches to, read from the engraving (undefined if it is not drawn). */
+export function drawnTieSide(hitIndex: HitIndex, a: EvAddr, pi: number): 'above' | 'below' | undefined {
+  const same = (r: Ref, t: string) =>
+    r.t === t && 'idx' in r && r.mi === a.mi && r.staff === a.staff && r.voice === a.voice && r.idx === a.idx;
+  const tie = hitIndex.targets.find((t) => same(t.ref, 'tie') && (t.ref as { pi: number }).pi === pi);
+  const head = hitIndex.targets.find(
+    (t) => t.k === 'head' && same(t.ref, 'ev') && ((t.ref as { pi?: number }).pi ?? 0) === pi && t.page === tie?.page,
+  );
+  if (!(tie && head)) return undefined;
+  return tie.bbox.y0 + tie.bbox.y1 < head.bbox.y0 + head.bbox.y1 ? 'above' : 'below';
+}
+
 /** Whether a primitive kind is a curve (slur, tie, link) that is hit-tested along its path rather than by its box. */
 const isCurveKind = (k: string | undefined) => k === 'slur' || k === 'tie' || k === 'link';
 

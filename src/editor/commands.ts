@@ -586,6 +586,46 @@ export function toggleTie(score: Score, addrs: (EvAddr & { pi?: number })[]): Sc
   });
 }
 
+/**
+ * Flips the side the ties of the addressed notes arch to (`pi` picks one pitch of a chord). The side the engraver
+ * chose is not known here, so `current` says it for each tie; a tie flips to the other side and stays forced.
+ */
+export function flipTie(
+  score: Score,
+  addrs: (EvAddr & { pi?: number })[],
+  current: (a: EvAddr, pi: number) => 'above' | 'below',
+): Score {
+  return edit(score, (d) => {
+    for (const a of addrs) {
+      const e = eventIn(d, a);
+      if (e.kind !== 'note') continue;
+      e.pitches.forEach((p, pi) => {
+        if (!p.tie || (a.pi !== undefined && a.pi !== pi)) return;
+        p.tieSide = (p.tieSide ?? current(a, pi)) === 'above' ? 'below' : 'above';
+      });
+    }
+  });
+}
+
+/** Forces the ties of the addressed notes above or below; `undefined` returns them to the automatic side. */
+export function setTieSide(
+  score: Score,
+  addrs: (EvAddr & { pi?: number })[],
+  side: 'above' | 'below' | undefined,
+): Score {
+  return edit(score, (d) => {
+    for (const a of addrs) {
+      const e = eventIn(d, a);
+      if (e.kind !== 'note') continue;
+      e.pitches.forEach((p, pi) => {
+        if (!p.tie || (a.pi !== undefined && a.pi !== pi)) return;
+        if (side) p.tieSide = side;
+        else delete p.tieSide;
+      });
+    }
+  });
+}
+
 /** Adds articulation `art` to the addressed notes, or removes it if all of them have it already. */
 export function toggleArticulation(score: Score, addrs: EvAddr[], art: Articulation): Score {
   return updateNotes(score, addrs, (n) => {
