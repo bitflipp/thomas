@@ -172,6 +172,19 @@ m1 time=2/4
   assert.ok(line?.t === 'line' && heads[1].t === 'glyph' && line.x1 > heads[1].x + 0.5);
 });
 
+test('a symmetric slur still clears the tuplet numbers under it', () => {
+  const t = `${HEAD}
+m1 time=4/4
+  rh.1: (^3:2{c5:8 e5 g5} 3:2{a4 g4 e4} 3:2{c5:8 e5 g5} 3:2{a4 g4 e4})
+  lh.1: R:1
+`;
+  const hits = findCollisions(engrave(parseText(t)).pages);
+  assert.deepEqual(
+    hits.filter((c) => c.a.k === 'slur' || c.b.k === 'slur'),
+    [],
+  );
+});
+
 test('unisons with different durations share a head when stems are opposite and the head shape is equal', () => {
   const ps = prims(`${HEAD}
 m1 time=2/4

@@ -596,3 +596,12 @@ test('clearMeasures: contents become one whole-measure rest, signatures and repe
   assert.equal(validate(out).length, 0);
   assert.throws(() => C.clearMeasures(sc, 2, 3), /No such measures/);
 });
+
+test('slur shape: skewed flag in the text format, a command, and the drawn slur follows', () => {
+  const t = base('  rh.1: (^/c5:8 d5 e5 f5)\n  lh.1: R:2');
+  assert.match(writeText(parseText(t)), /\(\^\/ ?c5/);
+  let s = ok(C.setSlurSkewed(load(t), { ...loc, idx: 0 }, 1, false));
+  assert.match(show(s), /\(\^c5/);
+  s = ok(C.setSlurSkewed(s, { ...loc, idx: 0 }, 1, true));
+  assert.match(show(s), /\(\^\/ ?c5/);
+});

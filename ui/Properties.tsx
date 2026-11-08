@@ -1356,6 +1356,9 @@ function SlurSection() {
   // Every selected slur is edited along with the first.
   const group = selection.value.filter((x): x is Extract<Ref, { t: 'slur' }> => x.t === 'slur');
   const side = same(group.map((g) => eventOf(score.value, g)?.slurStart?.find((s) => s.id === g.id)?.side));
+  const shape = same(
+    group.map((g) => (eventOf(score.value, g)?.slurStart?.find((s) => s.id === g.id)?.skewed ? 'skewed' : 'auto')),
+  );
   return (
     <section>
       <Group title="Properties">
@@ -1368,6 +1371,16 @@ function SlurSection() {
               ['below', 'below'],
             ]}
             onChange={(v) => run((x) => group.reduce((acc, g) => C.setSlurSide(acc, g, g.id, v), x))}
+          />
+        </Row>
+        <Row label="Shape">
+          <Pick
+            value={shape}
+            opts={[
+              ['auto', 'auto'],
+              ['skewed', 'skewed'],
+            ]}
+            onChange={(v) => run((x) => group.reduce((acc, g) => C.setSlurSkewed(acc, g, g.id, v === 'skewed'), x))}
           />
         </Row>
       </Group>

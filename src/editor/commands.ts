@@ -938,6 +938,17 @@ export function setSlurSide(score: Score, from: EvAddr, id: number, side: 'above
   });
 }
 
+/** Lets the slur with id `id` that starts at `from` be skewed by the engraver; `false` returns it to the symmetric default. */
+export function setSlurSkewed(score: Score, from: EvAddr, id: number, skewed: boolean): Score {
+  return updateEvents(score, [from], (e) => {
+    const s = e.slurStart?.find((x) => x.id === id);
+    if (s) {
+      if (skewed) s.skewed = true;
+      else delete s.skewed;
+    }
+  });
+}
+
 // Marks (dynamics, hairpins, pedal, ottava, clef changes, tempo, text) hang on events; the commands
 // below attach, move, update and remove them, including spans drawn over a range of notes.
 

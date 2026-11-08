@@ -207,7 +207,7 @@ class VoiceWriter {
       this.curStaff = e.staff ?? this.home;
       pre.push(`\\staff ${this.curStaff}`);
     }
-    for (const s of e.slurStart ?? []) pre.push(`(${idStr(s.id)}${sideStr(s.side)}`);
+    for (const s of e.slurStart ?? []) pre.push(`(${idStr(s.id)}${sideStr(s.side)}${s.skewed ? '/' : ''}`);
     for (const s of e.lineStart ?? []) pre.push(`&${idStr(s.id)}${s.dashed ? '.' : ''}`);
     if (e.stem) pre.push(e.stem === 'up' ? '\\stemup' : '\\stemdown');
     if (e.kind === 'note') {
@@ -636,7 +636,8 @@ class VoiceLineParser {
     this.sc.i++;
     const id = this.num();
     const side = this.placement();
-    this.pendingSlurs.push({ id, ...(side ? { side } : {}) });
+    const skewed = this.sc.take(/\//y);
+    this.pendingSlurs.push({ id, ...(side ? { side } : {}), ...(skewed ? { skewed: true } : {}) });
   }
 
   private readSlurStop(): void {

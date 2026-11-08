@@ -41,6 +41,7 @@ export type Articulation = 'accent' | 'marcato' | 'staccato';
 export interface SlurStart {
   id: number;
   side?: 'above' | 'below';
+  skewed?: boolean; // The engraver may skew the slur to hug a low side; otherwise it is a symmetric arc (unless an obstacle forces a skew).
 }
 
 /**

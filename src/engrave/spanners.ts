@@ -190,7 +190,7 @@ function tieUnits(
 /** Slurs of one staff, matched start to stop by voice and id; each is a unit that draws it, tagged with whether it crosses staves. */
 function matchSlurs(systems: SysCtx[], sysOf: number[], timeOrder: EvL[], voiceEvs: Map<number, EvL[]>): SpannerUnit[] {
   const out: SpannerUnit[] = [];
-  const open = new Map<string, { ev: EvL; side?: Side; id: number }>();
+  const open = new Map<string, { ev: EvL; side?: Side; id: number; skewed: boolean }>();
   for (const e of timeOrder) {
     for (const id of e.ev.slurStop ?? []) {
       const key = `${e.voice}|${id}`;
@@ -201,13 +201,14 @@ function matchSlurs(systems: SysCtx[], sysOf: number[], timeOrder: EvL[], voiceE
       const side = start.ev.ev.kind === 'note' && e.ev.kind === 'note' ? slurSide(start.ev, e, start.side, voice) : '-';
       out.push({
         sys: [sysOf[start.ev.mi], sysOf[e.mi]],
-        key: `s${start.ev.id}>${e.id}.${start.id}.${side}`,
-        draw: () => drawSlur(systems, sysOf, start.ev, e, start.side, voice, start.id),
+        key: `s${start.ev.id}>${e.id}.${start.id}.${side}${start.skewed ? '/' : ''}`,
+        draw: () => drawSlur(systems, sysOf, start.ev, e, start.side, voice, start.id, start.skewed),
         cross: start.ev.staff !== start.ev.home || e.staff !== start.ev.home,
       });
       open.delete(key);
     }
-    for (const ss of e.ev.slurStart ?? []) open.set(`${e.voice}|${ss.id}`, { ev: e, side: ss.side, id: ss.id });
+    for (const ss of e.ev.slurStart ?? [])
+      open.set(`${e.voice}|${ss.id}`, { ev: e, side: ss.side, id: ss.id, skewed: ss.skewed === true });
   }
   return out;
 }
@@ -687,6 +688,10 @@ const SLUR_SHAPES: SlurShape[] = (() => {
   return out;
 })();
 
+// The mirror-symmetric candidates, which a slur uses unless it may be skewed: the same lift at both ends, and control points
+// equally far in from both. Only their reach varies, so that one with higher ends can clear what a flatter one cannot.
+const SYMMETRIC_SHAPES: SlurShape[] = SLUR_SHAPES.filter((sh) => sh.m0 === sh.m1 && sh.a0 === sh.a1);
+
 /** What a shape costs beyond its height: the further from the symmetric shape, the more. */
 const shapePenalty = (sh: SlurShape): number =>
   0.5 * (Math.abs(sh.a0 - SYMMETRIC.a0) + Math.abs(sh.a1 - SYMMETRIC.a1)) + 0.15 * Math.abs(sh.m0 - sh.m1);
@@ -764,6 +769,7 @@ interface SlurStyle {
   above: boolean;
   thick: number;
   id: number;
+  skewed: boolean; // Skewed shapes are considered from the start, not only when no symmetric one clears.
   slurId: number;
   from: EvL;
 }
@@ -791,14 +797,21 @@ function planSlurPiece(
   // whose peak ends up lowest wins; a lopsided shape pays a small penalty, so the symmetric one stays unless an obstacle
   // makes a skewed one clearly flatter.
   const hPref = Math.max(0.7, Math.min(3.0, 0.09 * L + 0.6));
-  let best: { sh: SlurShape; hMin: number; h: number; cost: number } | undefined;
-  for (const sh of SLUR_SHAPES) {
-    const hMin = leastHeight(x0, y0, x1, y1, st, samples, sh);
-    if (hMin === undefined) continue;
-    const h = Math.max(hPref, hMin);
-    const cost = peakExtent(x0, y0, x1, y1, st.above, sh, h) + shapePenalty(sh);
-    if (!best || cost < best.cost - 1e-9) best = { sh, hMin, h, cost };
-  }
+  type Pick = { sh: SlurShape; hMin: number; h: number; cost: number };
+  const choose = (shapes: SlurShape[]): Pick | undefined => {
+    let best: Pick | undefined;
+    for (const sh of shapes) {
+      const hMin = leastHeight(x0, y0, x1, y1, st, samples, sh);
+      if (hMin === undefined) continue;
+      const h = Math.max(hPref, hMin);
+      const cost = peakExtent(x0, y0, x1, y1, st.above, sh, h) + shapePenalty(sh);
+      if (!best || cost < best.cost - 1e-9) best = { sh, hMin, h, cost };
+    }
+    return best;
+  };
+  // A slur keeps to the mirror-symmetric shapes unless it is marked skewed; only when none of them can clear what
+  // stands under it does it give way to a skewed one, since a collision is worse.
+  const best = (!st.skewed ? choose(SYMMETRIC_SHAPES) : undefined) ?? choose(SLUR_SHAPES);
   const { sh, hMin, h: h0 } = best ?? { sh: SYMMETRIC, hMin: hPref, h: hPref };
   return {
     h: h0,
@@ -844,6 +857,7 @@ function drawSlur(
   explicit: Side | undefined,
   voice: EvL[],
   id: number,
+  skewed: boolean,
 ): void {
   if (a.ev.kind !== 'note' || b.ev.kind !== 'note') return;
   const side = slurSide(a, b, explicit, voice);
@@ -863,6 +877,7 @@ function drawSlur(
     above,
     thick: D.slurMidpointThickness as number,
     id,
+    skewed,
     slurId: slurOwner(a, id),
     from: a,
   };
