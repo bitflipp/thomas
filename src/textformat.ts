@@ -111,6 +111,7 @@ const ORNAMENT_OF_CODE: Record<string, Ornament> = Object.fromEntries(
   Object.entries(ORNAMENT_CODE).map(([o, c]) => [c, o as Ornament]),
 );
 
+/** The text-format placement character of a mark: `^` above, `_` below, `=` between staves, nothing for the default. */
 const sideStr = (p?: MarkPlacement) => (p === 'above' ? '^' : p === 'below' ? '_' : p === 'between' ? '=' : '');
 
 /** Slur and hairpin ids are written only when they are not 1: the common case of one span at a time needs no number. */

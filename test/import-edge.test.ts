@@ -14,9 +14,11 @@ function xmlOf(body: string): string {
 <clef><sign>G</sign><line>2</line></clef></attributes>${body}</measure></part></score-partwise>`;
 }
 
+/** A MusicXML pitched note in octave 4. */
 const note = (step: string, dur: number, type: string) =>
   `<note><pitch><step>${step}</step><octave>4</octave></pitch><duration>${dur}</duration><voice>1</voice><type>${type}</type></note>`;
 
+/** A MusicXML rest. */
 const rest = (dur: number, type: string) =>
   `<note><rest/><duration>${dur}</duration><voice>1</voice><type>${type}</type></note>`;
 

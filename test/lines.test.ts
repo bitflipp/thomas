@@ -22,8 +22,13 @@ m2
   lh.1: c3:1
 `;
 
+/** Parses score text. */
 const load = (t = base): Score => parseText(t);
+
+/** The line primitives of the engraved score. */
 const links = (s: Score) => engrave(s).pages.flatMap((p) => p.prims.filter((x) => x.k === 'link'));
+
+/** The address of an event. */
 const a = (staff: string, voice: number, idx: number, mi = 0) => ({ mi, staff, voice, idx });
 
 test('lines: text format round trip', () => {

@@ -11,6 +11,7 @@ const HEAD = `page 210x297 margin=10 space=1.75
 staff rh clef=G2
 `;
 
+/** The note-on messages of a sequence. */
 const on = (s: ReturnType<typeof buildSequence>) => s.msgs.filter((m) => (m.bytes[0] & 0xf0) === 0x90);
 
 test('quarter notes at 120 bpm are half a second apart', () => {

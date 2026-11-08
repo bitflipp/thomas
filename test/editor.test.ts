@@ -10,6 +10,7 @@ import type { Score } from '../src/model.ts';
 import { flattenVoice, marksOf, validate } from '../src/model.ts';
 import { parseText, writeText } from '../src/textformat.ts';
 
+/** A two-staff, two-measure score text whose first measure holds `m`. */
 const base = (m = '  rh.1: R:2\n  lh.1: R:2') => `page 210x297 margin=10 space=1.75
 staff rh clef=G2
 staff lh clef=F4
@@ -21,8 +22,10 @@ m2
   lh.1: R:2
 `;
 
+/** Parses score text. */
 const load = (t = base()): Score => parseText(t);
 
+/** Checks that a score is valid and survives a text round trip, and returns it. */
 const ok = (s: Score) => {
   assert.deepEqual(validate(s), []);
   assert.equal(writeText(parseText(writeText(s))), writeText(s));
@@ -33,10 +36,11 @@ const loc = { mi: 0, staff: 'rh', voice: 1 };
 const PPQ4 = 3360;
 const c4 = { step: 'c' as const, alter: 0, octave: 4 };
 
+/** The text line of staff `st` (voice lines only) at index `mi` among the score's lines of that staff. */
 const show = (s: Score, mi = 0, st = 'rh') =>
   writeText(s)
     .split('\n')
-    .filter((l) => l.startsWith(`  ${st}.`) && true)[mi] ?? '';
+    .filter((l) => l.startsWith(`  ${st}.`))[mi] ?? '';
 
 test('enterNote into a measure rest leaves rests around it', () => {
   const s = ok(C.enterNote(load(), loc, PPQ4 / 2, { base: 8, dots: 0 }, c4));

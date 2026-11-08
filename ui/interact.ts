@@ -304,7 +304,7 @@ export const measureRefs = (): number[] =>
     .sort((a, b) => a - b);
 
 /** Selects the measures `a` to `b` (either order) as the selection. */
-export function selectMeasureRange(a: number, b: number): void {
+function selectMeasureRange(a: number, b: number): void {
   const [lo, hi] = a <= b ? [a, b] : [b, a];
   select(Array.from({ length: hi - lo + 1 }, (_, k) => ({ t: 'measure' as const, mi: lo + k })));
 }

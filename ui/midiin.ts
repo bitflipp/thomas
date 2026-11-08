@@ -36,7 +36,7 @@ function cursorNow(): Cursor {
 }
 
 /** Enters one key press (MIDI key `midi`) and moves the selection to the next position; a key within the chord window joins the previous note. */
-export function noteOn(midi: number, now = performance.now()): void {
+function noteOn(midi: number, now = performance.now()): void {
   const d = { base: dur.peek(), dots: dots.peek() };
   const chord = !!last && now - last.time < CHORD_MS;
   const cur = chord && last ? last.at : cursorNow();
