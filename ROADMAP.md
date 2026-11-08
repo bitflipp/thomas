@@ -1,6 +1,6 @@
 # Roadmap
 
-Planned features, in the suggested order. Each item names the layers it touches (model, text format, MusicXML import, engraver, editor, playback); every feature has to go through all of them, with `FORMAT.md` and `FEATURES.md` updated and a round-trip test in `test/roundtrip.test.ts`.
+Planned features, in the suggested order. Each item names the layers it touches (model, text format, MusicXML import, engraver, editor, playback); every feature has to go through all of them, with `FORMAT.md` updated and a round-trip test in `test/roundtrip.test.ts`.
 
 Done so far: grace notes (engraving, import, playback, Properties editing), fermatas, trills with upper-note accidental, multi-measure rests, repeats and voltas, lyrics.
 
@@ -30,7 +30,6 @@ Repeat signs (`Measure.repeatStart`, `barline=repeat-end`) and voltas (`Measure.
 - **Text format:** keyboard shortcuts for the new elements, and a "select similar" kind for graces, trills and fermatas.
 
 ## Gaps in the finished features
-- `FEATURES.md` still lists repeats, voltas and lyrics as "not used": bring it up to date.
 - No round-trip test of the reference piece covers repeats, voltas or lyrics (they have their own tests in `test/repeats.test.ts` and `test/lyrics.test.ts`), and `test/incremental.test.ts` does not generate edits on them: voltas and lyrics are drawn with the marks, which are always redrawn, so they should be safe, but nothing checks it.
 - A volta bracket across a system break and a repeat start inside a multi-measure rest run are untested.
 

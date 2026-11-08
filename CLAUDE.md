@@ -83,7 +83,7 @@ Pipeline: text/MusicXML → `Score` model → `prepare` → per-measure spacing 
 
 ## Conventions worth knowing
 
-- `examples/gewitter.txt` is generated from `gewitter.musicxml` (the reference piece covering every supported feature; see `FEATURES.md`). Regenerate it with `import` after importer changes.
+- `examples/gewitter.txt` is generated from `gewitter.musicxml` (the reference piece covering the supported features). Regenerate it with `import` after importer changes.
 - Engraving tests assert on emitted primitives (`engrave(...).pages[0].prims`), not on pixels. Visual checks are done by rendering and viewing crops; `out/` is git-ignored.
 
 ## Comment and blank-line style
