@@ -14,6 +14,7 @@ import { pageToSvg } from './render.ts';
 import { parseText, writeText } from './textformat.ts';
 import { must } from './util.ts';
 
+/** Reads a score from a text-format, MusicXML or JSON file, chosen by the file extension. */
 function loadScore(path: string, flags = new Set<string>()): Score {
   const src = readFileSync(path, 'utf8');
   const warn = (m: string) => console.error('warn:', m);
@@ -62,6 +63,7 @@ for (let i = 0; i < rawArgs.length; i++) {
   } else args.push(a);
 }
 
+/** Applies the `--space` override (staff-space size in mm) to the score's page, if one was given. */
 const withSpace = (s: Score): Score => {
   if (spaceOverride) s.page.staffSpace = spaceOverride;
   return s;

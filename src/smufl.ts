@@ -154,6 +154,10 @@ function pathData(path: {
   return d;
 }
 
+/**
+ * Reads the Leland font and its metadata from disk (Node only, loaded lazily so that browsers never touch
+ * `node:fs`).
+ */
 function nodeSource(): { buf: ArrayBuffer; meta: FontMeta } {
   const fs = (process as unknown as { getBuiltinModule(id: 'node:fs'): typeof import('node:fs') }).getBuiltinModule(
     'node:fs',
@@ -183,6 +187,7 @@ const facade: Smufl = {
   },
 };
 
+/** The loaded font, built on first use from the registered source (or from disk under Node). */
 function real(): Smufl {
   if (cached) return cached;
   source ??= nodeSource();

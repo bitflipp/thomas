@@ -127,6 +127,10 @@ function markSide(sm0: StaffMarks, p: MarkPlacement | undefined): Side {
   return p === 'between' ? facing(sm0).side : (p ?? 'below');
 }
 
+/**
+ * The placement item of a dynamic mark: its letters at the tick, centred between two staves if the placement is
+ * `between`.
+ */
 function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' }): Item {
   const sys = sm0.systems[sm0.sysOf[mi]];
   const run = dynRun(m.text);
@@ -168,6 +172,7 @@ function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' })
   };
 }
 
+/** The placement item of a tempo mark: a note head, stem and the text after it, drawn like a staff note. */
 function tempoItem(m: Mark & { type: 'tempo' }, x0: number): Item {
   let x = x0;
   // Drawn exactly like a staff note: the same head glyph and scale, stem 3.5 long.
@@ -206,6 +211,7 @@ function tempoItem(m: Mark & { type: 'tempo' }, x0: number): Item {
   };
 }
 
+/** The placement item of a text mark starting at `x0`. */
 function textItem(sm0: StaffMarks, m: Mark & { type: 'text' }, x0: number): Item {
   let x = x0;
   const size = 2.0;
@@ -526,6 +532,10 @@ function baselineGroups(list: Item[]): Item[][] {
 /** Owner tags of mark pieces by (mark, first measure of the system), so that drawing a mark again tags its primitives the same. */
 const pieceOwners = new WeakMap<object, Map<number, number>>();
 
+/**
+ * The owner tag for the piece of mark `src` that starts in the system whose first measure is `systemStart`; stable
+ * across runs.
+ */
 function pieceOwner(src: Mark, systemStart: number): number {
   let m = pieceOwners.get(src);
   if (!m) {

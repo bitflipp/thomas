@@ -5,7 +5,7 @@ import type { BaseDur } from '../src/model.ts';
 
 import { CPS, Glyph } from './icons.tsx';
 
-export const DURS: [BaseDur, number, string][] = [
+const DURS: [BaseDur, number, string][] = [
   [1, CPS.whole, '1'],
   [2, CPS.half, '2'],
   [4, CPS.quarter, '3'],
@@ -16,7 +16,7 @@ export const DURS: [BaseDur, number, string][] = [
   [128, CPS.hundred28, '8'],
 ];
 
-export const ACCS: [number, number, string][] = [
+const ACCS: [number, number, string][] = [
   [-2, CPS.dflat, 'Double flat'],
   [-1, CPS.flat, 'Flat'],
   [0, CPS.natural, 'Natural'],
@@ -24,6 +24,7 @@ export const ACCS: [number, number, string][] = [
   [2, CPS.dsharp, 'Double sharp'],
 ];
 
+/** The row of note-value buttons; `value` may be `mixed` for a selection of different values. */
 export function DurationButtons({
   value,
   onPick,
@@ -47,6 +48,7 @@ export function DurationButtons({
   );
 }
 
+/** The row of accidental buttons; `value` may be `mixed` for a selection of different alterations. */
 export function AccidentalButtons({
   value,
   onPick,

@@ -96,6 +96,10 @@ const sm = loadSmufl();
 // (Béziers sampled at 6-8 points, which is plenty at the 0.07 tolerance). Rings of a glyph are cached by name.
 const glyphRings = new Map<string, number[][]>();
 
+/**
+ * Flattens SVG path data (M, L, H, V, C, Q, Z, absolute and relative) into one polygon ring per subpath, as flat
+ * [x, y, ...] arrays.
+ */
 function flattenPath(d: string): number[][] {
   const tok = d.match(/[MLHVCQZmlhvcqz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
   const rings: number[][] = [];
@@ -181,6 +185,7 @@ function flattenPath(d: string): number[][] {
   return rings;
 }
 
+/** The signed area of a polygon ring (shoelace formula). */
 function ringArea(r: number[]): number {
   let a = 0;
   for (let i = 0, n = r.length / 2; i < n; i++) {
@@ -190,6 +195,10 @@ function ringArea(r: number[]): number {
   return a / 2;
 }
 
+/**
+ * Completes a shape: its bounding box, and whether it fills at least 90% of it (then boxes are compared) unless
+ * `forceBoxy` decides.
+ */
 function finish(p: Prim, rings: number[][], forceBoxy?: boolean): Shape {
   let x0 = Number.POSITIVE_INFINITY;
   let y0 = Number.POSITIVE_INFINITY;
@@ -210,10 +219,12 @@ function finish(p: Prim, rings: number[][], forceBoxy?: boolean): Shape {
   return { p, x0, y0, x1, y1, rings, boxy };
 }
 
+/** The ring of an axis-aligned rectangle. */
 function rect(x0: number, y0: number, x1: number, y1: number): number[] {
   return [x0, y0, x1, y0, x1, y1, x0, y1];
 }
 
+/** The collision shape of a primitive, or `null` for one that cannot collide (a zero-length line, an empty glyph). */
 function shapeOf(p: Prim): Shape | null {
   switch (p.t) {
     case 'line': {
@@ -277,6 +288,7 @@ function shapeOf(p: Prim): Shape | null {
 // pair of edges crosses, or if one lies entirely inside the other (no edge crossing then). Edges outside
 // the bounding-box overlap of the two shapes are skipped quickly.
 
+/** Whether segment a-b properly crosses segment c-d. */
 function segCross(
   ax: number,
   ay: number,
@@ -294,6 +306,7 @@ function segCross(
   return d1 * d2 < 0 && d3 * d4 < 0;
 }
 
+/** Whether the point (x, y) lies inside the rings by the even-odd rule. */
 function inside(rings: number[][], x: number, y: number): boolean {
   let c = false;
   for (const r of rings) {
@@ -309,6 +322,7 @@ function inside(rings: number[][], x: number, y: number): boolean {
   return c;
 }
 
+/** Whether two outlines overlap: some edges cross, or one outline lies inside the other. */
 function outlinesIntersect(a: Shape, b: Shape): boolean {
   if (edgesCross(a, b)) return true;
   // No crossing edges. The outlines may still overlap if one lies completely inside the other, which
@@ -326,6 +340,10 @@ function related(a: Prim, b: Prim): boolean {
   return !!a.g && !!b.g && a.g.some((x) => must(b.g).includes(x));
 }
 
+/**
+ * Whether two overlapping primitives are allowed to overlap: parts of one object, or a pair of kinds listed in
+ * `ALLOW` (within its scope).
+ */
 function permitted(a: Prim, b: Prim): boolean {
   if (a.k === b.k && a.o !== undefined && a.o === b.o) return true; // These are parts of one object.
   const scope = allowed.get(`${a.k}|${b.k}`);
@@ -382,6 +400,7 @@ function collisionOf(a: Shape, b: Shape, page: number): Collision | undefined {
   return { page, a: a.p, b: b.p, x: Math.max(a.x0, b.x0), y: Math.max(a.y0, b.y0), w, h, mode };
 }
 
+/** Reports every overlap on the pages that is not permitted. Shapes are swept in order of their left edge. */
 export function findCollisions(pages: Page[]): Collision[] {
   const out: Collision[] = [];
   pages.forEach((page, pi) => {
@@ -395,6 +414,7 @@ export function findCollisions(pages: Page[]): Collision[] {
   return out;
 }
 
+/** A one-line description of a collision for messages and test failures. */
 export function describe(c: Collision): string {
   return `page ${c.page} (${c.x.toFixed(1)}, ${c.y.toFixed(1)}) ${c.a.k} x ${c.b.k} [${c.mode}] ${c.w.toFixed(2)}x${c.h.toFixed(2)}`;
 }

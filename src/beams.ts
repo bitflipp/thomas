@@ -105,7 +105,7 @@ export function beamLinks(v: Voice, beatLen: number): boolean[] {
 }
 
 /** The same for the automatic rules alone, with explicit groups ignored and `flags[i]` standing for `noBeam` of event i. */
-export function autoLinks(v: Voice, beatLen: number, flags: boolean[]): boolean[] {
+function autoLinks(v: Voice, beatLen: number, flags: boolean[]): boolean[] {
   const flat = flattenVoice(v);
   const at = new Map(flat.map((t) => [t.ev, t.index]));
   const links = flat.map(() => false);
@@ -114,6 +114,7 @@ export function autoLinks(v: Voice, beatLen: number, flags: boolean[]): boolean[
   return links;
 }
 
+/** Per flattened event of `v`, whether it carries the `noBeam` flag (rests never do). */
 const noBeamFlags = (v: Voice): boolean[] => flattenVoice(v).map((t) => t.ev.kind === 'note' && !!t.ev.noBeam);
 
 /** Can event `i` be beamed to its predecessor at all? Both must be notes of eighth length or shorter, outside a tremolo. */

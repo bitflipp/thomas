@@ -69,15 +69,18 @@ function fracParse(s: string): number {
   return t;
 }
 
-export function pitchStr(p: Pitch): string {
+/** Writes a pitch: step, `#` or `b` per semitone, octave (`c#4`). */
+function pitchStr(p: Pitch): string {
   const acc = p.alter > 0 ? '#'.repeat(p.alter) : 'b'.repeat(-p.alter);
   return `${p.step}${acc}${p.octave}`;
 }
 
+/** Writes a clef: sign, line and an optional octave shift (`G2`, `G2_8`). */
 function clefStr(c: Clef): string {
   return `${c.sign}${c.line}${c.octave ? (c.octave > 0 ? '^' : '_') + Math.abs(c.octave * 8) : ''}`;
 }
 
+/** Writes a duration: the note value and one `.` per dot. */
 function durStr(d: Dur): string {
   return `${d.base}${'.'.repeat(d.dots)}`;
 }
@@ -89,10 +92,12 @@ function syllableStr(y: Syllable): string {
   return `${y.verse > 1 ? `v${y.verse}` : ''}${quote(lead + y.text + trail)}${y.extend ? '_' : ''}`;
 }
 
+/** Writes `s` as a quoted string with JSON escapes. */
 function quote(s: string): string {
   return JSON.stringify(s);
 }
 
+/** Writes a mark placement: `^` above, `_` below, `=` between the staves. */
 const sideStr = (p?: MarkPlacement) => (p === 'above' ? '^' : p === 'below' ? '_' : p === 'between' ? '=' : '');
 
 /** Slur and hairpin ids are written only when they are not 1: the common case of one span at a time needs no number. */
@@ -110,9 +115,12 @@ const SIMPLE: Record<string, MarkBody> = {
   '8off': { type: 'stop', of: 'ottava' },
 };
 
+/** The key under which a parameterless mark is looked up in `SIMPLE_NAME`. */
 const simpleKey = (m: MarkBody) => JSON.stringify([m.type, 'of' in m ? m.of : '', 'dir' in m ? m.dir : '']);
+
 const SIMPLE_NAME = new Map(Object.entries(SIMPLE).map(([name, m]) => [simpleKey(m), name]));
 
+/** Writes a mark as it appears in a voice line (`\mf`, `<`, `\ped`, ...). */
 function markStr(m: MarkBody): string {
   switch (m.type) {
     case 'dynamic':
@@ -150,6 +158,7 @@ class Tags {
   static close = '\uE002';
 }
 
+/** Wraps `s` in the text-map tag for `key` when a map is being built; otherwise returns `s` unchanged. */
 const tagged = (t: Tags | undefined, key: string, s: string): string => (t ? t.tag(key, s) : s);
 
 class VoiceWriter {
@@ -289,6 +298,7 @@ function graceStrs(gs: Grace[]): string[] {
   return out;
 }
 
+/** Writes the voice lines of one staff-measure, one per voice, into `lines`. */
 function writeStaffMeasure(sm: StaffMeasure, sid: string, mi: number, lines: string[], tags?: Tags): void {
   for (const v of sm.voices) {
     const at = { mi, staff: sid, voice: v.id };
@@ -300,6 +310,10 @@ function writeStaffMeasure(sm: StaffMeasure, sid: string, mi: number, lines: str
   }
 }
 
+/**
+ * Writes the whole score; with `tags` the output also carries the markers from which `writeTextMap` derives the
+ * places of the model objects.
+ */
 function write(score: Score, tags?: Tags): string {
   const L: string[] = [];
   L.push('# music typesetter score');
@@ -335,6 +349,7 @@ function write(score: Score, tags?: Tags): string {
   return `${L.join('\n')}\n`;
 }
 
+/** Writes a score in the text format (see FORMAT.md). The inverse of `parseText`. */
 export function writeText(score: Score): string {
   return write(score);
 }
@@ -393,6 +408,7 @@ class Scanner {
   }
 }
 
+/** Parses a pitch at the scanner's position. */
 function parsePitch(sc: Scanner): Pitch {
   const m = sc.take(/[a-g][#b]*-?\d/y);
   if (!m) sc.fail('pitch expected');
@@ -404,6 +420,7 @@ function parsePitch(sc: Scanner): Pitch {
   return { step, alter, octave };
 }
 
+/** Parses a clef token such as `G2` or `F4`. */
 function parseClef(s: string): Clef {
   const m = /^([GFC])(\d)(?:([\^_])(\d+))?$/.exec(s);
   if (!m) throw new Error(`bad clef ${s}`);
@@ -412,6 +429,7 @@ function parseClef(s: string): Clef {
   return c;
 }
 
+/** Parses a duration (note value and dots) at the scanner's position. */
 function parseDur(sc: Scanner): Dur {
   const m = sc.take(/\d+\.*/y);
   if (!m) sc.fail('duration expected');
@@ -836,6 +854,10 @@ class VoiceLineParser {
   }
 }
 
+/**
+ * Parses one voice line. `home` is the staff the line is written under; `markLine` marks a `@` line that holds
+ * timed marks only.
+ */
 function parseVoiceLine(line: string, where: string, home: string, markLine = false): VoiceLine {
   return new VoiceLineParser(line, where, home, markLine).parse();
 }
@@ -854,12 +876,14 @@ function parseSyllable(verse: number, s: string, extend: boolean): Syllable {
   return syllable;
 }
 
+/** Reads a quoted string at the scanner's position. */
 function readString(sc: Scanner): string {
   const m = sc.take(/"(?:[^"\\]|\\.)*"/y);
   if (!m) sc.fail('string expected');
   return JSON.parse(must(m));
 }
 
+/** Collects the `key=value` tokens into a record; tokens without `=` are ignored. */
 function kv(tokens: string[]): Record<string, string> {
   const o: Record<string, string> = {};
   for (const t of tokens) {
@@ -944,6 +968,7 @@ function parseStatement(st: TextState, t: string[]): void {
   else throw new Error(`unknown statement ${head}`);
 }
 
+/** Parses the text format (see FORMAT.md) into a `Score`; errors name the line. */
 export function parseText(src: string): Score {
   const st: TextState = {
     score: {

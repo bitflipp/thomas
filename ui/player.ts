@@ -31,6 +31,7 @@ let seqCache: ReturnType<typeof buildSequence> | undefined;
 
 let seqOf: Score | undefined;
 
+/** The playback sequence of the current score, rebuilt only when the score object changed. */
 function currentSeq(): ReturnType<typeof buildSequence> {
   const s = score.peek();
   if (!seqCache || seqOf !== s) {
@@ -45,6 +46,7 @@ let startsFor: Score | undefined;
 
 let startsValue: ReturnType<typeof measureStarts> | undefined;
 
+/** The measure start ticks of score `s`, cached per score object. */
 function startsOf(s: Score): ReturnType<typeof measureStarts> {
   if (!startsValue || startsFor !== s) {
     startsValue = measureStarts(s);
@@ -77,6 +79,7 @@ midiOut.subscribe((id) => {
   }
 });
 
+/** Reads the available MIDI outputs into `midiPorts` and keeps or picks the selected one. */
 function refreshPorts(): void {
   if (!access) return;
   const outs = [...access.outputs.values()];
@@ -107,9 +110,11 @@ async function connect(): Promise<MIDIOutput | null> {
   return out ?? null;
 }
 
+/** The selected MIDI output, if any. */
 const outPort = (): MIDIOutput | undefined =>
   access && midiOut.peek() ? access.outputs.get(must(midiOut.peek())) : undefined;
 
+/** The score time in seconds that is being heard now. */
 const nowSec = (): number => sec0 + (performance.now() - wall0) / 1000;
 
 /** Releases the sustain pedal (CC64) and stops all notes (CC123) on every channel, so a stop never leaves hanging notes. */
@@ -179,6 +184,7 @@ function begin(): void {
   raf = requestAnimationFrame(frame);
 }
 
+/** Starts playback from the playhead (from the start when it is at the end). */
 export async function play(): Promise<void> {
   if (playing.peek()) return;
   if (!(await connect())) return;
@@ -186,6 +192,7 @@ export async function play(): Promise<void> {
   begin();
 }
 
+/** Stops playback and keeps the playhead where it was. */
 export function stop(): void {
   if (!playing.peek()) return;
   playTick.value = Math.min(currentSeq().totalTicks, Math.max(0, currentSeq().secToTick(nowSec())));
@@ -195,11 +202,13 @@ export function stop(): void {
   silence();
 }
 
+/** Starts or stops playback. */
 export function toggle(): void {
   if (playing.peek()) stop();
   else void play();
 }
 
+/** Stops playback and puts the playhead at the start. */
 export function rewind(): void {
   if (playing.peek()) {
     stop();
@@ -207,6 +216,7 @@ export function rewind(): void {
   playTick.value = 0;
 }
 
+/** Moves the playhead to `tick`; playback carries on from there if it was running. */
 export function seek(tick: number): void {
   const was = playing.peek();
   if (was) {
@@ -218,6 +228,7 @@ export function seek(tick: number): void {
   if (was) begin();
 }
 
+/** Switches to MIDI output `id`, restarting playback if it was running. */
 export function chooseOutput(id: string): void {
   const was = playing.peek();
   if (was) stop();

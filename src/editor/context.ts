@@ -30,12 +30,12 @@ export function ottavaAt(score: Score, staff: string, mi: number, tick: number):
 }
 
 /** Written staff position (half spaces above the bottom line) -> diatonic step number (c0 = 0). */
-export function stepAtPos(pos: number, clef: Clef): number {
+function stepAtPos(pos: number, clef: Clef): number {
   return clefBottomStep(clef) + pos;
 }
 
 /** The alteration a plain (unmarked) note on this step has here: the key signature, then accidentals earlier in the measure. */
-export function alterIn(score: Score, staff: string, mi: number, tick: number, step: Step, octave: number): number {
+function alterIn(score: Score, staff: string, mi: number, tick: number, step: Step, octave: number): number {
   let alter = keyAlter(keyAt(score, mi), step);
   const sm = score.measures[mi].staves[staff];
   if (!sm) return alter;
@@ -109,4 +109,5 @@ export function transposeSteps(p: Pitch, steps: number): Pitch {
   return { step: STEPS[((st % 7) + 7) % 7], octave: Math.floor(st / 7), alter: p.alter };
 }
 
+/** Orders pitches from low to high by diatonic step first, then by alteration. */
 export const comparePitch = (a: Pitch, b: Pitch): number => pitchStep(a) - pitchStep(b) || a.alter - b.alter;

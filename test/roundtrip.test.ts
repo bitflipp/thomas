@@ -1,3 +1,5 @@
+// The text format must be lossless on the reference piece: write(parse(text)) == text.
+
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';

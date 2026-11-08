@@ -7,14 +7,14 @@
 
 import type { Page, Prim } from './engrave/scene.ts';
 import { loadSmufl } from './smufl.ts';
+import { round3 } from './util.ts';
 
 const FONT = "'Liberation Serif', 'Noto Serif CJK KR', 'Noto Serif', serif";
 
+/** Escapes the characters that are special in XML text. */
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-
-const f3 = (n: number) => (Math.round(n * 1000) / 1000).toString();
 
 export interface SvgOptions {
   /** Per-primitive colour override, used by the editor to highlight the selection. */
@@ -41,28 +41,28 @@ export function pageToSvg(page: Page, staffSpaceMm: number, opts: SvgOptions = {
         used.add(p.name);
         if (p.rot)
           body.push(
-            `<use href="#g-${p.name}" transform="translate(${f3(p.x)} ${f3(p.y)}) rotate(${p.rot})"${fa}${ix}/>`,
+            `<use href="#g-${p.name}" transform="translate(${round3(p.x)} ${round3(p.y)}) rotate(${p.rot})"${fa}${ix}/>`,
           );
         else if (p.sx !== undefined || p.sy !== undefined)
           body.push(
-            `<use href="#g-${p.name}" transform="translate(${f3(p.x)} ${f3(p.y)}) scale(${f3(p.sx ?? 1)} ${f3(p.sy ?? 1)})"${fa}${ix}/>`,
+            `<use href="#g-${p.name}" transform="translate(${round3(p.x)} ${round3(p.y)}) scale(${round3(p.sx ?? 1)} ${round3(p.sy ?? 1)})"${fa}${ix}/>`,
           );
-        else body.push(`<use href="#g-${p.name}" x="${f3(p.x)}" y="${f3(p.y)}"${fa}${ix}/>`);
+        else body.push(`<use href="#g-${p.name}" x="${round3(p.x)}" y="${round3(p.y)}"${fa}${ix}/>`);
         break;
       }
       case 'line':
         body.push(
-          `<line x1="${f3(p.x1)}" y1="${f3(p.y1)}" x2="${f3(p.x2)}" y2="${f3(p.y2)}" stroke-width="${f3(p.w)}"${sa}${ix}${p.dash ? ` stroke-dasharray="${p.dash[0]} ${p.dash[1]}"` : ''}/>`,
+          `<line x1="${round3(p.x1)}" y1="${round3(p.y1)}" x2="${round3(p.x2)}" y2="${round3(p.y2)}" stroke-width="${round3(p.w)}"${sa}${ix}${p.dash ? ` stroke-dasharray="${p.dash[0]} ${p.dash[1]}"` : ''}/>`,
         );
         break;
       case 'path':
         body.push(
-          `<path d="${p.d}"${p.dx || p.dy ? ` transform="translate(${f3(p.dx ?? 0)} ${f3(p.dy ?? 0)})"` : ''} fill="${p.fill ?? col ?? '#000'}" stroke="none"${ix}${p.top ? ' data-top="1"' : ''}/>`,
+          `<path d="${p.d}"${p.dx || p.dy ? ` transform="translate(${round3(p.dx ?? 0)} ${round3(p.dy ?? 0)})"` : ''} fill="${p.fill ?? col ?? '#000'}" stroke="none"${ix}${p.top ? ' data-top="1"' : ''}/>`,
         );
         break;
       case 'text':
         body.push(
-          `<text x="${f3(p.x)}" y="${f3(p.y)}" font-size="${f3(p.size)}" text-anchor="${p.anchor ?? 'start'}"${fa}${ix}${p.top ? ' data-top="1"' : ''}${p.italic ? ' font-style="italic"' : ''}${p.bold ? ' font-weight="bold"' : ''}>${esc(p.s)}</text>`,
+          `<text x="${round3(p.x)}" y="${round3(p.y)}" font-size="${round3(p.size)}" text-anchor="${p.anchor ?? 'start'}"${fa}${ix}${p.top ? ' data-top="1"' : ''}${p.italic ? ' font-style="italic"' : ''}${p.bold ? ' font-weight="bold"' : ''}>${esc(p.s)}</text>`,
         );
         break;
     }
@@ -71,7 +71,7 @@ export function pageToSvg(page: Page, staffSpaceMm: number, opts: SvgOptions = {
   const wmm = page.width * staffSpaceMm;
   const hmm = page.height * staffSpaceMm;
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${f3(wmm)}mm" height="${f3(hmm)}mm" viewBox="0 0 ${f3(page.width)} ${f3(page.height)}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${round3(wmm)}mm" height="${round3(hmm)}mm" viewBox="0 0 ${round3(page.width)} ${round3(page.height)}">
 <defs>${defs}</defs>
 <rect width="100%" height="100%" fill="#fff"/>
 <g fill="#000" stroke="#000" stroke-linecap="butt" font-family="${FONT}">

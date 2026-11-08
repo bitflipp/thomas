@@ -1,3 +1,5 @@
+// Fermata and trill: text format, engraving and playback.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { findCollisions } from '../src/engrave/collide.ts';

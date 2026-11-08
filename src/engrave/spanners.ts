@@ -1,3 +1,6 @@
+// Ties, slurs and the other spans that can cross system breaks. They are drawn after all systems exist
+// (planSpanners), against the skyline of the notes; marks.ts and lyrics.ts run from here as well.
+
 import type { LineEnd } from '../model.ts';
 import { pairLines, pitchStep } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
@@ -300,6 +303,10 @@ export interface SpannerPlan {
   draw: () => void;
 }
 
+/**
+ * Plans the ties and slurs of all `systems` and says which systems need redrawing (see `SpannerPlan`). `dirty` are
+ * the systems whose notes were redrawn, `prevSigs` the unit signatures of the previous drawing.
+ */
 export function planSpanners(
   systems: SysCtx[],
   dirty: Set<number>,
@@ -670,6 +677,7 @@ interface SlurPiece {
  */
 const slurOwners = new WeakMap<EvL, Map<number, number>>();
 
+/** The owner tag of slur `id` that starts at event `a`; the same tag every time it is asked for. */
 function slurOwner(a: EvL, id: number): number {
   let m = slurOwners.get(a);
   if (!m) {
@@ -693,6 +701,11 @@ interface SlurStyle {
   from: EvL;
 }
 
+/**
+ * Plans the piece of a slur between (x0, y0) and (x1, y1) on `staff`: lifts the arc over the notes under it and
+ * returns its height range and a function that draws it at a chosen height. `openL`/`openR` mark ends that
+ * continue in another system.
+ */
 function planSlurPiece(
   ctx: SysCtx,
   st: SlurStyle,

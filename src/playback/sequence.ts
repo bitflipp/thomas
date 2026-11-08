@@ -332,6 +332,10 @@ function addChord(sink: VoiceNotes, sp: StaffPlayback, te: TimedEvent & { ev: No
   });
 }
 
+/**
+ * Adds the notes of a voice to `sink`, tremolos as repeated notes and everything else as chords. `measureOffset`
+ * is the start of the measure in ticks.
+ */
 function addVoiceNotes(sp: StaffPlayback, sink: VoiceNotes, voice: Voice, measureOffset: number): void {
   const flat = flattenVoice(voice);
   const done = new Set<unknown>();
@@ -360,6 +364,10 @@ function toMessages(notes: Note[], pedal: PedalEvent[], tickToSec: (tick: number
   return { msgs: evs.map(({ sec, bytes }) => ({ sec, bytes })), channels: [...used].sort((a, b) => a - b) };
 }
 
+/**
+ * Turns a score into timed MIDI messages (see `Sequence`): the notes of every staff on its own channel, the pedal
+ * and the tempo map.
+ */
 export function buildSequence(score: Score): Sequence {
   const { measureStart, total } = measureStarts(score);
   const tempo = tempoMap(score, measureStart);

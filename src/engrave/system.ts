@@ -69,10 +69,12 @@ interface CachedSystem {
   entries: MeasureEntry[];
 }
 
+/** An empty cache for incremental engraving. */
 export function createEngraveCache(): EngraveCache {
   return { prep: { entries: [], nextId: 0 }, systems: [], scoreKey: [] };
 }
 
+/** Whether two primitives have identical fields (a shallow comparison, with arrays compared element by element). */
 function primEqual(a: Prim, b: Prim): boolean {
   const x = a as unknown as Record<string, unknown>;
   const y = b as unknown as Record<string, unknown>;

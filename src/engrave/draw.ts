@@ -10,7 +10,7 @@
 import type { Articulation, NoteEvent, TupletGroup } from '../model.ts';
 
 import { loadSmufl } from '../smufl.ts';
-import { must } from '../util.ts';
+import { must, round3 } from '../util.ts';
 import type { BeamL, EvL, Prepared } from './prep.ts';
 import { beamLevels, posToY, staffPos } from './prep.ts';
 import type { Prim, Skyline } from './scene.ts';
@@ -67,11 +67,16 @@ export interface SysCtx {
 
 export const CROSS_GAP0 = 6;
 
-export function glyphCentered(name: string, cx: number, cy: number): Prim {
+/** A glyph primitive whose bounding box is centred on (cx, cy). */
+function glyphCentered(name: string, cx: number, cy: number): Prim {
   const b = sm.bbox(name);
   return { t: 'glyph', name, x: cx - (b.x0 + b.x1) / 2, y: cy + (b.y0 + b.y1) / 2 };
 }
 
+/**
+ * The x of tick `tick` of measure `mi` in the system's layout (interpolated between columns, or the measure start
+ * for a multi-measure rest).
+ */
 export function xAtTick(ctx: SysCtx, mi: number, tick: number): number {
   const sp = ctx.spacing[mi];
   const pl = ctx.placed[mi];
@@ -225,6 +230,7 @@ export function drawSystemNotes(ctx: SysCtx): void {
   trimLedgers(ctx);
 }
 
+/** The number of beams (flags) the duration of an event needs. */
 const beamLevelsOf = (e: EvL) => beamLevels(e.te.ev.dur.base);
 
 /**
@@ -465,11 +471,7 @@ function drawCrossBeam(ctx: SysCtx, beam: BeamL, home: number, levelsFor: (e: Ev
         continue;
       }
       let j = i;
-      while (
-        j + 1 < notes.length &&
-        levelsFor(notes[j + 1]) >= lv &&
-        !restBetween(notes[j], notes[j + 1], beam.evs, lv)
-      )
+      while (j + 1 < notes.length && levelsFor(notes[j + 1]) >= lv && !restBetween(notes[j], notes[j + 1], beam.evs))
         j++;
       let xa: number;
       let xb: number;
@@ -496,6 +498,10 @@ function drawCrossBeam(ctx: SysCtx, beam: BeamL, home: number, levelsFor: (e: Ev
   tagFrom(ctx.prims[home], n0, 'beam', beam);
 }
 
+/**
+ * Sets the stem tip of an event from the head extent `g` and the length `len`; the tip never ends before the
+ * middle line.
+ */
 function setStem(e: EvL, g: Geom, len: number): void {
   const up = e.stem === 'up';
   let tip = up ? g.yTop - len : g.yBot + len;
@@ -504,10 +510,15 @@ function setStem(e: EvL, g: Geom, len: number): void {
   g.stemTip = tip;
 }
 
+/** The groups a stem belongs to for collision tagging: its beam, its tremolo pair and its tuplets. */
 function stemGroups(e: EvL): (object | undefined)[] {
   return [e.beam, e.tremPair ? (e.tremIsFirst ? e : e.tremPair) : undefined, ...e.tupletKeys];
 }
 
+/**
+ * Draws the stem of event `e` on staff `s`, with its flag unless `flag` is false; `noSky` keeps it out of the
+ * skyline.
+ */
 function drawStem(ctx: SysCtx, e: EvL, g: Geom, s: number, flag: boolean, noSky = false): void {
   const up = e.stem === 'up';
   const n0 = ctx.prims[s].length;
@@ -773,6 +784,7 @@ function drawGraceHeads(d: GraceDrawing, i: number): GraceGeom {
   return { yTop, yBot, x, stemX: x + gl.hw - GRACE_STEM / 2, tip: Math.min(yTop - GRACE_STEM_LENGTH, 2) };
 }
 
+/** Draws the stem of grace note `i` up to `tip` (nothing for whole and half notes). */
 function drawGraceStem(d: GraceDrawing, geo: GraceGeom[], i: number, tip: number): void {
   if (d.graces[i].g.base < 2) return;
   const prims = d.ctx.prims[d.s];
@@ -881,6 +893,7 @@ function drawGraces(ctx: SysCtx, e: EvL, s: number): void {
   pushBox(ctx, s, Math.min(...geo.map((g) => g.x)) - 0.3, e.x - 0.2, top - 0.3, bot + 0.5);
 }
 
+/** Draws a rest on staff `s` and tags it. A `ghost` rest is the faint editor placeholder of a hidden rest. */
 function drawRest(ctx: SysCtx, e: EvL, s: number, ghost = false): void {
   const n0 = ctx.prims[s].length;
   drawRestPrims(ctx, e, s, ghost);
@@ -913,6 +926,10 @@ function drawMultiRest(ctx: SysCtx, e: EvL, s: number, count: number): void {
   pushBox(ctx, s, cx - total / 2, cx + total / 2, -2.7, -0.5);
 }
 
+/**
+ * The primitives of a rest: a multi-measure rest, a whole-measure rest centred in the bar, or the rest glyph with
+ * its dots.
+ */
 function drawRestPrims(ctx: SysCtx, e: EvL, s: number, ghost: boolean): void {
   const run = e.ev.kind === 'rest' && e.ev.style === 'measure' ? ctx.prep.multi?.get(e.mi) : undefined;
   if (run) {
@@ -1074,7 +1091,7 @@ function drawBeamGroup(ctx: SysCtx, notes: EvL[], s: number, levelsFor: (e: EvL)
       while (
         j + 1 < notes.length &&
         levelsFor(notes[j + 1]) >= level &&
-        !restBetween(notes[j], notes[j + 1], must(notes[0].beam).evs, level)
+        !restBetween(notes[j], notes[j + 1], must(notes[0].beam).evs)
       )
         j++;
       if (j > i) ctx.prims[s].push({ t: 'path', d: poly(gs[i].stemX - STEM_T / 2, gs[j].stemX + STEM_T / 2, off) });
@@ -1105,14 +1122,15 @@ function drawBeamGroup(ctx: SysCtx, notes: EvL[], s: number, levelsFor: (e: EvL)
   }
 }
 
-function restBetween(a: EvL, b: EvL, all: EvL[], _lv: number): boolean {
-  void _lv;
+/** Whether a rest lies between events `a` and `b` of the beam group `all`. */
+function restBetween(a: EvL, b: EvL, all: EvL[]): boolean {
   const ia = all.indexOf(a);
   const ib = all.indexOf(b);
   for (let k = ia + 1; k < ib; k++) if (all[k].ev.kind === 'rest') return true;
   return false;
 }
 
+/** Draws the beams between the two notes of a tremolo pair `e1` and `e2` on staff `s`. */
 function drawTremoloPair(ctx: SysCtx, e1: EvL, e2: EvL, s: number): void {
   const up = e1.stem === 'up';
   const g1 = must(geomOf.get(e1));
@@ -1223,9 +1241,10 @@ interface TupletFrame {
   crossBeam: boolean;
 }
 
+/** Whether staff-local y is within `tolerance` of one of the five staff lines. */
 const touchesStaffLine = (y: number, tolerance: number) => [0, 1, 2, 3, 4].some((l) => Math.abs(l - y) < tolerance);
+
 const TUPLET_NUMBER_SIZE = 1.8;
-const f = (v: number) => String(Math.round(v * 1000) / 1000);
 const MAX_TUPLET_SLOPE = 0.5;
 
 /** How far each member reaches on the chosen side: stems, beams and heads, and anything attached to the note (accidentals, articulations; only a note's own accidentals reach to its left). */
@@ -1436,7 +1455,7 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
         [cx, ccy - rad],
       ];
       if (ccw) pts.reverse().unshift(pts.pop() as [number, number]);
-      let d = `M${f(pts[0][0])} ${f(pts[0][1])}`;
+      let d = `M${round3(pts[0][0])} ${round3(pts[0][1])}`;
       for (let i = 0; i < 4; i++) {
         const [p, q] = [pts[i], pts[(i + 1) % 4]];
         const [tx, ty] = [(q[0] - p[0]) / rad, (q[1] - p[1]) / rad];
@@ -1446,7 +1465,7 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
         const sgn = tx * -rp[1] + ty * rp[0] > 0 ? 1 : -1; // This is the direction of travel.
         const c1 = [p[0] + sgn * -rp[1] * k, p[1] + sgn * rp[0] * k];
         const c2 = [q[0] - sgn * -rq[1] * k, q[1] - sgn * rq[0] * k];
-        d += `C${f(c1[0])} ${f(c1[1])} ${f(c2[0])} ${f(c2[1])} ${f(q[0])} ${f(q[1])}`;
+        d += `C${round3(c1[0])} ${round3(c1[1])} ${round3(c2[0])} ${round3(c2[1])} ${round3(q[0])} ${round3(q[1])}`;
       }
       return `${d}Z`;
     };
@@ -1482,6 +1501,10 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
     );
 }
 
+/**
+ * Draws the bracket and number of tuplet `t` over its events `evs` on staff `s`, trying the other side if a bare
+ * number would sit on staff lines.
+ */
 function drawTupletPrims(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): void {
   let plan = planTuplet(ctx, t, evs, s, undefined);
   if (!plan) return;
@@ -1529,6 +1552,7 @@ function articulationAnchor(e: EvL, g: Geom, above: boolean, nearest: Articulati
   return { cx: e.x + head.dx + g.hw / 2, y };
 }
 
+/** Draws the articulations of a note, staccato nearest to the head, on the side chosen by `articulationsAbove`. */
 function drawArticulationPrims(ctx: SysCtx, e: EvL, s: number): void {
   if (e.ev.kind !== 'note' || !e.ev.art) return;
   const g = must(geomOf.get(e));

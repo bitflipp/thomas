@@ -15,6 +15,7 @@ import { dots, redo, run, say, score, selection, showProperties, showText, tool,
 
 let clip: Event[] = [];
 
+/** Whether the key event comes from a text input, where shortcuts must not fire. */
 function typing(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
   return (
@@ -27,6 +28,7 @@ function typing(e: KeyboardEvent): boolean {
   );
 }
 
+/** Copies the selected events to the clipboard of the editor; false if none are selected. */
 function copySel(): boolean {
   const sc = score.peek();
   const refs = [...evRefs()].sort((a, b) => a.mi - b.mi || a.idx - b.idx);
@@ -37,6 +39,7 @@ function copySel(): boolean {
   return true;
 }
 
+/** Pastes the copied events from the first selected event on. */
 function paste(): void {
   const refs = evRefs();
   if (!(clip.length && refs.length)) {
@@ -116,6 +119,7 @@ function onViewShortcut(e: KeyboardEvent): boolean {
   return true;
 }
 
+/** Escape closes the help, cancels a drag, returns to the select tool and then clears the selection. */
 function onEscape(): void {
   showHelp.value = false;
   cancelDrag();
@@ -188,6 +192,7 @@ function onToolKey(e: KeyboardEvent): void {
   else if (letter === 'w') voice.value = Math.min(MAX_VOICE, voice.value + 1);
 }
 
+/** The global key handler: editing and view shortcuts with Ctrl or Cmd, then the single-key bindings. */
 function onKey(e: KeyboardEvent): void {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && !typing(e) && onEditShortcut(e)) return;
@@ -196,6 +201,7 @@ function onKey(e: KeyboardEvent): void {
   if (!onNavigationKey(e)) onToolKey(e);
 }
 
+/** Installs the key handler and returns the function that removes it. */
 export function installKeys(): () => void {
   addEventListener('keydown', onKey);
   return () => removeEventListener('keydown', onKey);

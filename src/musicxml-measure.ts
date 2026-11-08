@@ -107,7 +107,13 @@ export function readPartMeasure(mx: XNode, part: PartState, mi: number, sink: Me
   if (r.pendingGraces.size) env.warn(`m${mi + 1}: grace notes at the end of a measure dropped`);
 }
 
+/**
+ * Whether the reader is on the first part, which alone supplies the score-wide measure properties (barlines,
+ * endings, breaks).
+ */
 const isFirstPart = (r: Reader) => r.part.index === 0;
+
+/** The id of the staff that MusicXML staff number `n` (1-based, within the part) maps to. */
 const staffIdOf = (r: Reader, n: number) => r.part.staffIds[Math.max(0, n - 1)];
 
 /** Source divisions -> ticks. */
@@ -117,6 +123,10 @@ function ticksOf(r: Reader, div: number): number {
   return x;
 }
 
+/**
+ * Reads an `<attributes>` element: divisions, and (first part only) key and time signature. A clef at the very
+ * start becomes the staff's clef, a later one a clef mark.
+ */
 function readAttributes(r: Reader, el: XNode): void {
   const { measure, marks } = r.sink;
   const divisions = text(el, 'divisions');
@@ -143,6 +153,7 @@ function readPrint(r: Reader, el: XNode): void {
   else if (el.attrs['new-system'] === 'yes' && r.mi > 0) r.sink.measure.breakBefore = 'system';
 }
 
+/** Reads a `<barline>`: repeat signs, voltas (endings) and the barline style. Only the first part counts. */
 function readBarline(r: Reader, el: XNode): void {
   if (!isFirstPart(r)) return;
   const ending = el.children.find((c) => c.tag === 'ending');
@@ -206,6 +217,10 @@ function directionMarks(d: XNode, placement: 'above' | 'below' | undefined, tick
   }
 }
 
+/**
+ * Reads a `<direction>`: dynamics, hairpins, pedal, octave shifts, tempo and text, as timed marks at the current
+ * position.
+ */
 function readDirection(r: Reader, el: XNode): void {
   const staffId = staffIdOf(r, Number(text(el, 'staff') ?? 1));
   const tick = ticksOf(r, r.cursor);
@@ -242,6 +257,10 @@ function writtenDur(r: Reader, el: XNode, soundingDivisions: number): Dur {
   return ticksToDur(ticksOf(r, soundingDivisions)) ?? { base: 1, dots: 0 };
 }
 
+/**
+ * Builds a rest event from a `<rest>` element: whole-measure or normal, with its display position if the source
+ * gives one.
+ */
 function restEvent(rest: XNode, dur: Dur): RestEvent {
   const ev: RestEvent = { kind: 'rest', style: rest.attrs.measure === 'yes' ? 'measure' : 'normal', dur };
   const step = text(rest, 'display-step');
@@ -270,6 +289,10 @@ function readTupletNotations(el: XNode): Pick<RawNote, 'tupStart' | 'tupStop'> {
   return out;
 }
 
+/**
+ * Reads a `<note>` element into a raw note (pitch, duration, voice, staff, ties, slurs, articulations, grace and
+ * chord flags) and advances the time cursor.
+ */
 function readNote(r: Reader, el: XNode): void {
   const duration = Number(text(el, 'duration') ?? 0);
   const staffN = Number(text(el, 'staff') ?? 1);
@@ -358,6 +381,7 @@ function readLyrics(el: XNode, ev: NoteEvent): void {
   ev.lyrics?.sort((a, b) => a.verse - b.verse);
 }
 
+/** Reads the `<slur>` starts and stops of a `<notations>` element into `ev`. */
 function readSlurs(notations: XNode, ev: NoteEvent): void {
   for (const s of children(notations, 'slur')) {
     const id = Number(s.attrs.number ?? 1);
@@ -382,6 +406,7 @@ const ARTICULATION_TAGS: Record<string, Articulation> = {
   staccato: 'staccato',
 };
 
+/** Reads an `<articulations>` element into the articulation list of `ev`, keeping only those the model supports. */
 function readArticulations(articulations: XNode, ev: NoteEvent): void {
   const list = articulations.children.flatMap((a) =>
     Object.hasOwn(ARTICULATION_TAGS, a.tag) ? [ARTICULATION_TAGS[a.tag]] : [],

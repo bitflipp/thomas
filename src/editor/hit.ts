@@ -65,6 +65,7 @@ const PRIO: Partial<Record<Kind, number>> = {
   tuplet: 3,
 };
 
+/** The bounding box of a primitive in page coordinates, or `undefined` for shapes without one. */
 function primBox(p: Prim): Box | undefined {
   const sm = loadSmufl();
   switch (p.t) {
@@ -165,6 +166,7 @@ function curvePts(p: Prim): { x: number; y: number }[] {
   return out;
 }
 
+/** The smallest box that contains both `a` and `b`. */
 const union = (a: Box, b: Box): Box => ({
   x0: Math.min(a.x0, b.x0),
   y0: Math.min(a.y0, b.y0),
@@ -190,6 +192,7 @@ export function primRef(index: ScoreIndex, p: Prim): Ref | undefined {
   return undefined;
 }
 
+/** Whether a primitive kind is a curve (slur, tie, link) that is hit-tested along its path rather than by its box. */
 const isCurveKind = (k: string | undefined) => k === 'slur' || k === 'tie' || k === 'link';
 
 /** The key under which a prim joins a target: one target per model object and page (heads of an event are one each; slurs and ties are told apart from other prims of the same object). */
@@ -234,6 +237,10 @@ function targetsOf(index: ScoreIndex, page: number, prims: Prim[]): Target[] {
  */
 const targetsOfSystem = new WeakMap<Prim[], { page: number; targets: Target[] }>();
 
+/**
+ * Turns the placed primitives of `res` into hit targets, reusing the targets of a system whose primitives are
+ * unchanged.
+ */
 export function buildHitIndex(score: Score, res: Engraved): HitIndex {
   const index = indexScore(score);
   const targets: Target[] = [];
@@ -251,6 +258,7 @@ export function buildHitIndex(score: Score, res: Engraved): HitIndex {
   return { targets, byPage, layout: res.layout, index };
 }
 
+/** Distance from (x, y) to box `b`; zero inside. */
 function distBox(b: Box, x: number, y: number): number {
   const dx = Math.max(b.x0 - x, 0, x - b.x1);
   const dy = Math.max(b.y0 - y, 0, y - b.y1);
@@ -266,6 +274,7 @@ function distSegment(a: { x: number; y: number }, b: { x: number; y: number }, x
   return Math.hypot(a.x + u * dx - x, a.y + u * dy - y);
 }
 
+/** Distance from (x, y) to a target: along the path for curves, to the box for the rest. */
 function distTarget(t: Target, x: number, y: number): number {
   if (t.pts) {
     // Distance to the polyline through the samples, not to the samples themselves: those are far

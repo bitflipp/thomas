@@ -1,3 +1,5 @@
+// Runs the collision finder on the reference piece; only the listed limitations are tolerated.
+
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';

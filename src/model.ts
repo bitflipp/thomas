@@ -1,5 +1,3 @@
-import { must } from './util.ts';
-
 // Core score model. The model (plain JSON-serialisable data) is the source of truth; the text format
 // (textformat.ts) and the MusicXML importer produce and consume it, the engraver and playback read it,
 // and the editor changes it only through pure functions (src/editor/commands.ts).
@@ -7,6 +5,8 @@ import { must } from './util.ts';
 // Time is measured in integer ticks so that no rounding ever happens in rhythm arithmetic. Structure:
 // Score > Measure > StaffMeasure (per staff id) > Voice > Item tree. Marks (dynamics, hairpins, pedal,
 // ...) are not stored with ticks but hang on the events they start at; see `marksOf`.
+
+import { must } from './util.ts';
 
 /** Ticks per quarter note: divisible by 2^5, 3, 5 and 7, so undotted 128th notes and tuplets up to septuplets are exact integers (a dotted 128th would be 157.5 ticks: not allowed). */
 export const PPQ = 3360;
@@ -245,10 +245,7 @@ export interface Score {
 // into a list of events with their positions, and deriving the tick-based marks from the marks
 // that hang on events.
 
-export function gcd(a: number, b: number): number {
-  return b ? gcd(b, a % b) : Math.abs(a);
-}
-
+/** The length of a duration in ticks, with its augmentation dots (each adds half of the previous part). */
 export function baseTicks(d: Dur): number {
   let t = (PPQ * 4) / d.base;
   let add = t;
@@ -259,22 +256,27 @@ export function baseTicks(d: Dur): number {
   return t;
 }
 
+/** The length of a measure of time signature `t` in ticks. */
 export function measureTicks(t: TimeSig): number {
   return (t.beats * PPQ * 4) / t.beatType;
 }
 
+/** Type guard: whether an item is a tuplet group. */
 export function isTuplet(i: Item): i is TupletGroup {
   return i.kind === 'tuplet';
 }
 
+/** Type guard: whether an item is an explicit beam group. */
 export function isBeam(i: Item): i is BeamGroup {
   return i.kind === 'beam';
 }
 
+/** Type guard: whether an item is a tremolo group. */
 export function isTremolo(i: Item): i is TremoloGroup {
   return i.kind === 'tremolo';
 }
 
+/** Type guard: whether an item is a note or rest. */
 export function isEvent(i: Item): i is Event {
   return i.kind === 'note' || i.kind === 'rest';
 }
@@ -447,11 +449,13 @@ export function lineEnds(score: Score): LineEnd<LineAt>[] {
   return out;
 }
 
+/** The total length of a voice in ticks (the end of its last event). */
 export function voiceTicks(v: Voice): number {
   const f = flattenVoice(v);
   return f.length ? f[f.length - 1].start + f[f.length - 1].ticks : 0;
 }
 
+/** The MIDI note number of a pitch (c4 is 60). */
 export function pitchMidi(p: Pitch): number {
   const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[p.step];
   return (p.octave + 1) * 12 + base + p.alter;
@@ -462,11 +466,13 @@ export function pitchStep(p: Pitch): number {
   return p.octave * 7 + STEPS.indexOf(p.step);
 }
 
+/** The time signature in force at measure `mi` (4/4 before any is given). */
 export function timeAt(score: Score, mi: number): TimeSig {
   for (let i = mi; i >= 0; i--) if (score.measures[i].time) return must(score.measures[i].time);
   return { beats: 4, beatType: 4 };
 }
 
+/** The key signature, in fifths, in force at measure `mi` (0 before any is given). */
 export function keyAt(score: Score, mi: number): number {
   for (let i = mi; i >= 0; i--) if (score.measures[i].key !== undefined) return must(score.measures[i].key);
   return 0;

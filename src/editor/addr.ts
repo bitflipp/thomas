@@ -77,6 +77,10 @@ interface Fragment {
 /** The fragment of each measure object (kept for as long as the measure is: edits leave most measures untouched), valid for one measure index. */
 const fragments = new WeakMap<Measure, Fragment>();
 
+/**
+ * The addresses of the events, marks and tuplets of measure `m`, cached per measure object so that untouched
+ * measures are not walked again.
+ */
 function fragmentOf(m: Measure, mi: number): Fragment {
   const old = fragments.get(m);
   if (old && old.mi === mi) return old;
@@ -101,6 +105,9 @@ function fragmentOf(m: Measure, mi: number): Fragment {
   return frag;
 }
 
+/**
+ * Maps every event, mark and tuplet of `score` to its address (the inverse of `eventOf`, `markOf` and `tupletOf`).
+ */
 export function indexScore(score: Score): ScoreIndex {
   const ev = new Map<Event, EvAddr>();
   const mark = new Map<Mark, MarkAddr>();
@@ -114,21 +121,25 @@ export function indexScore(score: Score): ScoreIndex {
   return { ev, mark, tuplet };
 }
 
+/** The voice at address `a`, if it exists. */
 export function voiceOf(score: Score, a: { mi: number; staff: string; voice: number }): Voice | undefined {
   return score.measures[a.mi]?.staves[a.staff]?.voices.find((v) => v.id === a.voice);
 }
 
+/** The event at address `a`, if it exists. */
 export function eventOf(score: Score, a: EvAddr): Event | undefined {
   const v = voiceOf(score, a);
   return v ? flattenVoice(v)[a.idx]?.ev : undefined;
 }
 
+/** The mark at address `a`, if it exists. */
 export function markOf(score: Score, a: MarkAddr): Mark | undefined {
   return marksOf(score.measures[a.mi]?.staves[a.staff]).find(
     (m) => m.voice === a.voice && m.idx === a.idx && m.k === a.k,
   );
 }
 
+/** The tuplet group at address `a` (at nesting level `depth` of the event's tuplets), if it exists. */
 export function tupletOf(score: Score, a: EvAddr & { depth: number }): TupletGroup | undefined {
   const v = voiceOf(score, a);
   return v ? flattenVoice(v)[a.idx]?.tuplets[a.depth] : undefined;

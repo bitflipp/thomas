@@ -1,3 +1,5 @@
+// Edge cases of the MusicXML importer, from small hand-written documents.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { engrave } from '../src/engrave/system.ts';

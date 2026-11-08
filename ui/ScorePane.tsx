@@ -133,6 +133,7 @@ function SpanGhost({ g, page }: { g: GhostOf<'span'>; page: number }) {
   );
 }
 
+/** The marquee rectangle while it is dragged. */
 function RectGhost({ g }: { g: GhostOf<'rect'> }) {
   return (
     <rect
@@ -148,6 +149,7 @@ function RectGhost({ g }: { g: GhostOf<'rect'> }) {
   );
 }
 
+/** The overlay for the current ghost (note input preview, marquee, span) on page `page`. */
 function GhostSvg({ g, page }: { g: Ghost | null; page: number }) {
   if (!g) return null;
   if (g.kind === 'span') return <SpanGhost g={g} page={page} />;
@@ -333,6 +335,7 @@ function NotesSvg({ page, h }: { page: number; h: HitIndex }) {
   );
 }
 
+/** The playhead line on page `page`, if playback is there. */
 function PlayheadSvg({ page }: { page: number }) {
   const p = playhead.value;
   if (!p || p.page !== page) return null;
@@ -350,10 +353,15 @@ function PlayheadSvg({ page }: { page: number }) {
   );
 }
 
+/** The collisions of page `p`, numbered as page `i + 1`. */
 function findCollisionsOn(p: Page, i: number) {
   return findCollisions([p]).map((c) => ({ ...c, page: i + 1 }));
 }
 
+/**
+ * The pane with all pages: SVG per page (generated only near the viewport), overlays, zoom and fit, and the
+ * pointer handlers.
+ */
 export function ScorePane() {
   const res = engraved.value;
   const h = hit.value;
@@ -460,5 +468,3 @@ export function ScorePane() {
     </div>
   );
 }
-
-void score;

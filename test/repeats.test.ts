@@ -1,3 +1,5 @@
+// Repeats and voltas: text format, editing and engraving.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as C from '../src/editor/commands.ts';

@@ -20,6 +20,7 @@ import { deleteSelection, evRefs, select, selectSimilar, tupletsAround } from '.
 import { DYNAMICS } from './Palette.tsx';
 import { run, score, selection, space } from './state.ts';
 
+/** A labelled row of controls in the Properties panel. */
 function Row({ label, children }: { label: string; children: preact.ComponentChildren }) {
   return (
     <div class="row">
@@ -44,6 +45,7 @@ function Pick<T extends string | number | boolean | undefined>({
   );
 }
 
+/** A number input that commits a finite value on change. */
 function Num({
   value,
   min,
@@ -75,6 +77,7 @@ function Num({
   );
 }
 
+/** A text input that commits on change. */
 function Txt({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <input
@@ -89,9 +92,17 @@ function Txt({ value, onChange, placeholder }: { value: string; onChange: (v: st
 const same = <T,>(xs: T[]): T | 'mixed' => (xs.length && xs.every((x) => x === xs[0]) ? xs[0] : 'mixed');
 const KEYS = Array.from({ length: 15 }, (_, i) => i - 7);
 
-const KEYNAME = (n: number) =>
-  n === 0 ? 'C / a (no accidentals)' : n > 0 ? `${n} sharp${n > 1 ? 's' : ''}` : `${-n} flat${n < -1 ? 's' : ''}`;
+/** The name of a key signature of `n` fifths for the key pickers. */
+function KEYNAME(n: number): string {
+  if (n === 0) return 'C / a (no accidentals)';
+  const count = Math.abs(n);
+  return `${count} ${n > 0 ? 'sharp' : 'flat'}${count > 1 ? 's' : ''}`;
+}
 
+/**
+ * Properties of the score as a whole: header texts, and page setup (staff space, margin, page size, multi-measure
+ * rests, measure numbering).
+ */
 function ScoreSection() {
   const s = score.value;
   return (
@@ -177,8 +188,10 @@ const CLEF_OPTS: [string, { sign: 'G' | 'F' | 'C'; line: number; octave?: number
   ['G2-1', { sign: 'G', line: 2, octave: -1 }, 'Treble 8vb'],
 ];
 
+/** A string that identifies a clef for the clef picker. */
 const clefKey = (c: { sign: string; line: number; octave?: number }) => `${c.sign}${c.line}${c.octave ? '-1' : ''}`;
 
+/** The staves list: names, clefs, order, instrument presets and how neighbouring staves are joined. */
 function StavesSection() {
   const s = score.value;
   const conn = C.connections(s);
@@ -327,105 +340,123 @@ function StavesSection() {
   );
 }
 
+/** The time and key signature that start at a measure, with a button to inherit them again. */
+function MeasureSignatures({ mi }: { mi: number }) {
+  const s = score.value;
+  const m = s.measures[mi];
+  const ts = timeAt(s, mi);
+  return (
+    <Group title="Signatures">
+      <Row label="Time">
+        <Num
+          value={ts.beats}
+          min={1}
+          max={32}
+          w="3.5em"
+          onChange={(n) => run((x) => C.setTimeSig(x, mi, { ...ts, beats: n }))}
+        />{' '}
+        /{' '}
+        <Dropdown
+          value={ts.beatType}
+          opts={[1, 2, 4, 8, 16].map((b) => ({ value: b, label: String(b) }))}
+          onChange={(b) => run((x) => C.setTimeSig(x, mi, { ...ts, beatType: b }))}
+        />
+        {mi > 0 && m.time && (
+          <button
+            type="button"
+            class="mini"
+            title="Inherit from the previous measure"
+            onClick={() => run((x) => C.setTimeSig(x, mi, undefined))}
+          >
+            ×
+          </button>
+        )}
+      </Row>
+      <Row label="Key">
+        <Dropdown
+          value={keyAt(s, mi)}
+          opts={KEYS.map((k) => ({ value: k, label: KEYNAME(k) }))}
+          onChange={(k) => run((x) => C.setKeySig(x, mi, k))}
+        />
+        {mi > 0 && m.key !== undefined && (
+          <button
+            type="button"
+            class="mini"
+            title="Inherit from the previous measure"
+            onClick={() => run((x) => C.setKeySig(x, mi, undefined))}
+          >
+            ×
+          </button>
+        )}
+      </Row>
+    </Group>
+  );
+}
+
+/** Barline, repeat start, volta and forced break of a measure. */
+function MeasureLayout({ mi }: { mi: number }) {
+  const m = score.value.measures[mi];
+  return (
+    <Group title="Layout">
+      <Row label="Barline">
+        <Pick
+          value={m.barline ?? 'single'}
+          opts={[
+            ['single', 'single', <Ui.barSingle />],
+            ['double', 'double', <Ui.barDouble />],
+            ['final', 'final', <Ui.barFinal />],
+            ['repeat-end', 'repeat end', <Ui.barRepeatEnd />],
+          ]}
+          onChange={(v) => run((x) => C.setBarline(x, mi, v))}
+        />
+      </Row>
+      <Row label="Repeat start">
+        <Pick
+          value={m.repeatStart ? 'on' : 'off'}
+          opts={[
+            ['off', 'none'],
+            ['on', 'start'],
+          ]}
+          onChange={(v) => run((x) => C.setRepeatStart(x, mi, v === 'on'))}
+        />
+      </Row>
+      <Row label="Volta">
+        <Pick
+          value={m.ending?.join(',') ?? 'none'}
+          opts={[
+            ['none', 'none'],
+            ['1', '1.'],
+            ['2', '2.'],
+            ['3', '3.'],
+            ['1,2', '1.,2.'],
+          ]}
+          onChange={(v) => run((x) => C.setEnding(x, mi, v === 'none' ? undefined : v.split(',').map(Number)))}
+        />
+      </Row>
+      <Row label="Break before">
+        <Pick
+          value={m.breakBefore ?? 'none'}
+          opts={[
+            ['none', 'auto'],
+            ['system', 'system'],
+            ['page', 'page'],
+          ]}
+          onChange={(v) => run((x) => C.setBreak(x, mi, v === 'none' ? undefined : (v as 'system' | 'page')))}
+        />
+      </Row>
+    </Group>
+  );
+}
+
+/** Properties of one measure: time and key signature, barline, breaks, repeats and voltas. */
 function MeasureSection({ mi }: { mi: number }) {
   const s = score.value;
   const m = s.measures[mi];
   if (!m) return null;
-  const ts = timeAt(s, mi);
   return (
     <section>
-      <Group title="Signatures">
-        <Row label="Time">
-          <Num
-            value={ts.beats}
-            min={1}
-            max={32}
-            w="3.5em"
-            onChange={(n) => run((x) => C.setTimeSig(x, mi, { ...ts, beats: n }))}
-          />{' '}
-          /{' '}
-          <Dropdown
-            value={ts.beatType}
-            opts={[1, 2, 4, 8, 16].map((b) => ({ value: b, label: String(b) }))}
-            onChange={(b) => run((x) => C.setTimeSig(x, mi, { ...ts, beatType: b }))}
-          />
-          {mi > 0 && m.time && (
-            <button
-              type="button"
-              class="mini"
-              title="Inherit from the previous measure"
-              onClick={() => run((x) => C.setTimeSig(x, mi, undefined))}
-            >
-              ×
-            </button>
-          )}
-        </Row>
-        <Row label="Key">
-          <Dropdown
-            value={keyAt(s, mi)}
-            opts={KEYS.map((k) => ({ value: k, label: KEYNAME(k) }))}
-            onChange={(k) => run((x) => C.setKeySig(x, mi, k))}
-          />
-          {mi > 0 && m.key !== undefined && (
-            <button
-              type="button"
-              class="mini"
-              title="Inherit from the previous measure"
-              onClick={() => run((x) => C.setKeySig(x, mi, undefined))}
-            >
-              ×
-            </button>
-          )}
-        </Row>
-      </Group>
-      <Group title="Layout">
-        <Row label="Barline">
-          <Pick
-            value={m.barline ?? 'single'}
-            opts={[
-              ['single', 'single', <Ui.barSingle />],
-              ['double', 'double', <Ui.barDouble />],
-              ['final', 'final', <Ui.barFinal />],
-              ['repeat-end', 'repeat end', <Ui.barRepeatEnd />],
-            ]}
-            onChange={(v) => run((x) => C.setBarline(x, mi, v))}
-          />
-        </Row>
-        <Row label="Repeat start">
-          <Pick
-            value={m.repeatStart ? 'on' : 'off'}
-            opts={[
-              ['off', 'none'],
-              ['on', 'start'],
-            ]}
-            onChange={(v) => run((x) => C.setRepeatStart(x, mi, v === 'on'))}
-          />
-        </Row>
-        <Row label="Volta">
-          <Pick
-            value={m.ending?.join(',') ?? 'none'}
-            opts={[
-              ['none', 'none'],
-              ['1', '1.'],
-              ['2', '2.'],
-              ['3', '3.'],
-              ['1,2', '1.,2.'],
-            ]}
-            onChange={(v) => run((x) => C.setEnding(x, mi, v === 'none' ? undefined : v.split(',').map(Number)))}
-          />
-        </Row>
-        <Row label="Break before">
-          <Pick
-            value={m.breakBefore ?? 'none'}
-            opts={[
-              ['none', 'auto'],
-              ['system', 'system'],
-              ['page', 'page'],
-            ]}
-            onChange={(v) => run((x) => C.setBreak(x, mi, v === 'none' ? undefined : (v as 'system' | 'page')))}
-          />
-        </Row>
-      </Group>
+      <MeasureSignatures mi={mi} />
+      <MeasureLayout mi={mi} />
       <Group title="Actions">
         <div class="btns">
           <button
@@ -460,7 +491,8 @@ function SimilarButton() {
   );
 }
 
-function Group({ title, children }: { id?: string; title: string; children: preact.ComponentChildren }) {
+/** A titled group of rows. */
+function Group({ title, children }: { title: string; children: preact.ComponentChildren }) {
   return (
     <div class="sec">
       <div class="sh">{title}</div>
@@ -469,6 +501,7 @@ function Group({ title, children }: { id?: string; title: string; children: prea
   );
 }
 
+/** A toggle button for a property; `on` marks it as set. */
 function Tog({
   on,
   title,
@@ -520,6 +553,7 @@ function beamState(sc: Score, refs: Ref[]) {
   };
 }
 
+/** The heading of the event section: Note, Chord, Rest or a count when several events are selected. */
 function eventTitle(sc: Score, refs: Ref[]): string {
   const evs = refs.map((r) => eventOf(sc, r)).filter((e): e is Event => !!e);
   if (evs.length !== 1) return `${evs.length} events`;
@@ -677,268 +711,305 @@ function GraceRows({ ref0, note }: { ref0: EvAddr; note: NoteEvent }) {
   );
 }
 
+/** What the sections of the event panel share: the selected events (`refs`, `evs`), the notes among them and a note updater. */
+interface EvSel {
+  sc: Score;
+  refs: ReturnType<typeof evRefs>;
+  evs: Event[];
+  notes: NoteEvent[];
+  r0: ReturnType<typeof evRefs>[number];
+  beam: ReturnType<typeof beamState>;
+  upd: (f: (n: NoteEvent) => void) => boolean;
+}
+
+/** The position of the selection and, for a single note, its pitches. */
+function EventInfo({ ctx }: { ctx: EvSel }) {
+  const { sc, notes, r0 } = ctx;
+  const staffName = sc.staves.find((s) => s.id === r0.staff);
+  return (
+    <Group title="Info">
+      <div class="ctx">
+        m. {r0.mi + 1} · {staffName?.name || r0.staff} · voice {r0.voice}
+        {notes.length === 1 &&
+          notes[0].pitches.map((p) => (
+            <span class="chip">
+              {p.pitch.step.toUpperCase()}
+              {'#'.repeat(Math.max(0, p.pitch.alter))}
+              {'b'.repeat(Math.max(0, -p.pitch.alter))}
+              {p.pitch.octave}
+              {p.tie ? '⁀' : ''}
+            </span>
+          ))}
+      </div>
+    </Group>
+  );
+}
+
+/** Articulations, ornaments, tie, stem, beaming and the other notation switches of the selected events. */
+function EventNotation({ ctx }: { ctx: EvSel }) {
+  const { sc, refs, evs, notes, r0, beam, upd } = ctx;
+  const art = (a: 'accent' | 'marcato' | 'staccato') => notes.length > 0 && notes.every((n) => n.art?.includes(a));
+  const flag = (k: 'arpeggio') =>
+    upd((n) => {
+      if (notes.every((q) => q[k])) delete n[k];
+      else n[k] = true;
+    });
+  return (
+    <Group title="Notation">
+      <div class="seg fill">
+        {notes.length > 0 && (
+          <>
+            <Tog on={art('accent')} title="Accent" onClick={() => run((x) => C.toggleArticulation(x, refs, 'accent'))}>
+              <Ui.accent />
+            </Tog>
+            <Tog
+              on={art('marcato')}
+              title="Marcato"
+              onClick={() => run((x) => C.toggleArticulation(x, refs, 'marcato'))}
+            >
+              <Ui.marcato />
+            </Tog>
+            <Tog
+              on={art('staccato')}
+              title="Staccato"
+              onClick={() => run((x) => C.toggleArticulation(x, refs, 'staccato'))}
+            >
+              <Ui.staccato />
+            </Tog>
+          </>
+        )}
+        <Tog on={evs.every((e) => e.fermata)} title="Fermata" onClick={() => run((x) => C.toggleFermata(x, refs))}>
+          <Ui.fermata />
+        </Tog>
+      </div>
+      {notes.length > 0 && (
+        <div class="seg fill">
+          <Tog on={notes.every((n) => n.pitches.every((p) => p.tie))} title="Tie to next (T)" onClick={tieSelection}>
+            <Ui.tie />
+          </Tog>
+          <Tog on={notes.every((n) => n.arpeggio)} title="Arpeggio (wavy line)" onClick={() => flag('arpeggio')}>
+            <Ui.arpeggio />
+          </Tog>
+          <Tog on={notes.every((n) => n.trill)} title="Trill" onClick={() => run((x) => C.toggleTrill(x, refs))}>
+            <Ui.trill />
+          </Tog>
+        </div>
+      )}
+      {notes.some((n) => n.art?.length) && (
+        <Row label="Articulation">
+          <Pick
+            value={same(notes.map((n) => n.artSide))}
+            opts={[
+              [undefined, 'auto'],
+              ['above', 'above'],
+              ['below', 'below'],
+            ]}
+            onChange={(v) =>
+              upd((n) => {
+                if (v) n.artSide = v;
+                else delete n.artSide;
+              })
+            }
+          />
+        </Row>
+      )}
+      <Row label="Dot">
+        <Pick
+          value={same(evs.map((e) => e.dur.dots))}
+          opts={[
+            [0, 'none'],
+            [1, '·'],
+            [2, '··'],
+          ]}
+          onChange={(n) => chooseDots(n)}
+        />
+      </Row>
+      {evs.some((e) => e.kind === 'rest') && (
+        <Row label="Rest">
+          <Pick
+            value={same(evs.filter((e) => e.kind === 'rest').map((e) => (e as { style: string }).style))}
+            opts={[
+              ['normal', 'shown'],
+              ['hidden', 'hidden'],
+            ]}
+            onChange={(v) =>
+              run((x) =>
+                C.updateEvents(x, refs, (e) => {
+                  if (e.kind === 'rest' && e.style !== 'measure') e.style = v as 'normal' | 'hidden';
+                }),
+              )
+            }
+          />
+        </Row>
+      )}
+      {notes.length > 0 && (
+        <>
+          <Row label="Stem">
+            <Pick
+              value={same(notes.map((n) => n.stem))}
+              opts={[
+                [undefined, 'auto'],
+                ['up', 'up', <Ui.up />],
+                ['down', 'down', <Ui.down />],
+              ]}
+              onChange={(v) =>
+                upd((n) => {
+                  if (v) n.stem = v;
+                  else delete n.stem;
+                })
+              }
+            />
+          </Row>
+          {beam && (
+            <Row label="Beam">
+              <Dropdown
+                value={beam.mode}
+                opts={BEAM_MODES.map(([mode, label, title]) => ({
+                  value: mode,
+                  label,
+                  title: mode === 'join' ? (beam.cannotJoin ?? title) : title,
+                  disabled: mode === 'join' && !!beam.cannotJoin,
+                }))}
+                onChange={(mode) => run((x) => C.setBeamMode(x, beam.refs, mode))}
+              />
+            </Row>
+          )}
+        </>
+      )}
+      {notes.length > 0 && notes.every((n) => n.trill) && (
+        <Row label="Trill note">
+          <Pick
+            value={same(notes.map((n) => n.trillAcc))}
+            opts={[
+              [undefined, 'whole tone'],
+              [1, 'sharp'],
+              [0, 'natural'],
+              [-1, 'flat'],
+            ]}
+            onChange={(v) => run((x) => C.setTrillAcc(x, refs, v))}
+          />
+        </Row>
+      )}
+      {notes.length === 1 && refs.length === 1 && <GraceRows ref0={r0} note={notes[0]} />}
+      {notes.length === 1 && refs.length === 1 && <LyricRows ref0={r0} note={notes[0]} sc={sc} />}
+    </Group>
+  );
+}
+
+/** Accidental display and the staff a cross-staff note is shown on. */
+function EventPitch({ ctx }: { ctx: EvSel }) {
+  const { sc, refs, notes, r0 } = ctx;
+  const homeStaffs = new Set(refs.map((r) => r.staff));
+  const nonHome = sc.staves.filter((s) => homeStaffs.size === 1 && !homeStaffs.has(s.id));
+  return (
+    <Group title="Pitch">
+      <Row label="Accidental">
+        <Pick
+          value={same(notes.flatMap((n) => n.pitches.map((p) => p.acc)))}
+          opts={[
+            [undefined, 'auto'],
+            ['force', 'show'],
+            ['cautionary', '( )'],
+          ]}
+          onChange={(v) =>
+            run((x) =>
+              C.updateNotes(x, refs, (n) => {
+                for (const p of n.pitches)
+                  if (v) p.acc = v;
+                  else delete p.acc;
+              }),
+            )
+          }
+        />
+      </Row>
+      {nonHome.length > 0 && (
+        <Row label="Staff">
+          <Pick
+            value={same(notes.map((n) => n.staff ?? r0.staff))}
+            opts={[
+              [r0.staff, `own (${r0.staff})`],
+              ...nonHome.map((s): [string, string] => [s.id, s.name ? `${s.name} (${s.id})` : s.id]),
+            ]}
+            onChange={(v) => run((x) => C.setStaffOf(x, refs, v === r0.staff ? undefined : v))}
+          />
+        </Row>
+      )}
+    </Group>
+  );
+}
+
+/** The buttons that act on the selected events: similar, slur, line, tremolo, tuplets, stem flip and delete. */
+function EventActions({ ctx }: { ctx: EvSel }) {
+  const { refs, beam } = ctx;
+  const sorted = [...refs].sort((p, q) => p.idx - q.idx);
+  return (
+    <Group title="Actions">
+      <div class="btns">
+        <SimilarButton />
+        {refs.length >= 2 && (
+          <button type="button" onClick={slurSelection}>
+            Slur (S)
+          </button>
+        )}
+        {refs.length === 2 && (
+          <button type="button" title="Line between the two notes (they must be in one system)" onClick={lineSelection}>
+            Line
+          </button>
+        )}
+        {refs.length === 2 &&
+          [1, 2, 3].map((b) => (
+            <button
+              type="button"
+              title={`Two-note tremolo, ${b} beam${b > 1 ? 's' : ''}`}
+              onClick={() => run((x) => C.makeTremolo(x, sorted[0], sorted[0].idx, sorted[1].idx, b))}
+            >
+              Trem {b}
+            </button>
+          ))}
+        {beam?.inTremolo && (
+          <button type="button" title="Remove the tremolo" onClick={() => run((x) => C.ungroup(x, beam.inTremolo))}>
+            No tremolo
+          </button>
+        )}
+        {tupletsAround().map((t) => (
+          <button type="button" title="Select this tuplet" onClick={() => select([t.ref])}>
+            {t.label}
+          </button>
+        ))}
+        <button type="button" title="Flip stem (X)" onClick={flipStem}>
+          Flip stem
+        </button>
+        <button type="button" class="danger" onClick={() => deleteSelection()}>
+          Delete
+        </button>
+      </div>
+    </Group>
+  );
+}
+
+/**
+ * Properties of the selected notes and rests: position, notation switches, pitch display and actions. Several
+ * selected events are edited together.
+ */
 function EventSection() {
   const sc = score.value;
   const refs = evRefs();
   const evs = refs.map((r) => eventOf(sc, r)).filter((e): e is Event => !!e);
   if (!evs.length) return null;
   const notes = evs.filter((e): e is NoteEvent => e.kind === 'note');
-  const r0 = refs[0];
-  const homeStaffs = new Set(refs.map((r) => r.staff));
-  const nonHome = sc.staves.filter((s) => homeStaffs.size === 1 && !homeStaffs.has(s.id));
-  const art = (a: 'accent' | 'marcato' | 'staccato') => notes.length > 0 && notes.every((n) => n.art?.includes(a));
-  const staffName = sc.staves.find((s) => s.id === r0.staff);
-  const sorted = [...refs].sort((p, q) => p.idx - q.idx);
   const upd = (f: (n: NoteEvent) => void) => run((x) => C.updateNotes(x, refs, f));
-  const flag = (k: 'arpeggio') =>
-    upd((n) => {
-      if (notes.every((q) => q[k])) delete n[k];
-      else n[k] = true;
-    });
-  const beam = beamState(sc, refs);
+  const ctx: EvSel = { sc, refs, evs, notes, r0: refs[0], beam: beamState(sc, refs), upd };
   return (
     <section>
-      <Group title="Info">
-        <div class="ctx">
-          m. {r0.mi + 1} · {staffName?.name || r0.staff} · voice {r0.voice}
-          {notes.length === 1 &&
-            notes[0].pitches.map((p) => (
-              <span class="chip">
-                {p.pitch.step.toUpperCase()}
-                {'#'.repeat(Math.max(0, p.pitch.alter))}
-                {'b'.repeat(Math.max(0, -p.pitch.alter))}
-                {p.pitch.octave}
-                {p.tie ? '⁀' : ''}
-              </span>
-            ))}
-        </div>
-      </Group>
-      <Group id="notation" title="Notation">
-        <div class="seg fill">
-          {notes.length > 0 && (
-            <>
-              <Tog
-                on={art('accent')}
-                title="Accent"
-                onClick={() => run((x) => C.toggleArticulation(x, refs, 'accent'))}
-              >
-                <Ui.accent />
-              </Tog>
-              <Tog
-                on={art('marcato')}
-                title="Marcato"
-                onClick={() => run((x) => C.toggleArticulation(x, refs, 'marcato'))}
-              >
-                <Ui.marcato />
-              </Tog>
-              <Tog
-                on={art('staccato')}
-                title="Staccato"
-                onClick={() => run((x) => C.toggleArticulation(x, refs, 'staccato'))}
-              >
-                <Ui.staccato />
-              </Tog>
-            </>
-          )}
-          <Tog on={evs.every((e) => e.fermata)} title="Fermata" onClick={() => run((x) => C.toggleFermata(x, refs))}>
-            <Ui.fermata />
-          </Tog>
-        </div>
-        {notes.length > 0 && (
-          <div class="seg fill">
-            <Tog on={notes.every((n) => n.pitches.every((p) => p.tie))} title="Tie to next (T)" onClick={tieSelection}>
-              <Ui.tie />
-            </Tog>
-            <Tog on={notes.every((n) => n.arpeggio)} title="Arpeggio (wavy line)" onClick={() => flag('arpeggio')}>
-              <Ui.arpeggio />
-            </Tog>
-            <Tog on={notes.every((n) => n.trill)} title="Trill" onClick={() => run((x) => C.toggleTrill(x, refs))}>
-              <Ui.trill />
-            </Tog>
-          </div>
-        )}
-        {notes.some((n) => n.art?.length) && (
-          <Row label="Articulation">
-            <Pick
-              value={same(notes.map((n) => n.artSide))}
-              opts={[
-                [undefined, 'auto'],
-                ['above', 'above'],
-                ['below', 'below'],
-              ]}
-              onChange={(v) =>
-                upd((n) => {
-                  if (v) n.artSide = v;
-                  else delete n.artSide;
-                })
-              }
-            />
-          </Row>
-        )}
-        <Row label="Dot">
-          <Pick
-            value={same(evs.map((e) => e.dur.dots))}
-            opts={[
-              [0, 'none'],
-              [1, '·'],
-              [2, '··'],
-            ]}
-            onChange={(n) => chooseDots(n)}
-          />
-        </Row>
-        {evs.some((e) => e.kind === 'rest') && (
-          <Row label="Rest">
-            <Pick
-              value={same(evs.filter((e) => e.kind === 'rest').map((e) => (e as { style: string }).style))}
-              opts={[
-                ['normal', 'shown'],
-                ['hidden', 'hidden'],
-              ]}
-              onChange={(v) =>
-                run((x) =>
-                  C.updateEvents(x, refs, (e) => {
-                    if (e.kind === 'rest' && e.style !== 'measure') e.style = v as 'normal' | 'hidden';
-                  }),
-                )
-              }
-            />
-          </Row>
-        )}
-        {notes.length > 0 && (
-          <>
-            <Row label="Stem">
-              <Pick
-                value={same(notes.map((n) => n.stem))}
-                opts={[
-                  [undefined, 'auto'],
-                  ['up', 'up', <Ui.up />],
-                  ['down', 'down', <Ui.down />],
-                ]}
-                onChange={(v) =>
-                  upd((n) => {
-                    if (v) n.stem = v;
-                    else delete n.stem;
-                  })
-                }
-              />
-            </Row>
-            {beam && (
-              <Row label="Beam">
-                <Dropdown
-                  value={beam.mode}
-                  opts={BEAM_MODES.map(([mode, label, title]) => ({
-                    value: mode,
-                    label,
-                    title: mode === 'join' ? (beam.cannotJoin ?? title) : title,
-                    disabled: mode === 'join' && !!beam.cannotJoin,
-                  }))}
-                  onChange={(mode) => run((x) => C.setBeamMode(x, beam.refs, mode))}
-                />
-              </Row>
-            )}
-          </>
-        )}
-        {notes.length > 0 && notes.every((n) => n.trill) && (
-          <Row label="Trill note">
-            <Pick
-              value={same(notes.map((n) => n.trillAcc))}
-              opts={[
-                [undefined, 'whole tone'],
-                [1, 'sharp'],
-                [0, 'natural'],
-                [-1, 'flat'],
-              ]}
-              onChange={(v) => run((x) => C.setTrillAcc(x, refs, v))}
-            />
-          </Row>
-        )}
-        {notes.length === 1 && refs.length === 1 && <GraceRows ref0={r0} note={notes[0]} />}
-        {notes.length === 1 && refs.length === 1 && <LyricRows ref0={r0} note={notes[0]} sc={sc} />}
-      </Group>
-      {notes.length > 0 && (
-        <Group id="pitch" title="Pitch">
-          <Row label="Accidental">
-            <Pick
-              value={same(notes.flatMap((n) => n.pitches.map((p) => p.acc)))}
-              opts={[
-                [undefined, 'auto'],
-                ['force', 'show'],
-                ['cautionary', '( )'],
-              ]}
-              onChange={(v) =>
-                run((x) =>
-                  C.updateNotes(x, refs, (n) => {
-                    for (const p of n.pitches)
-                      if (v) p.acc = v;
-                      else delete p.acc;
-                  }),
-                )
-              }
-            />
-          </Row>
-          {nonHome.length > 0 && (
-            <Row label="Staff">
-              <Pick
-                value={same(notes.map((n) => n.staff ?? r0.staff))}
-                opts={[
-                  [r0.staff, `own (${r0.staff})`],
-                  ...nonHome.map((s): [string, string] => [s.id, s.name ? `${s.name} (${s.id})` : s.id]),
-                ]}
-                onChange={(v) => run((x) => C.setStaffOf(x, refs, v === r0.staff ? undefined : v))}
-              />
-            </Row>
-          )}
-        </Group>
-      )}
-      <Group title="Actions">
-        <div class="btns">
-          <SimilarButton />
-          {refs.length >= 2 && (
-            <button type="button" onClick={slurSelection}>
-              Slur (S)
-            </button>
-          )}
-          {refs.length === 2 && (
-            <button
-              type="button"
-              title="Line between the two notes (they must be in one system)"
-              onClick={lineSelection}
-            >
-              Line
-            </button>
-          )}
-          {refs.length === 2 &&
-            [1, 2, 3].map((b) => (
-              <button
-                type="button"
-                title={`Two-note tremolo, ${b} beam${b > 1 ? 's' : ''}`}
-                onClick={() => run((x) => C.makeTremolo(x, sorted[0], sorted[0].idx, sorted[1].idx, b))}
-              >
-                Trem {b}
-              </button>
-            ))}
-          {beam?.inTremolo && (
-            <button type="button" title="Remove the tremolo" onClick={() => run((x) => C.ungroup(x, beam.inTremolo))}>
-              No tremolo
-            </button>
-          )}
-          {tupletsAround().map((t) => (
-            <button type="button" title="Select this tuplet" onClick={() => select([t.ref])}>
-              {t.label}
-            </button>
-          ))}
-          <button type="button" title="Flip stem (X)" onClick={flipStem}>
-            Flip stem
-          </button>
-          <button type="button" class="danger" onClick={() => deleteSelection()}>
-            Delete
-          </button>
-        </div>
-      </Group>
+      <EventInfo ctx={ctx} />
+      <EventNotation ctx={ctx} />
+      {notes.length > 0 && <EventPitch ctx={ctx} />}
+      <EventActions ctx={ctx} />
     </section>
   );
 }
 
+/** The name of a mark for the Properties heading. */
 function markLabel(m: { type: string; of?: string; dir?: string }): string {
   return m.type === 'stop'
     ? `End of ${m.of}`
@@ -949,6 +1020,7 @@ function markLabel(m: { type: string; of?: string; dir?: string }): string {
       : m.type[0].toUpperCase() + m.type.slice(1);
 }
 
+/** Properties of the selected marks of one type, which are edited together. */
 function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
   const m = markOf(score.value, r);
   if (!m) return null;
@@ -1063,6 +1135,7 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
   );
 }
 
+/** Properties of the selected lines between notes. */
 function LineSection() {
   // Every selected line is edited along with the first.
   const group = selection.value.filter((x): x is Extract<Ref, { t: 'line' }> => x.t === 'line');
@@ -1095,6 +1168,7 @@ function LineSection() {
   );
 }
 
+/** Properties of the selected slurs. */
 function SlurSection() {
   // Every selected slur is edited along with the first.
   const group = selection.value.filter((x): x is Extract<Ref, { t: 'slur' }> => x.t === 'slur');
@@ -1126,6 +1200,7 @@ function SlurSection() {
   );
 }
 
+/** Properties of the selected tuplets: bracket, number or label, and placement. */
 function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
   const g = tupletOf(score.value, r);
   const [lab, setLab] = useState('');
@@ -1230,6 +1305,10 @@ selection.subscribe(() => {
   userTab.value = null;
 });
 
+/**
+ * The Properties panel: shows the section that fits the selection (events, marks, slurs, lines, tuplets, a measure
+ * or the score).
+ */
 export function Properties() {
   const sel = selection.value;
   const sc = score.value;

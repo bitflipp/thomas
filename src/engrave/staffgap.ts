@@ -16,7 +16,7 @@ const sm = loadSmufl();
 export const STAFF_HEIGHT = 4;
 
 /** Distance between the bottom line of staff s-1 and the top line of staff s that the content of both requires. */
-export function staffGap(ctx: SysCtx, s: number): number {
+function staffGap(ctx: SysCtx, s: number): number {
   // First the gap that the pairwise overlap in x requires: a tall slur in one staff only matters
   // where the other staff has content below it.
   let need = 0;
@@ -32,6 +32,10 @@ export function staffGap(ctx: SysCtx, s: number): number {
   return Math.max(3.7, need);
 }
 
+/**
+ * Whether the system needs its staff distances fixed before the notes are final: cross-staff notes or beams, or a
+ * line between staves.
+ */
 function hasCrossStaffNotes(ctx: SysCtx): boolean {
   if (ctx.gapNeed.some((g) => g > 0)) return true;
   for (let mi = ctx.a; mi <= ctx.b; mi++)
@@ -47,7 +51,7 @@ function hasCrossStaffNotes(ctx: SysCtx): boolean {
  * and the beam itself changes what room the gap needs: iterate a few times until the gap satisfies
  * both, then pin it so later phases may widen but never shrink it.
  */
-export function drawNotesFixingCrossStaffGap(ctx: SysCtx): void {
+function drawNotesFixingCrossStaffGap(ctx: SysCtx): void {
   drawFixingGap(ctx);
   markNotes(ctx);
 }
@@ -63,6 +67,10 @@ export function rewindToNotes(ctx: SysCtx): void {
   });
 }
 
+/**
+ * The iteration behind `drawNotesFixingCrossStaffGap`: draws the notes and, with cross-staff notes, draws them
+ * again until the staff distance they need has settled, then pins the distances.
+ */
 function drawFixingGap(ctx: SysCtx): void {
   const nStaves = ctx.prep.score.staves.length;
   drawSystemNotes(ctx);
@@ -83,11 +91,15 @@ function drawFixingGap(ctx: SysCtx): void {
   ctx.pinned = true;
 }
 
-/** Where the notes alone end, and where the notes with their ties and slurs do. */
+/**
+ * Records where the notes alone end, so that ties, slurs and marks drawn after can be removed again
+ * (`rewindToNotes`).
+ */
 function markNotes(ctx: SysCtx): void {
   ctx.base = { prims: ctx.prims.map((p) => p.length), sky: ctx.sky.map((k) => k.boxes.length) };
 }
 
+/** Records where the notes with their ties and slurs end, so that the marks drawn after can be removed again. */
 function markSpanners(ctx: SysCtx): void {
   ctx.ts = { prims: ctx.prims.map((p) => p.length), sky: ctx.sky.map((k) => k.boxes.length) };
 }
@@ -169,7 +181,10 @@ export function placeStaves(ctx: SysCtx): void {
   for (let s = 0; s + 1 < nStaves; s++) centreBetweenMarks(ctx, s);
 }
 
+/** Whether a primitive belongs to a mark that sits between the staves. */
 const isBetweenMark = (p: Prim) => (p.r as { placement?: string } | undefined)?.placement === 'between';
+
+/** Whether a primitive is a dynamic or hairpin that is not placed between the staves. */
 const isDynamicsMark = (p: Prim) => (p.k === 'dyn' || p.k === 'hairpin') && p.a !== undefined && !isBetweenMark(p);
 
 /** Horizontal extent of a dynamic or hairpin primitive. */
@@ -180,6 +195,7 @@ function horizontalSpan(p: Prim): [number, number] {
   return [0, 0];
 }
 
+/** Moves the marks' primitives down by `dy`. */
 function moveMarks(marks: Prim[], dy: number): void {
   for (const p of marks) {
     if (p.t === 'glyph' || p.t === 'text') p.y += dy;
@@ -211,6 +227,7 @@ function lowestRiseAboveUpperStaff(ctx: SysCtx, s: number, marks: Prim[]): numbe
   return dyMin;
 }
 
+/** Whether any primitive of `rowA` shares horizontal extent with one of `rowB`. */
 function overlapHorizontally(rowA: Prim[], rowB: Prim[]): boolean {
   return rowA.some((a) =>
     rowB.some((b) => {
@@ -229,12 +246,6 @@ function verticalSpan(p: Prim): [number, number] {
   return [0, 0];
 }
 
-/**
- * Dynamics and hairpins placed `between` the staves sit below the upper staff or above the lower one (`marks`, of staff
- * `owner`) as far as the content there allows; this moves them to the vertical middle of the free space of the gap
- * between staff s and s+1. Content in the way of the move (what hangs into the gap, other marks of the staves)
- * limits it; a mark with content on both sides is left alone.
- */
 interface CentrePlan {
   marks: Prim[];
   /** The range of moves that keep the marks clear of the content, and the move that centres them. */
@@ -245,6 +256,12 @@ interface CentrePlan {
   mid: number;
 }
 
+/**
+ * Dynamics and hairpins placed `between` the staves sit below the upper staff or above the lower one (`marks`, of staff
+ * `owner`) as far as the content there allows; this moves them to the vertical middle of the free space of the gap
+ * between staff s and s+1. Content in the way of the move (what hangs into the gap, other marks of the staves)
+ * limits it; a mark with content on both sides is left alone.
+ */
 function planCentre(
   ctx: SysCtx,
   s: number,
@@ -319,6 +336,10 @@ function attachedMarks(ctx: SysCtx, owner: number, marks: Prim[], sameSide: (p: 
   return taken;
 }
 
+/**
+ * Centres the `between` dynamics and hairpins of staves `s` and `s+1` in the free space of the gap; two rows that
+ * both fit share one line.
+ */
 function centreBetweenMarks(ctx: SysCtx, s: number): void {
   const plans = [
     planCentre(

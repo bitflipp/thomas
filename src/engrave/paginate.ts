@@ -59,6 +59,7 @@ const FOOTER_HEIGHT = 3.5;
 const MIN_SYSTEM_DISTANCE = 1.5;
 const MAX_JUSTIFY_STRETCH = 5;
 
+/** The page size, margin and usable height in staff spaces, and the size of a point in staff spaces (`pt`). */
 function pageFrame(score: Score): PageFrame {
   const S = score.page.staffSpace;
   const margin = score.page.margin / S;

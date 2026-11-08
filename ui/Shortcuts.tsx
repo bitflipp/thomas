@@ -36,6 +36,7 @@ const ROWS: [string, string][] = [
   ['Double-click', 'Edit the text or tempo of a mark'],
 ];
 
+/** The keyboard shortcut dialog (`?`). It documents the bindings of keys.ts but does not define them. */
 export function Shortcuts() {
   if (!showHelp.value) return null;
   return (

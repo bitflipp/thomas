@@ -56,6 +56,7 @@ const past: Score[] = [];
 const future: Score[] = [];
 export const histLen = signal({ undo: 0, redo: 0 });
 
+/** Publishes the sizes of the undo and redo stacks. */
 const syncHist = () => {
   histLen.value = { undo: past.length, redo: future.length };
 };
@@ -64,6 +65,7 @@ export const toast = signal<{ msg: string; err: boolean; id: number } | null>(nu
 let toastId = 0;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
+/** Shows a message in the status line for a few seconds; `err` marks it as an error. */
 export function say(msg: string, err = false): void {
   const id = ++toastId;
   toast.value = { msg, err, id };
@@ -76,6 +78,7 @@ export function say(msg: string, err = false): void {
   );
 }
 
+/** Makes `next` the current score as one undoable step (and marks the document as changed). */
 export function commit(next: Score): void {
   const cur = score.peek();
   if (next === cur) return;
@@ -105,6 +108,7 @@ export function run(fn: (s: Score) => Score): boolean {
   }
 }
 
+/** Steps back to the previous score. */
 export function undo(): void {
   const p = past.pop();
   if (!p) return;
@@ -116,6 +120,7 @@ export function undo(): void {
   syncHist();
 }
 
+/** Steps forward again after an undo. */
 export function redo(): void {
   const f = future.pop();
   if (!f) return;
@@ -142,6 +147,10 @@ export function load(s: Score, name?: string): void {
   });
 }
 
+/**
+ * Loads a score from text-format source as a new document; false (with a message) if it does not parse or
+ * validate.
+ */
 export function loadText(t: string, name?: string): boolean {
   try {
     const s = parseText(t);
@@ -192,6 +201,7 @@ const engraveCache = createEngraveCache();
 /** The page setup with the staff space of the zoom setting: the same object as long as neither changes (the cache compares it). */
 let spacedPage: { from: Score['page']; sp: number; page: Score['page'] } | undefined;
 
+/** The page setup with staff space `sp`; the same object as long as `page` and `sp` stay the same. */
 function pageWithSpace(page: Score['page'], sp: number): Score['page'] {
   if (!(spacedPage && spacedPage.from === page && spacedPage.sp === sp))
     spacedPage = { from: page, sp, page: { ...page, staffSpace: sp } };
@@ -270,6 +280,7 @@ export const textArg = signal('dolce');
 
 const KEY = 'thomas.autosave';
 
+/** The autosaved text of the last session, if storage allows reading it. */
 export function restore(): string | null {
   try {
     return localStorage.getItem(KEY);

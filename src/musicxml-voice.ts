@@ -53,6 +53,7 @@ export function decomposeGap(ticks: number): Dur[] {
   return out;
 }
 
+/** Hidden rests that fill a gap of `ticks` (the importer's way of keeping a voice as long as its measure). */
 function hiddenRests(ticks: number): VoiceEvent[] {
   return decomposeGap(ticks).map((d) => ({ ev: { kind: 'rest', style: 'hidden', dur: d }, tupStop: 0 }));
 }
@@ -189,6 +190,7 @@ function widenBeam(beam: Range, tuplets: Range[], evs: VoiceEvent[]): Range {
   return a === beam.a && b === beam.b ? beam : { ...beam, a, b };
 }
 
+/** The name of a grouping kind, from its nesting rank, for warnings. */
 function groupName(rank: number): string {
   return rank === RANK_TUPLET ? 'tuplet' : rank === RANK_TREMOLO ? 'tremolo' : 'beam';
 }

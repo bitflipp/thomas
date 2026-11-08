@@ -96,6 +96,7 @@ export function zoomBy(f: number, at?: { x: number; y: number }): void {
 /** Set by `zoomBy`, consumed by the score pane after its next render. */
 export let zoomAnchor: { x: number; y: number; r: number } | null = null;
 
+/** Returns the pending zoom anchor and clears it. */
 export const takeZoomAnchor = () => {
   const a = zoomAnchor;
   zoomAnchor = null;
@@ -132,13 +133,20 @@ export function locate(cx: number, cy: number): Where | undefined {
 // Small helpers shared by the pointer handling and the commands: staff ids, measure lengths, the
 // duration currently chosen in the palette and the selection.
 
+/** The id of the staff at index `idx`. */
 const staffId = (sc: Score, idx: number) => sc.staves[idx].id;
+
+/** The length of measure `mi` in ticks. */
 const lenOf = (sc: Score, mi: number) => measureTicks(timeAt(sc, mi));
+
+/** The length in ticks of the duration chosen in the palette. */
 const durTicks = () => baseTicks({ base: dur.value, dots: dots.value });
 
+/** The selected events. */
 export const evRefs = (): (EvAddr & { pi?: number })[] =>
   selection.value.filter((r): r is Extract<Ref, { t: 'ev' }> => r.t === 'ev');
 
+/** Selects `refs`. With `additive` each one is toggled in the current selection instead. */
 export function select(refs: Ref[], additive = false): void {
   if (!additive) {
     selection.value = refs;
@@ -160,7 +168,8 @@ function selectEventAt(loc: { mi: number; staff: string; voice: number }, tick: 
   if (te) selection.value = [{ t: 'ev', ...loc, idx: te.index }];
 }
 
-function ghostFor(w: Where, alt: boolean): Ghost | null {
+/** The preview for note or rest input at the pointer: the bar with the target tick and, for notes, the pitch name. */
+function ghostFor(w: Where): Ghost | null {
   const h = hit.peek();
   if (!h) return null;
   const sc = score.peek();
@@ -173,7 +182,6 @@ function ghostFor(w: Where, alt: boolean): Ghost | null {
   const v = sc.measures[g.mi].staves[id]?.voices.find((x) => x.id === voice.value);
   const at = v ? eventAtTick(v.items, sn.tick) : undefined;
   const bad = sn.tick + dT > len && !at?.inTuplet;
-  void alt;
   if (tool.value === 'rest') return { kind: 'bar', page: g.page, x: sn.x, top: g.y, bad, label: 'rest' };
   const pos = Math.max(-9, Math.min(17, posAtY(g.y, w.y)));
   const p = pitchAtPos(sc, id, g.mi, sn.tick, pos, acc.value);
@@ -256,6 +264,7 @@ function startSpan(e: PointerEvent, w: Where, tool: SpanTool, target: Target | u
   select([target.ref]);
 }
 
+/** Turns the hit note or rest into a tuplet with the ratio chosen in the palette. */
 function makeTupletAt(target: Target | undefined): void {
   if (target?.ref.t !== 'ev') {
     say('Click a note or rest to make it a tuplet', true);
@@ -304,6 +313,10 @@ function pressWithSelectTool(e: PointerEvent, w: Where, h: HitIndex, target: Tar
   } else if (r.t === 'mark') drag = { k: 'mark', ref: r, start: w, cx: e.clientX, cy: e.clientY, moved: false };
 }
 
+/**
+ * Pointer-down handler of the score: starts note input, a span, a mark or a tuplet, or the select tool's click,
+ * drag or marquee.
+ */
 export function onPointerDown(e: PointerEvent): void {
   if (e.button !== 0) return;
   const w = locate(e.clientX, e.clientY);
@@ -345,6 +358,7 @@ function eventHover(w: Where, staff?: string, prefer = voice.value): Target | nu
   return at ? { page: g.page, ref: { t: 'ev', ...at }, k: 'head', boxes: [], bbox: ZERO, prio: 0 } : null;
 }
 
+/** Sets the hovered target, only when it really differs from the current one. */
 function setHover(t: Target | null): void {
   const cur = hover.peek();
   if (t === cur || (t && cur && t.page === cur.page && t.k === cur.k && refKey(t.ref) === refKey(cur.ref))) return;
@@ -356,6 +370,7 @@ function lineHeadOnly(t: string, tg: Target | undefined): Target | undefined {
   return t === 'line' && tg && tg.k !== 'head' ? undefined : tg;
 }
 
+/** Treats a head of a single-note event as the event itself, so that clicking it selects the event. */
 function asSelected(t: Target | undefined): Target | undefined {
   if (
     t &&
@@ -368,6 +383,7 @@ function asSelected(t: Target | undefined): Target | undefined {
   return t;
 }
 
+/** Pointer-move handler of the score: moves the ghost and the hover target, and continues a drag. */
 export function onPointerMove(e: PointerEvent): void {
   if (showHelp.peek()) {
     if (drag.k === 'none') {
@@ -398,7 +414,7 @@ export function onPointerMove(e: PointerEvent): void {
             : undefined;
   if (drag.k !== 'mark') setHover(ht ?? null);
   if (drag.k === 'none') {
-    if (t === 'note' || t === 'rest') ghost.value = ghostFor(w, e.altKey);
+    if (t === 'note' || t === 'rest') ghost.value = ghostFor(w);
     else ghost.value = null;
     return;
   }
@@ -408,6 +424,7 @@ export function onPointerMove(e: PointerEvent): void {
 const DRAG_THRESHOLD_PX = 4;
 const MARQUEE_THRESHOLD = 0.4;
 
+/** Whether the pointer has moved far enough from the press point for a drag to begin. */
 const pastThreshold = (d: { cx: number; cy: number }, e: PointerEvent) =>
   Math.hypot(e.clientX - d.cx, e.clientY - d.cy) >= DRAG_THRESHOLD_PX;
 
@@ -429,6 +446,7 @@ function measureForHeadDrag(
   return h.layout.measures.find((m) => m.mi === ref.mi && m.staff === idx);
 }
 
+/** Limits a staff position to the range that note input can reach. */
 const clampPos = (pos: number) => Math.max(-9, Math.min(17, pos));
 
 /** Shows where a dragged head would land: its staff position and the pitch name. */
@@ -452,6 +470,7 @@ function dragHeadGhost(d: Extract<Drag, { k: 'head' }>, e: PointerEvent, w: Wher
   };
 }
 
+/** Updates the ghost of the running drag. */
 function continueDrag(d: Drag, e: PointerEvent, w: Where, h: HitIndex): void {
   if (d.k === 'head') dragHeadGhost(d, e, w, h);
   else if (d.k === 'marquee') {
@@ -474,6 +493,7 @@ function continueDrag(d: Drag, e: PointerEvent, w: Where, h: HitIndex): void {
   }
 }
 
+/** Selects what the marquee encloses, adding to the earlier selection if the drag was additive. */
 function finishMarquee(d: Extract<Drag, { k: 'marquee' }>, w: Where, h: HitIndex): void {
   if (!d.moved || w.page !== d.start.page) return;
   const refs = marquee(h, w.page, rectBetween(w, d.start));
@@ -499,6 +519,10 @@ function finishHeadDrag(d: Extract<Drag, { k: 'head' }>, w: Where, h: HitIndex):
   run((s) => C.setPitch(s, d.ref, pi, pitch));
 }
 
+/**
+ * Creates the span of the active tool (slur, line, or a span such as a hairpin) from the pressed note to the note
+ * under the pointer.
+ */
 function finishSpan(d: Extract<Drag, { k: 'span' }>, w: Where, h: HitIndex): void {
   const tg = hitTest(h, w.page, w.x, w.y);
   if (tg?.ref.t !== 'ev') return;
@@ -532,6 +556,7 @@ function finishMarkMove(d: Extract<Drag, { k: 'mark' }>, w: Where, h: HitIndex):
   selection.value = [];
 }
 
+/** Pointer-up handler of the score: ends the running drag. */
 export function onPointerUp(e: PointerEvent): void {
   const d = drag;
   drag = { k: 'none' };
@@ -546,6 +571,10 @@ export function onPointerUp(e: PointerEvent): void {
   else finishMarkMove(d, w, h);
 }
 
+/**
+ * Enters a note or rest at the pointer. With `alt` a tuplet under it is replaced as a whole instead of being
+ * entered.
+ */
 function enter(w: Where, alt: boolean): void {
   const h = hit.peek();
   if (!h) return;
@@ -577,6 +606,10 @@ function enter(w: Where, alt: boolean): void {
   } // An accidental applies to one note.
 }
 
+/**
+ * Adds the dynamic, text, tempo or clef mark of the active tool to the event at the pointer, above the staff if
+ * the click was in its upper half. The new mark is selected.
+ */
 function addMarkAt(w: Where): void {
   const h = hit.peek();
   if (!h) return;
@@ -610,6 +643,7 @@ function addMarkAt(w: Where): void {
   }
 }
 
+/** Double-click handler of the score: asks for new text of a text mark or new tempo of a tempo mark. */
 export function onDoubleClick(e: MouseEvent): void {
   const w = locate(e.clientX, e.clientY);
   const h = hit.peek();
@@ -662,6 +696,10 @@ export function selectSimilar(): void {
   say(`Selected ${all.length} similar`);
 }
 
+/**
+ * Deletes the selection as one undoable step: events (to rests), marks, slurs, lines, tuplets, ties, or whole
+ * measures when only measures are selected.
+ */
 export function deleteSelection(): void {
   const sel = selection.value;
   if (!sel.length) return;
@@ -690,12 +728,10 @@ export function deleteSelection(): void {
   }
 }
 
+/** Abandons the running drag and its ghost. */
 export const cancelDrag = (): void => {
   drag = { k: 'none' };
   ghost.value = null;
 };
-
-void eventOf;
-void clefArg;
 
 export type { Event };

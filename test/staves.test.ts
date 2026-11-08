@@ -1,3 +1,5 @@
+// Staff commands: instrument presets, moving and duplicating staves.
+
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';

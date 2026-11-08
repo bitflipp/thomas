@@ -6,16 +6,19 @@
 import type { EvAddr } from '../src/editor/addr.ts';
 import { eventOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
-import { transposeSemis } from '../src/editor/context.ts';
 import type { BaseDur, Dur } from '../src/model.ts';
 import { evRefs, sameSystem } from './interact.ts';
 import { commit, dots, dur, hit, run, say, score, selection } from './state.ts';
 
+/**
+ * Orders event addresses from the end of the score backwards, so that edits applied in this order keep earlier
+ * indices valid.
+ */
 const sortedDesc = (a: EvAddr, b: EvAddr) =>
   a.mi - b.mi || a.staff.localeCompare(b.staff) || a.voice - b.voice || b.idx - a.idx;
 
 /** Apply a new duration to the selected events (from the end so earlier indices stay valid). */
-export function setDurationSel(d: Dur): void {
+function setDurationSel(d: Dur): void {
   const refs = [...evRefs()].sort(sortedDesc);
   if (!refs.length) return;
   let s = score.peek();
@@ -28,11 +31,13 @@ export function setDurationSel(d: Dur): void {
   }
 }
 
+/** Picks a note value for the input tool and applies it to the selected events. */
 export function chooseDuration(base: BaseDur): void {
   dur.value = base;
   if (evRefs().length) setDurationSel({ base, dots: dots.peek() });
 }
 
+/** Picks the number of dots for the input tool and applies it to the selected events. */
 export function chooseDots(n: number): void {
   dots.value = n;
   const refs = evRefs();
@@ -42,6 +47,10 @@ export function chooseDots(n: number): void {
   }
 }
 
+/**
+ * Sets the alteration of the selected notes (of one pitch of a chord when a single head is selected); `undefined`
+ * does nothing.
+ */
 export function setAccidentalSel(alter: number | undefined): void {
   const refs = evRefs();
   if (!refs.length || alter === undefined) return;
@@ -56,12 +65,14 @@ export function setAccidentalSel(alter: number | undefined): void {
   );
 }
 
+/** Transposes the selection by `semis` semitones or `steps` diatonic steps. */
 export function nudge(semis?: number, steps?: number): void {
   const refs = evRefs();
   if (!refs.length) return;
   run((s) => C.transpose(s, refs, { semis, steps }));
 }
 
+/** Cycles the stem direction of the selected events: up, down, automatic. */
 export function flipStem(): void {
   const refs = evRefs();
   if (!refs.length) return;
@@ -75,6 +86,7 @@ export function flipStem(): void {
   );
 }
 
+/** Slurs the selected notes of one voice from the first to the last. */
 export function slurSelection(): void {
   const refs = [...evRefs()].sort((a, b) => a.mi - b.mi || a.idx - b.idx);
   if (refs.length < 2) {
@@ -101,11 +113,13 @@ export function lineSelection(): void {
   run((s) => C.addLine(s, refs[0], refs[1]));
 }
 
+/** Toggles the ties of the selected notes. */
 export function tieSelection(): void {
   const refs = evRefs();
   if (refs.length) run((s) => C.toggleTie(s, refs));
 }
 
+/** Moves the selection to the previous or next event in the voice; `extend` adds it instead. */
 export function stepSelection(dir: -1 | 1, extend = false): void {
   const sc = score.peek();
   const cur = selection.peek().filter((r) => r.t === 'ev');
@@ -133,8 +147,7 @@ export function stepSelection(dir: -1 | 1, extend = false): void {
   selection.value = extend ? [...selection.peek(), ref] : [ref];
 }
 
+/** The number of events in an item (a tuplet or beam counts its members). */
 function countEvents(it: import('../src/model.ts').Item): number {
   return 'items' in it ? it.items.reduce((n, x) => n + countEvents(x), 0) : 1;
 }
-
-void transposeSemis;

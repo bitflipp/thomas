@@ -28,6 +28,10 @@ export interface FinalizedSystem {
   bottom: number;
 }
 
+/**
+ * Fixes the staff distances from the skyline extents and draws what depends on them: staff lines, signatures,
+ * measure numbers, barlines and braces.
+ */
 export function finalizeSystem(ctx: SysCtx, numbering: MeasureNumbering): FinalizedSystem {
   const { score } = ctx.prep;
   const nStaves = score.staves.length;

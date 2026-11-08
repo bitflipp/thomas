@@ -1,3 +1,5 @@
+// Tests for the headless editing commands (src/editor/): input, deletion, beams, marks, undo-safe tidying.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { beamLinks, beamModes, beatTicks } from '../src/beams.ts';

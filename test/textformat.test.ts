@@ -1,3 +1,5 @@
+// Text format and beaming rules: parsing, writing and the automatic beaming choices.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { beamGroups, simplifyBeams, simplifyTupletBrackets } from '../src/beams.ts';

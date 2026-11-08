@@ -28,6 +28,10 @@ export interface ImportOptions {
   warn?: (msg: string) => void;
 }
 
+/**
+ * Imports a `score-partwise` MusicXML document into a `Score`. Positions from the source's own layout are dropped;
+ * problems that do not stop the import go to `opts.warn`.
+ */
 export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
   const warn = opts.warn ?? (() => undefined);
   const root = parseXml(xml);

@@ -1,3 +1,5 @@
+// Lyrics: text format, MusicXML import, editing commands and engraving.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as C from '../src/editor/commands.ts';

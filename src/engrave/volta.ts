@@ -10,7 +10,7 @@ const LINE_W = 0.12;
 const TEXT_SIZE = 1.6;
 
 /** The label of a volta: `1.`, `1., 2.`, or a range `1.-3.` for three or more consecutive passes. */
-export function voltaLabel(numbers: number[]): string {
+function voltaLabel(numbers: number[]): string {
   const consecutive = numbers.every((n, i) => i === 0 || n === numbers[i - 1] + 1);
   if (numbers.length >= 3 && consecutive) return `${numbers[0]}.–${numbers[numbers.length - 1]}.`;
   return numbers.map((n) => `${n}.`).join(', ');

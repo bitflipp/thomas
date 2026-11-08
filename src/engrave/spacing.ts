@@ -18,6 +18,7 @@ import { clefAtStart } from './prep.ts';
 
 const sm = loadSmufl();
 
+/** The notehead glyph for a note value (`base`: 1 whole, 2 half, else filled). */
 export function headGlyph(base: number): string {
   return base === 1 ? 'noteheadWhole' : base === 2 ? 'noteheadHalf' : 'noteheadBlack';
 }
@@ -25,6 +26,7 @@ export function headGlyph(base: number): string {
 /** Notehead width factor (Leland's heads are already MuseScore's full size). */
 export const HEAD_SCALE = 1;
 
+/** The width of a notehead for a note value. */
 export function headWidth(base: number): number {
   return sm.adv(headGlyph(base)) * HEAD_SCALE;
 }
@@ -39,13 +41,13 @@ export const GRACE_SCALE = 0.7;
 export const DOT_STEP = 0.55;
 
 /** Least distance between an up-stem and the following down-stem of a cross-staff beam. */
-export const CROSS_STEM_SEP = 2.0;
+const CROSS_STEM_SEP = 2.0;
 
 /** Minimum stretch factor allowed when fitting measures on a line (0.55: at most 45 % tighter than ideal). */
 export const COMPRESS = 0.55;
 
 /** Ideal distance (staff spaces) between two columns `dt` ticks apart: a fixed part plus a power law (a quarter apart: 3.0). */
-export function idealSpace(dt: number): number {
+function idealSpace(dt: number): number {
   return 1.1 + 1.9 * (dt / PPQ) ** 0.6;
 }
 
@@ -66,7 +68,11 @@ export function keyChange(
   return { from, to, nat, add: Math.abs(to) };
 }
 
-export function keyChangeWidth(score: Score, mi: number): number {
+/**
+ * The width of the key signature change at measure `mi`: naturals cancelling the old key, then the new
+ * accidentals.
+ */
+function keyChangeWidth(score: Score, mi: number): number {
   const kc = keyChange(score, mi);
   if (!kc) return 0;
   const n = kc.nat.length + kc.add;
@@ -90,7 +96,7 @@ export interface Column {
 }
 
 /** Width a repeat sign takes beside its barline: the thick and thin lines and the dots. */
-export const REPEAT_WIDTH = 1.4;
+const REPEAT_WIDTH = 1.4;
 
 /** What system layout needs to know about one measure: its columns and how narrow or wide it can get. */
 export interface MeasureSpacing {
@@ -110,6 +116,7 @@ export interface MeasureSpacing {
   absorbed?: boolean; // This measure is swallowed by the multi-measure rest before it: it has no width.
 }
 
+/** An empty spacing column at `tick` for a score with `nStaves` staves. */
 function newColumn(tick: number, nStaves: number): Column {
   return {
     tick,
@@ -360,6 +367,7 @@ function resolveVoiceCollisions(evs: EvL[]): void {
   }
 }
 
+/** The width of `dots` augmentation dots. */
 const dotsWidth = (dots: number) => (dots ? 0.4 + DOT_STEP * dots : 0);
 
 /** The heads that take their own place in a column (not shared ones) with the extent to the left and right of the column x of all events. */
@@ -392,6 +400,8 @@ function headExtents(evs: EvL[]): { heads: { h: HeadL; e: EvL }[]; L: number; R:
 }
 
 const ACCIDENTAL_GAP = 0.12;
+
+/** Whether a head at staff position `pos` needs ledger lines. */
 const hasLedgerLine = (pos: number) => pos <= -2 || pos >= 10;
 
 /** Width (with parentheses) and height (staff positions) of an accidental's glyph. */
@@ -504,6 +514,7 @@ export function flagGlyph(levels: number, up: boolean): string {
   return `flag${n}${up ? 'Up' : 'Down'}`;
 }
 
+/** The glyph for a rest of a note value (`base`), or the whole rest for a whole measure. */
 export function restGlyph(base: number, measure?: boolean): string {
   if (measure) return 'restWhole';
   return base === 1

@@ -5,6 +5,7 @@ import { loadSmufl } from '../src/smufl.ts';
 
 const bboxCache = new Map<number, { d: string; x0: number; y0: number; x1: number; y1: number }>();
 
+/** The outline path of a SMuFL glyph and its bounding box, cached per code point. */
 function glyphBox(cp: number) {
   let g = bboxCache.get(cp);
   if (!g) {
@@ -72,16 +73,14 @@ export function Label({
   );
 }
 
+/** The quarter note drawn into the tempo icon. */
 function Glyph2() {
   const g = glyphBox(0xe1d5);
   const k = 5.5;
   return (
     <path
       d={g.d}
-      transform={
-        `translate(${-((g.x0 + g.x1) / 2) * k + 6} ${-((g.y0 + g.y1) / 2) * k})`.replace(/translate\(/, 'translate(') +
-        ` scale(${k})`
-      }
+      transform={`translate(${-((g.x0 + g.x1) / 2) * k + 6} ${-((g.y0 + g.y1) / 2) * k}) scale(${k})`}
       fill="currentColor"
     />
   );

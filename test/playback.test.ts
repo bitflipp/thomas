@@ -1,3 +1,5 @@
+// Playback: the MIDI sequence built from a score (tempo map, ties, pedal, channels).
+
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';

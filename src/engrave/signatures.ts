@@ -28,6 +28,7 @@ const FLAT_POS_TREBLE = [4, 7, 3, 6, 2, 5, 1];
 
 type TimeSignature = { beats: number; beatType: number };
 
+/** The glyph name and staff-local y of a clef; `change` selects the smaller clef-change form. */
 export function clefGlyph(c: Clef, change = false): { name: string; y: number } {
   const y = 4 - (c.line - 1);
   if (c.sign === 'G')
@@ -37,6 +38,7 @@ export function clefGlyph(c: Clef, change = false): { name: string; y: number } 
   return { name: change ? 'cClefChange' : 'cClef', y };
 }
 
+/** The staff positions of the accidentals of a key signature in the given clef, in drawing order. */
 function keyPositions(fifths: number, clef: Clef): number[] {
   // The treble pattern moves by the difference of the bottom lines modulo an octave (a seventh),
   // so e.g. bass clef sharps sit a third lower.
@@ -57,12 +59,14 @@ function keyPositions(fifths: number, clef: Clef): number[] {
   });
 }
 
+/** The width of a key signature of `fifths` accidentals. */
 function keyWidth(fifths: number): number {
   if (!fifths) return 0;
   const g = fifths > 0 ? 'accidentalSharp' : 'accidentalFlat';
   return Math.abs(fifths) * (sm.adv(g) + KEY_ACCIDENTAL_GAP) + 0.9;
 }
 
+/** The width of a time signature, from its longer number. */
 function timeWidth(ts: TimeSignature): number {
   return Math.max(String(ts.beats).length, String(ts.beatType).length) * sm.adv('timeSig2') + 1.3;
 }

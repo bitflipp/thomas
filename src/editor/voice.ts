@@ -21,6 +21,7 @@ const CANDS = BASES.flatMap((base) =>
     .map((dots) => ({ dur: { base, dots } as Dur, ticks: baseTicks({ base, dots }) })),
 ).sort((a, b) => b.ticks - a.ticks);
 
+/** The legal duration that is exactly `t` ticks long, if there is one. */
 export function durOfTicks(t: number): Dur | undefined {
   return CANDS.find((c) => c.ticks === t)?.dur;
 }
@@ -46,16 +47,20 @@ export function splitTicks(ticks: number, start = 0): Dur[] {
   return out;
 }
 
+/** A visible rest of duration `dur`. */
 export const rest = (dur: Dur): RestEvent => ({ kind: 'rest', style: 'normal', dur: { ...dur } });
+
+/** Rests that fill `ticks` starting at tick `start`, split into legal durations. */
 export const restsFor = (ticks: number, start: number): RestEvent[] => splitTicks(ticks, start).map(rest);
 
 /** Ticks of an item as written at its own level (tuplet contents are in written ticks, the tuplet itself is scaled). */
-export function itemTicks(it: Item): number {
+function itemTicks(it: Item): number {
   if (isEvent(it)) return baseTicks(it.dur);
   const inner = it.items.reduce((a, x) => a + itemTicks(x), 0);
   return isTuplet(it) ? (inner * it.normal) / it.actual : inner;
 }
 
+/** Total ticks of a list of items as written at their level. */
 export const itemsTicks = (items: Item[]): number => items.reduce((a, x) => a + itemTicks(x), 0);
 
 /** The pieces of event `e` (which spans [a, b)) that remain over [from, to): rests, except the head of a note which stays a (tied) note. */
@@ -87,7 +92,7 @@ function pieces(e: Event, from: number, to: number, head: boolean): Event[] {
 }
 
 /** Replace [t0, t1) at one level by `insert`; what sticks out of the range on either side becomes rests (note heads stay notes). */
-export function overwrite(items: Item[], t0: number, t1: number, insert: Item[]): Item[] {
+function overwrite(items: Item[], t0: number, t1: number, insert: Item[]): Item[] {
   const flat: Item[] = [];
   let pos = 0;
   // Explicit beam groups touched by the edit dissolve into their members (automatic beaming

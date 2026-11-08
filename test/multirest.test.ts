@@ -1,3 +1,5 @@
+// Multi-measure rests: run detection, engraving and the editor.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as C from '../src/editor/commands.ts';
@@ -101,7 +103,7 @@ test('a key change, a forced break or a mark ends a run', () => {
 
 test('a line never ends inside a run', () => {
   // Many short runs on a narrow line: no system may start with a swallowed measure.
-  const src = make('neeen' + 'eeee'.repeat(1) + 'nn'.repeat(12) + 'eee'.repeat(3));
+  const src = make(`neeeneeee${'nn'.repeat(12)}${'eee'.repeat(3)}`);
   const sc = parseText(src);
   const out = engrave(sc);
   const absorbed = findMultiRuns(prepare(sc), new Set()).absorbed;

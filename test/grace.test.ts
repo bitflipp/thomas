@@ -1,3 +1,5 @@
+// Grace notes: text format, MusicXML import, engraving and playback.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { describe, findCollisions } from '../src/engrave/collide.ts';

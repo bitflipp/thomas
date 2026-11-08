@@ -1,3 +1,5 @@
+// Engraver tests: they assert on the emitted primitives and on collisions, not on pixels.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { describe, findCollisions } from '../src/engrave/collide.ts';

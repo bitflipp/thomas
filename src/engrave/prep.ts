@@ -29,6 +29,7 @@ import { flattenVoice, marksOf, measureTicks, pitchStep, STEPS } from '../model.
 import { must } from '../util.ts';
 import type { MeasureSpacing } from './spacing.ts';
 
+/** The diatonic step number (octave * 7 + step) of the bottom line of a staff with clef `c`. */
 export function clefBottomStep(c: Clef): number {
   const sign = c.sign === 'G' ? { s: 'g', o: 4 } : c.sign === 'F' ? { s: 'f', o: 3 } : { s: 'c', o: 4 };
   const signStep = sign.o * 7 + STEPS.indexOf(sign.s as never);
@@ -40,6 +41,10 @@ export function staffPos(p: Pitch, c: Clef): number {
   return pitchStep(p) - clefBottomStep(c);
 }
 
+/**
+ * Converts a staff position (half-spaces above the bottom line) to the staff-local y, where 0 is the top line and
+ * y grows downward.
+ */
 export function posToY(pos: number): number {
   return 4 - pos / 2;
 }
@@ -165,12 +170,14 @@ const ACC_GLYPH: Record<number, string> = {
 
 const SHARP_ORDER = ['f', 'c', 'g', 'd', 'a', 'e', 'b'];
 
+/** The alteration (-1, 0, 1) that a key signature of `fifths` fifths gives to `step`. */
 export function keyAlter(fifths: number, step: string): number {
   if (fifths > 0) return SHARP_ORDER.slice(0, fifths).includes(step) ? 1 : 0;
   if (fifths < 0) return [...SHARP_ORDER].reverse().slice(0, -fifths).includes(step) ? -1 : 0;
   return 0;
 }
 
+/** The number of beams (flags) of a note value: 1 for eighths, 2 for sixteenths, and so on. */
 function levels(base: number): number {
   return base >= 8 ? Math.log2(base) - 2 : 0;
 }
@@ -239,6 +246,7 @@ interface PrepEnv {
   tiedFromPrev: Map<string, boolean>[];
 }
 
+/** Identifies a tied pitch within a voice, so that a tie can be matched to the note it continues. */
 const tieKey = (voice: number, p: Pitch) => `${voice}|${pitchStep(p)}|${p.alter}`;
 
 /** The layout record of one event of a voice of staff `home`. A cross-staff event takes the clef, octave shift and accidentals of the staff it is displayed on, not of its voice's staff. */
@@ -421,6 +429,10 @@ function prepareStaffVoices(voices: VoiceL[], sm: StaffMeasure, beatLen: number)
   for (const v of voices) for (const e of v.evs) if (e.ev.kind === 'note') displaceHeads(e);
 }
 
+/**
+ * Builds the layout records (`EvL`) of every measure, reusing the measures of `cache` whose object and carried-in
+ * state are unchanged.
+ */
 export function prepare(score: Score, cache?: PrepCache): Prepared {
   const clefAt = clefTimeline(score);
   if (cache && cache.staves !== score.staves) {
@@ -527,6 +539,10 @@ function prepareMeasure(env: PrepEnv, m: Measure, mi: number): StaffMeasureL[] {
   return row;
 }
 
+/**
+ * The stem direction of a voice at one event or chord: fixed by rank when the staff has several voices, else away
+ * from the middle line.
+ */
 function decideDir(notes: EvL[], rank: number, nVoices: number): 'up' | 'down' {
   if (nVoices > 1) return rank === 0 ? 'up' : 'down';
   let hi = Number.NEGATIVE_INFINITY;
@@ -542,6 +558,7 @@ function decideDir(notes: EvL[], rank: number, nVoices: number): 'up' | 'down' {
   return above > below ? 'down' : above < below ? 'up' : (hi + lo) / 2 >= 4 ? 'down' : 'up';
 }
 
+/** Moves the heads of a chord that sit a second apart to the other side of the stem. */
 function displaceHeads(e: EvL): void {
   const hs = e.heads;
   if (hs.length < 2) return;
@@ -555,6 +572,7 @@ function displaceHeads(e: EvL): void {
   }
 }
 
+/** Attaches the beam groups of a voice (explicit and automatic) to its events. */
 function assignBeams(vl: { id: number; evs: EvL[] }, voice: Voice, beatLen: number): void {
   const byEv = new Map(vl.evs.map((e) => [e.ev, e]));
   for (const g of beamGroups(voice, beatLen)) {

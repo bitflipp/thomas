@@ -6,7 +6,7 @@ import { signal } from '@preact/signals';
 import { lazy, Suspense } from 'preact/compat';
 import { useEffect } from 'preact/hooks';
 import { importMusicXml } from '../src/musicxml.ts';
-import { parseText, writeText } from '../src/textformat.ts';
+import { writeText } from '../src/textformat.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
 import { zoomBy } from './interact.ts';
@@ -39,7 +39,6 @@ import {
   showText,
   timing,
   toast,
-  tool,
   undo,
   voiceColors,
   zoom,
@@ -57,6 +56,7 @@ async function saveFile(as = false) {
   dirty.value = false;
 }
 
+/** Opens a score from a file (text format or MusicXML), after asking whether to discard unsaved changes. */
 async function openFile() {
   if (dirty.value && !confirm('Discard unsaved changes?')) return;
   const f = await native.open();
@@ -88,7 +88,8 @@ async function exportPdf() {
   }
 }
 
-export function App() {
+/** Installs the global handlers while the editor is mounted: shortcuts, closing the View menu, the open and save keys, the unsaved flag. */
+function useGlobalHandlers(): void {
   useEffect(() => {
     const off = installKeys();
     const close = (e: Event) => {
@@ -119,148 +120,160 @@ export function App() {
       removeEventListener('keydown', open);
     };
   }, []);
+}
+
+/** The toolbar: file, playback, undo, zoom, view menu, status and pane switches. */
+function Toolbar() {
   const res = engraved.value;
   const h = histLen.value;
+  return (
+    <header class="toolbar">
+      <div class="seg">
+        <button
+          type="button"
+          title="New score"
+          onClick={() => {
+            if (!dirty.value || confirm('Discard unsaved changes?')) {
+              loadText(NEW_SCORE_TEXT, 'untitled.txt');
+            }
+          }}
+        >
+          New
+        </button>
+        <button type="button" title="Open a score (.txt) or MusicXML (Ctrl O)" onClick={() => openFile()}>
+          Open
+        </button>
+        <button type="button" title="Save (Ctrl S); Ctrl Shift S saves under a new name" onClick={() => saveFile()}>
+          Save{dirty.value ? ' •' : ''}
+        </button>
+        <button type="button" title="Export as PDF" onClick={exportPdf}>
+          Export PDF
+        </button>
+      </div>
+      <span class="sep" />
+      <button
+        type="button"
+        class="play"
+        aria-pressed={playing.value}
+        title="Play / stop (Space). Resumes where it stopped; Alt+click moves the playhead, Home rewinds"
+        onClick={toggle}
+      >
+        {playing.value ? (
+          <>
+            <Ui.stop /> Stop
+          </>
+        ) : (
+          <>
+            <Ui.play /> Play
+          </>
+        )}
+      </button>
+      {midiPorts.value.length > 0 && (
+        <Dropdown
+          title="MIDI output"
+          value={midiOut.value ?? ''}
+          opts={midiPorts.value.map((p) => ({ value: p.id, label: p.name }))}
+          onChange={chooseOutput}
+        />
+      )}
+      <span class="sep" />
+      <div class="seg">
+        <button type="button" class="icon" disabled={!h.undo} title="Undo (Ctrl Z)" onClick={undo}>
+          <Ui.undo />
+        </button>
+        <button type="button" class="icon" disabled={!h.redo} title="Redo (Ctrl Shift Z)" onClick={redo}>
+          <Ui.redo />
+        </button>
+      </div>
+      <span class="sep" />
+      <div class="seg">
+        <button type="button" class="icon" title="Zoom out" onClick={() => zoomBy(1 / 1.2)}>
+          <Ui.minus />
+        </button>
+        <span class="val">{Math.round((fit.value ? shownZoom.value : zoom.value) * 100)}%</span>
+        <button type="button" class="icon" title="Zoom in" onClick={() => zoomBy(1.2)}>
+          <Ui.plus />
+        </button>
+        <button
+          type="button"
+          aria-pressed={fit.value}
+          title="Fit the pages to the window"
+          onClick={() => {
+            fit.value = !fit.value;
+            zoom.value = 1;
+          }}
+        >
+          Fit
+        </button>
+      </div>
+      <div class="viewmenu" onPointerDown={(e) => e.stopPropagation()}>
+        <button type="button" aria-pressed={viewOpen.value} onClick={() => (viewOpen.value = !viewOpen.value)}>
+          View ▾
+        </button>
+        {viewOpen.value && (
+          <div class="popover">
+            <label>
+              <input
+                type="checkbox"
+                checked={voiceColors.value}
+                onChange={(e) => (voiceColors.value = (e.target as HTMLInputElement).checked)}
+              />{' '}
+              Voice colours
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={showCollisions.value}
+                onChange={(e) => (showCollisions.value = (e.target as HTMLInputElement).checked)}
+              />{' '}
+              Outline overlaps in red
+            </label>
+          </div>
+        )}
+      </div>
+      <span class="grow" />
+      <span class={`status${engraveError.value ? ' err' : ''}`}>
+        {engraveError.value ||
+          (res ? `${res.systems} systems · ${res.pages.length} pages · ${Math.round(timing.value)} ms` : '')}
+      </span>
+      <div class="seg">
+        <button
+          type="button"
+          aria-pressed={showProperties.value}
+          title="Properties (Ctrl I)"
+          onClick={() => (showProperties.value = !showProperties.value)}
+        >
+          Properties
+        </button>
+        <button
+          type="button"
+          aria-pressed={showText.value}
+          title="Text view (Ctrl E)"
+          onClick={() => (showText.value = !showText.value)}
+        >
+          Text
+        </button>
+        <button
+          type="button"
+          class="icon"
+          aria-pressed={showHelp.value}
+          title="Keyboard shortcuts (?)"
+          onClick={() => (showHelp.value = !showHelp.value)}
+        >
+          <Ui.help />
+        </button>
+      </div>
+    </header>
+  );
+}
+
+/** The editor window: toolbar, palette, score pane, text pane and Properties. */
+export function App() {
+  useGlobalHandlers();
   const tst = toast.value;
   return (
     <div class="app">
-      <header class="toolbar">
-        <div class="seg">
-          <button
-            type="button"
-            title="New score"
-            onClick={() => {
-              if (!dirty.value || confirm('Discard unsaved changes?')) {
-                loadText(NEW_SCORE_TEXT, 'untitled.txt');
-              }
-            }}
-          >
-            New
-          </button>
-          <button type="button" title="Open a score (.txt) or MusicXML (Ctrl O)" onClick={() => openFile()}>
-            Open
-          </button>
-          <button type="button" title="Save (Ctrl S); Ctrl Shift S saves under a new name" onClick={() => saveFile()}>
-            Save{dirty.value ? ' •' : ''}
-          </button>
-          <button type="button" title="Export as PDF" onClick={exportPdf}>
-            Export PDF
-          </button>
-        </div>
-        <span class="sep" />
-        <button
-          type="button"
-          class="play"
-          aria-pressed={playing.value}
-          title="Play / stop (Space). Resumes where it stopped; Alt+click moves the playhead, Home rewinds"
-          onClick={toggle}
-        >
-          {playing.value ? (
-            <>
-              <Ui.stop /> Stop
-            </>
-          ) : (
-            <>
-              <Ui.play /> Play
-            </>
-          )}
-        </button>
-        {midiPorts.value.length > 0 && (
-          <Dropdown
-            title="MIDI output"
-            value={midiOut.value ?? ''}
-            opts={midiPorts.value.map((p) => ({ value: p.id, label: p.name }))}
-            onChange={chooseOutput}
-          />
-        )}
-        <span class="sep" />
-        <div class="seg">
-          <button type="button" class="icon" disabled={!h.undo} title="Undo (Ctrl Z)" onClick={undo}>
-            <Ui.undo />
-          </button>
-          <button type="button" class="icon" disabled={!h.redo} title="Redo (Ctrl Shift Z)" onClick={redo}>
-            <Ui.redo />
-          </button>
-        </div>
-        <span class="sep" />
-        <div class="seg">
-          <button type="button" class="icon" title="Zoom out" onClick={() => zoomBy(1 / 1.2)}>
-            <Ui.minus />
-          </button>
-          <span class="val">{Math.round((fit.value ? shownZoom.value : zoom.value) * 100)}%</span>
-          <button type="button" class="icon" title="Zoom in" onClick={() => zoomBy(1.2)}>
-            <Ui.plus />
-          </button>
-          <button
-            type="button"
-            aria-pressed={fit.value}
-            title="Fit the pages to the window"
-            onClick={() => {
-              fit.value = !fit.value;
-              zoom.value = 1;
-            }}
-          >
-            Fit
-          </button>
-        </div>
-        <div class="viewmenu" onPointerDown={(e) => e.stopPropagation()}>
-          <button type="button" aria-pressed={viewOpen.value} onClick={() => (viewOpen.value = !viewOpen.value)}>
-            View ▾
-          </button>
-          {viewOpen.value && (
-            <div class="popover">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={voiceColors.value}
-                  onChange={(e) => (voiceColors.value = (e.target as HTMLInputElement).checked)}
-                />{' '}
-                Voice colours
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={showCollisions.value}
-                  onChange={(e) => (showCollisions.value = (e.target as HTMLInputElement).checked)}
-                />{' '}
-                Outline overlaps in red
-              </label>
-            </div>
-          )}
-        </div>
-        <span class="grow" />
-        <span class={`status${engraveError.value ? ' err' : ''}`}>
-          {engraveError.value ||
-            (res ? `${res.systems} systems · ${res.pages.length} pages · ${Math.round(timing.value)} ms` : '')}
-        </span>
-        <div class="seg">
-          <button
-            type="button"
-            aria-pressed={showProperties.value}
-            title="Properties (Ctrl I)"
-            onClick={() => (showProperties.value = !showProperties.value)}
-          >
-            Properties
-          </button>
-          <button
-            type="button"
-            aria-pressed={showText.value}
-            title="Text view (Ctrl E)"
-            onClick={() => (showText.value = !showText.value)}
-          >
-            Text
-          </button>
-          <button
-            type="button"
-            class="icon"
-            aria-pressed={showHelp.value}
-            title="Keyboard shortcuts (?)"
-            onClick={() => (showHelp.value = !showHelp.value)}
-          >
-            <Ui.help />
-          </button>
-        </div>
-      </header>
+      <Toolbar />
       <div class="main">
         <Palette />
         <ScorePane />
@@ -277,10 +290,6 @@ export function App() {
           {tst.msg}
         </div>
       )}
-      <span hidden>
-        {tool.value}
-        {String(!!parseText)}
-      </span>
     </div>
   );
 }

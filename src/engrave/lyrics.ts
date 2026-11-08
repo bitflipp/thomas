@@ -13,7 +13,7 @@ import { STAFF_HEIGHT } from './staffgap.ts';
 import { textWidth } from './textmetrics.ts';
 
 /** Text size of a syllable, in staff spaces. */
-export const LYRIC_SIZE = 1.7;
+const LYRIC_SIZE = 1.7;
 
 /** Clear space between two syllables of different words, and the room a hyphen needs between those of one word. */
 export const LYRIC_GAP = 0.4;

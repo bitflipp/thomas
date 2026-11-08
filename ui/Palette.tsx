@@ -1,3 +1,6 @@
+// The tool palette of the editor: tools, durations, accidentals, dynamics and other marks that the
+// user picks before clicking on the score. It only sets the signals of state.ts; interact.ts reads them.
+
 import { chooseDots, chooseDuration, setAccidentalSel } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { CPS, Glyph, Icon, Label } from './icons.tsx';
@@ -56,6 +59,7 @@ const RATIOS: [number, number][] = [
   [7, 8],
 ];
 
+/** A square palette button; `on` marks it as the active one. */
 function Btn({
   on,
   title,
@@ -82,6 +86,7 @@ function Btn({
   );
 }
 
+/** A palette button that switches to tool `t`. */
 function ToolBtn({ t, title, children }: { t: Tool; title: string; children: preact.ComponentChildren }) {
   return (
     <Btn
@@ -94,6 +99,57 @@ function ToolBtn({ t, title, children }: { t: Tool; title: string; children: pre
   );
 }
 
+/** The argument fields of the active tool: dynamic, tempo, text, clef and tuplet settings. */
+function PaletteArgs() {
+  const t = tool.value;
+  return (
+    <div class="args">
+      {t === 'dynamic' && (
+        <Dropdown
+          value={dynText.value}
+          opts={DYNAMICS.map((d) => ({ value: d, label: d }))}
+          onChange={(d) => (dynText.value = d)}
+        />
+      )}
+      {t === 'text' && (
+        <input value={textArg.value} onInput={(e) => (textArg.value = (e.target as HTMLInputElement).value)} />
+      )}
+      {t === 'tempo' && (
+        <label>
+          ♩ ={' '}
+          <input
+            type="number"
+            min="20"
+            max="400"
+            value={tempoArg.value.bpm}
+            onInput={(e) =>
+              (tempoArg.value = { ...tempoArg.value, bpm: Number((e.target as HTMLInputElement).value) || 120 })
+            }
+          />
+        </label>
+      )}
+      {t === 'clef' && (
+        <Dropdown
+          value={CLEFS.findIndex(([, c]) => JSON.stringify(c) === JSON.stringify(clefArg.value))}
+          opts={CLEFS.map(([n], i) => ({ value: i, label: n }))}
+          onChange={(i) => (clefArg.value = CLEFS[i][1])}
+        />
+      )}
+      {t === 'tuplet' && (
+        <Dropdown
+          value={tupletArg.value.join(':')}
+          opts={RATIOS.map(([a, b]) => ({ value: `${a}:${b}`, label: `${a}:${b}` }))}
+          onChange={(v) => {
+            const [a, b] = v.split(':').map(Number);
+            tupletArg.value = [a, b];
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The tool palette: input and selection tools, durations, accidentals, marks and spans. */
 export function Palette() {
   const t = tool.value;
   return (
@@ -182,49 +238,7 @@ export function Palette() {
           <Icon.tuplet />
         </ToolBtn>
       </div>
-      <div class="args">
-        {t === 'dynamic' && (
-          <Dropdown
-            value={dynText.value}
-            opts={DYNAMICS.map((d) => ({ value: d, label: d }))}
-            onChange={(d) => (dynText.value = d)}
-          />
-        )}
-        {t === 'text' && (
-          <input value={textArg.value} onInput={(e) => (textArg.value = (e.target as HTMLInputElement).value)} />
-        )}
-        {t === 'tempo' && (
-          <label>
-            ♩ ={' '}
-            <input
-              type="number"
-              min="20"
-              max="400"
-              value={tempoArg.value.bpm}
-              onInput={(e) =>
-                (tempoArg.value = { ...tempoArg.value, bpm: Number((e.target as HTMLInputElement).value) || 120 })
-              }
-            />
-          </label>
-        )}
-        {t === 'clef' && (
-          <Dropdown
-            value={CLEFS.findIndex(([, c]) => JSON.stringify(c) === JSON.stringify(clefArg.value))}
-            opts={CLEFS.map(([n], i) => ({ value: i, label: n }))}
-            onChange={(i) => (clefArg.value = CLEFS[i][1])}
-          />
-        )}
-        {t === 'tuplet' && (
-          <Dropdown
-            value={tupletArg.value.join(':')}
-            opts={RATIOS.map(([a, b]) => ({ value: `${a}:${b}`, label: `${a}:${b}` }))}
-            onChange={(v) => {
-              const [a, b] = v.split(':').map(Number);
-              tupletArg.value = [a, b];
-            }}
-          />
-        )}
-      </div>
+      <PaletteArgs />
       <p class="hint">{HINTS[t]}</p>
     </nav>
   );

@@ -1,9 +1,10 @@
-import { must } from './util.ts';
-
 // Minimal XML parser (elements, attributes, text, entities), enough for MusicXML.
 //
 // Not a validating or namespace-aware parser: comments, processing instructions and the DOCTYPE are
 // skipped, CDATA is kept as text, and mixed content is concatenated into the element's `text`.
+
+import { must } from './util.ts';
+
 export interface XNode {
   tag: string;
   attrs: Record<string, string>;
@@ -13,6 +14,7 @@ export interface XNode {
 
 const ENT: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
 
+/** Resolves the predefined and numeric character entities in `s`; unknown entities stay as they are. */
 function unescapeXml(s: string): string {
   return s.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-z]+);/g, (m, e: string) => {
     if (e[0] === '#')
@@ -57,6 +59,7 @@ function parseStartTag(inner: string): XNode {
   return node;
 }
 
+/** Parses an XML document into its root element. */
 export function parseXml(src: string): XNode {
   let i = 0;
   const stack: XNode[] = [];
@@ -94,14 +97,17 @@ export function parseXml(src: string): XNode {
   return root;
 }
 
+/** The first child element of `n` with the given tag. */
 export function child(n: XNode | undefined, tag: string): XNode | undefined {
   return n?.children.find((c) => c.tag === tag);
 }
 
+/** All child elements of `n` with the given tag. */
 export function children(n: XNode | undefined, tag: string): XNode[] {
   return n ? n.children.filter((c) => c.tag === tag) : [];
 }
 
+/** The trimmed text of `n`, or of its child `tag` when one is given. */
 export function text(n: XNode | undefined, tag?: string): string | undefined {
   const t = tag ? child(n, tag) : n;
   return t ? t.text.trim() : undefined;

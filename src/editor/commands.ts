@@ -48,7 +48,7 @@ import {
 
 import { must } from '../util.ts';
 import type { EvAddr, MarkAddr } from './addr.ts';
-import { voiceOf } from './addr.ts';
+import { eventOf } from './addr.ts';
 import { comparePitch, transposeSemis, transposeSteps } from './context.ts';
 import { durOfTicks, EditError, eventAtTick, itemsTicks, putEvent, rest, restsFor, splitTicks } from './voice.ts';
 
@@ -88,6 +88,10 @@ export function measureRest(len: number): Event[] {
   return d ? [{ kind: 'rest', style: 'measure', dur: d }] : restsFor(len, 0);
 }
 
+/**
+ * The staff-measure of staff `staff` in measure `mi`, created empty if the measure lacks it. Throws for an unknown
+ * staff or measure.
+ */
 function staffMeasure(d: Draft<Score>, mi: number, staff: string): Draft<StaffMeasure> {
   if (!d.staves.some((s) => s.id === staff)) throw new EditError(`Unknown staff ${staff}`);
   const m = d.measures[mi];
@@ -96,6 +100,10 @@ function staffMeasure(d: Draft<Score>, mi: number, staff: string): Draft<StaffMe
   return m.staves[staff];
 }
 
+/**
+ * The voice at `loc` in the draft. With `create` a missing voice is added, filled with a measure rest; otherwise
+ * it is an error.
+ */
 function voiceIn(d: Draft<Score>, loc: Loc, create = false): Draft<Voice> {
   const sm = staffMeasure(d, loc.mi, loc.staff);
   let v = sm.voices.find((x) => x.id === loc.voice);
@@ -108,6 +116,7 @@ function voiceIn(d: Draft<Score>, loc: Loc, create = false): Draft<Voice> {
   return v;
 }
 
+/** The event at address `a` in the draft. Throws if there is no such event. */
 function eventIn(d: Draft<Score>, a: EvAddr): Draft<Event> {
   const v = voiceIn(d, a);
   const te = flattenVoice(v as Voice)[a.idx];
@@ -126,6 +135,7 @@ function tidy(d: Score, only?: Set<number>): void {
 /** Slur ids of a voice's events in time order (starts and stops of one event together), for events that have any. Voices are never changed in place, so this is kept per object. */
 const slurTokens = new WeakMap<Voice, { stops: number[]; starts: number[] }[]>();
 
+/** Per event of `v`, the slur ids that stop and start there; cached per voice object. */
 function slurTokensOf(v: Voice): { stops: number[]; starts: number[] }[] {
   let t = slurTokens.get(v);
   if (!t) {
@@ -142,6 +152,7 @@ function slurTokensOf(v: Voice): { stops: number[]; starts: number[] }[] {
 /** Line ids of a voice's events in time order, for events that have any. Kept per voice object like `slurTokens`. */
 const lineTokens = new WeakMap<Voice, { tick: number; starts: number[]; stops: number[] }[]>();
 
+/** Per event of `v`, its tick and the line ids that start and stop there; cached per voice object. */
 function lineTokensOf(v: Voice): { tick: number; starts: number[]; stops: number[] }[] {
   let t = lineTokens.get(v);
   if (!t) {
@@ -353,6 +364,10 @@ function markList(d: Draft<Score>, a: MarkAddr): Draft<MarkBody>[] | undefined {
   return a.idx < 0 ? v.end : flattenVoice(v as Voice)[a.idx]?.ev.marks;
 }
 
+/**
+ * Replaces the mark list of the event addressed by `a` (`idx < 0` means the voice's end marks), deleting the field
+ * when `list` is empty.
+ */
 function setMarkList(d: Draft<Score>, a: MarkAddr, list: Draft<MarkBody>[]): void {
   const v = must(d.measures[a.mi].staves[a.staff].voices.find((x) => x.id === a.voice));
   const target = a.idx < 0 ? v : (flattenVoice(v as Voice)[a.idx].ev as Draft<Event>);
@@ -400,21 +415,6 @@ function toRest(e: Draft<Event>): Event {
   };
 }
 
-function replaceInPlace(v: Draft<Voice>, target: Event, repl: Event): void {
-  const walk = (items: Draft<Item>[]): boolean => {
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (it === (target as unknown)) {
-        items[i] = repl as Draft<Item>;
-        return true;
-      }
-      if (!isEvent(it as Item) && walk((it as Draft<TupletGroup>).items)) return true;
-    }
-    return false;
-  };
-  walk(v.items);
-}
-
 /**
  * Enter a note at `tick`. With `chord`, a note already starting there gets the pitch added (or loses it, when present);
  * otherwise whatever is at that span is replaced. `descend: false` replaces a tuplet as a whole instead of entering it.
@@ -437,7 +437,7 @@ export function enterNote(
       const i = n.pitches.findIndex((x) => comparePitch(x.pitch, pitch) === 0);
       if (i >= 0) {
         if (n.pitches.length > 1) n.pitches.splice(i, 1);
-        else replaceInPlace(v, at.ev, toRest(n));
+        else replaceItem(v.items as Draft<Item>[], at.ev, toRest(n));
       } else insertPitch(n, np);
       return;
     }
@@ -452,6 +452,10 @@ export function enterNote(
   });
 }
 
+/**
+ * Writes a rest of duration `dur` at `tick`, overwriting what is there. `descend` allows entering a tuplet at that
+ * tick.
+ */
 export function enterRest(score: Score, loc: Loc, tick: number, dur: Dur, descend = true): Score {
   return edit(score, (d) => {
     const v = voiceIn(d, loc, true);
@@ -474,7 +478,7 @@ export function deleteEvents(score: Score, addrs: (EvAddr & { pi?: number })[]):
         e.pitches.splice(a.pi, 1);
         continue;
       }
-      replaceInPlace(voiceIn(d, a), e as Event, toRest(e));
+      replaceItem(voiceIn(d, a).items as Draft<Item>[], e as Event, toRest(e));
     }
   });
 }
@@ -515,12 +519,14 @@ export function updateEvents(score: Score, addrs: EvAddr[], fn: (e: Draft<Event>
   });
 }
 
+/** Applies `fn` to the note events at `addrs`; rests are skipped. */
 export function updateNotes(score: Score, addrs: EvAddr[], fn: (e: Draft<NoteEvent>) => void): Score {
   return updateEvents(score, addrs, (e) => {
     if (e.kind === 'note') fn(e);
   });
 }
 
+/** Sets pitch number `pi` of the chord at `a` and keeps the chord sorted by pitch. */
 export function setPitch(score: Score, a: EvAddr, pi: number, pitch: Pitch): Score {
   return updateNotes(score, [a], (n) => {
     const old = n.pitches[pi];
@@ -558,6 +564,10 @@ export function setStaffOf(score: Score, addrs: EvAddr[], staff: string | undefi
   });
 }
 
+/**
+ * Ties the addressed notes to their successors, or removes the ties if all of them are tied already. With `pi`
+ * only that pitch of a chord is meant.
+ */
 export function toggleTie(score: Score, addrs: (EvAddr & { pi?: number })[]): Score {
   return edit(score, (d) => {
     for (const a of addrs) {
@@ -573,11 +583,12 @@ export function toggleTie(score: Score, addrs: (EvAddr & { pi?: number })[]): Sc
   });
 }
 
+/** Adds articulation `art` to the addressed notes, or removes it if all of them have it already. */
 export function toggleArticulation(score: Score, addrs: EvAddr[], art: Articulation): Score {
   return updateNotes(score, addrs, (n) => {
     const cur = n.art ?? [];
     const on = !addrs.every((a) => {
-      const e = flattenEv(score, a);
+      const e = eventOf(score, a);
       return e?.kind === 'note' && e.art?.includes(art);
     });
     const next = on ? [...cur.filter((x) => x !== art), art] : cur.filter((x) => x !== art);
@@ -591,7 +602,7 @@ export function toggleArticulation(score: Score, addrs: EvAddr[], art: Articulat
 
 /** Toggles a fermata on the events at `addrs` (notes and rests): off if all have one, else on for all. */
 export function toggleFermata(score: Score, addrs: EvAddr[]): Score {
-  const on = !addrs.every((a) => flattenEv(score, a)?.fermata);
+  const on = !addrs.every((a) => eventOf(score, a)?.fermata);
   return updateEvents(score, addrs, (e) => {
     if (on) e.fermata = true;
     else delete e.fermata;
@@ -600,9 +611,9 @@ export function toggleFermata(score: Score, addrs: EvAddr[]): Score {
 
 /** Toggles a trill on the notes at `addrs`; rests cannot trill. */
 export function toggleTrill(score: Score, addrs: EvAddr[]): Score {
-  const notes = addrs.filter((a) => flattenEv(score, a)?.kind === 'note');
+  const notes = addrs.filter((a) => eventOf(score, a)?.kind === 'note');
   if (!notes.length) throw new EditError('Only notes can have a trill');
-  const on = !notes.every((a) => (flattenEv(score, a) as NoteEvent).trill);
+  const on = !notes.every((a) => (eventOf(score, a) as NoteEvent).trill);
   return updateNotes(score, notes, (n) => {
     if (on) n.trill = true;
     else {
@@ -638,7 +649,7 @@ export function setSyllable(
   verse: number,
   input: { text: string; joinNext?: boolean; extend?: boolean } | undefined,
 ): Score {
-  const e = flattenEv(score, a);
+  const e = eventOf(score, a);
   if (e?.kind !== 'note') throw new EditError('Lyrics belong under a note');
   return edit(score, (d) => {
     const n = eventIn(d, a);
@@ -680,7 +691,7 @@ function normalizeVerse(d: Score, staff: string, voiceId: number, verse: number)
 
 /** Adds a grace note before the note at `a`, after its existing graces (or at `index`). It starts as a single pitch, given or a step above the note's lowest. */
 export function addGrace(score: Score, a: EvAddr, grace: Grace, index?: number): Score {
-  const e = flattenEv(score, a);
+  const e = eventOf(score, a);
   if (e?.kind !== 'note') throw new EditError('Grace notes belong in front of a note');
   return updateNotes(score, [a], (n) => {
     n.graces ??= [];
@@ -688,6 +699,7 @@ export function addGrace(score: Score, a: EvAddr, grace: Grace, index?: number):
   });
 }
 
+/** Removes grace note number `index` of the note at `a`. */
 export function removeGrace(score: Score, a: EvAddr, index: number): Score {
   return updateNotes(score, [a], (n) => {
     n.graces?.splice(index, 1);
@@ -712,11 +724,6 @@ export function transposeGrace(score: Score, a: EvAddr, index: number, steps: nu
     const g = n.graces?.[index];
     if (g) for (const p of g.pitches) p.pitch = transposeSteps(p.pitch, steps);
   });
-}
-
-function flattenEv(score: Score, a: EvAddr): Event | undefined {
-  const v = voiceOf(score, a);
-  return v ? flattenVoice(v)[a.idx]?.ev : undefined;
 }
 
 // Slurs join two notes of one voice, possibly across measures. A slur is a start/stop pair of marks
@@ -795,6 +802,7 @@ export function addLine(score: Score, from: EvAddr, to: EvAddr, dashed = false):
   });
 }
 
+/** Removes the line with id `id` that starts at `from`; `tidy` drops the orphaned end. */
 export function removeLine(score: Score, from: EvAddr, id: number): Score {
   return edit(score, (d) => {
     const e = eventIn(d, from);
@@ -806,6 +814,7 @@ export function removeLine(score: Score, from: EvAddr, id: number): Score {
   }); // Tidy removes the matching stop.
 }
 
+/** Sets or clears the dashed style of the line with id `id` that starts at `from`. */
 export function setLineDashed(score: Score, from: EvAddr, id: number, dashed: boolean): Score {
   return updateEvents(score, [from], (e) => {
     const s = e.lineStart?.find((x) => x.id === id);
@@ -816,6 +825,7 @@ export function setLineDashed(score: Score, from: EvAddr, id: number, dashed: bo
   });
 }
 
+/** Removes the slur with id `id` that starts at `from`; `tidy` drops the orphaned end. */
 export function removeSlur(score: Score, from: EvAddr, id: number): Score {
   return edit(score, (d) => {
     const e = eventIn(d, from);
@@ -827,6 +837,10 @@ export function removeSlur(score: Score, from: EvAddr, id: number): Score {
   }); // Tidy removes the matching stop.
 }
 
+/**
+ * Forces the slur with id `id` that starts at `from` above or below the notes; `undefined` returns it to the
+ * automatic side.
+ */
 export function setSlurSide(score: Score, from: EvAddr, id: number, side: 'above' | 'below' | undefined): Score {
   return updateEvents(score, [from], (e) => {
     const s = e.slurStart?.find((x) => x.id === id);
@@ -847,6 +861,10 @@ export function addMark(score: Score, at: EvAddr, body: MarkBody): Score {
   });
 }
 
+/**
+ * Attaches mark `body` to the event at `at` (or to the voice end for stops), replacing a mark of the same kind
+ * where only one can exist.
+ */
 function hang(d: Draft<Score>, at: EvAddr, body: MarkBody): void {
   const sm = staffMeasure(d, at.mi, at.staff);
   const v = sm.voices.find((x) => x.id === at.voice);
@@ -875,6 +893,7 @@ export function moveMark(score: Score, a: MarkAddr, at: EvAddr): Score {
   });
 }
 
+/** Patches the mark at `a`, either with a partial body or by mutating the draft body. */
 export function updateMark(
   score: Score,
   a: MarkAddr,
@@ -906,6 +925,7 @@ export function removeMark(score: Score, a: MarkAddr): Score {
   return removeMarks(score, [a]);
 }
 
+/** Removes the marks at `addrs`, together with the partner of each hairpin so that no half hairpin stays behind. */
 export function removeMarks(score: Score, addrs: MarkAddr[]): Score {
   return edit(score, (d) => {
     const gone: MarkAddr[] = [...addrs];
@@ -1021,6 +1041,7 @@ export function makeTuplet(score: Score, a: EvAddr, actual: number, normal: numb
   });
 }
 
+/** Replaces the event `target` by the single item `repl` somewhere in `items`; returns whether it was found. */
 function replaceItem(items: Draft<Item>[], target: Event, repl: Item): boolean {
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
@@ -1051,6 +1072,7 @@ export function removeTuplet(score: Score, a: EvAddr & { depth: number }): Score
   });
 }
 
+/** Replaces `target` (an event or a group) by the items `repl` somewhere in `items`; returns whether it was found. */
 function spliceItem(items: Draft<Item>[], target: Item, repl: Draft<Item>[]): boolean {
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
@@ -1063,6 +1085,7 @@ function spliceItem(items: Draft<Item>[], target: Item, repl: Draft<Item>[]): bo
   return false;
 }
 
+/** Patches the display fields (bracket, number, label, placement) of the tuplet at `a`. */
 export function updateTuplet(
   score: Score,
   a: EvAddr & { depth: number },
@@ -1109,6 +1132,10 @@ function refit(d: Draft<Score>, mi: number, len: number): void {
     }
 }
 
+/**
+ * A measure of whole-measure rests on every staff, as long as the time signature in force at (or before) measure
+ * `at`.
+ */
 function emptyMeasure(score: Score, at: number): Score['measures'][number] {
   const len = measureTicks(timeAt(score, Math.max(0, Math.min(at, score.measures.length - 1))));
   return {
@@ -1116,6 +1143,10 @@ function emptyMeasure(score: Score, at: number): Score['measures'][number] {
   };
 }
 
+/**
+ * Inserts `count` empty measures before measure `at`. At the start they take over the time and key signature of
+ * the old first measure.
+ */
 export function insertMeasures(score: Score, at: number, count = 1): Score {
   return edit(score, (d) => {
     const fresh = Array.from({ length: count }, () => emptyMeasure(score, Math.max(at - 1, 0)));
@@ -1128,6 +1159,10 @@ export function insertMeasures(score: Score, at: number, count = 1): Score {
   });
 }
 
+/**
+ * Deletes measures `from` to `to` (inclusive), handing a deleted time or key change on to the next measure. The
+ * last measure cannot go.
+ */
 export function deleteMeasures(score: Score, from: number, to: number): Score {
   if (to - from + 1 >= score.measures.length) throw new EditError('A score needs at least one measure');
   return edit(score, (d) => {
@@ -1153,6 +1188,10 @@ export function deleteMeasures(score: Score, from: number, to: number): Score {
   });
 }
 
+/**
+ * Sets (or, with `undefined`, removes) the time signature that starts at measure `mi`; the first measure always
+ * keeps one.
+ */
 export function setTimeSig(score: Score, mi: number, ts: TimeSig | undefined): Score {
   if (ts && (ts.beats < 1 || ![1, 2, 4, 8, 16, 32].includes(ts.beatType)))
     throw new EditError('Invalid time signature');
@@ -1167,6 +1206,10 @@ export function setTimeSig(score: Score, mi: number, ts: TimeSig | undefined): S
   });
 }
 
+/**
+ * Sets the key signature (in fifths) that starts at measure `mi`; `undefined` removes a change after the first
+ * measure.
+ */
 export function setKeySig(score: Score, mi: number, fifths: number | undefined): Score {
   return edit(score, (d) => {
     if (fifths === undefined && mi > 0) delete d.measures[mi].key;
@@ -1174,6 +1217,7 @@ export function setKeySig(score: Score, mi: number, fifths: number | undefined):
   });
 }
 
+/** Sets the barline at the end of measure `mi`; `single` or `undefined` clears it. */
 export function setBarline(
   score: Score,
   mi: number,
@@ -1201,6 +1245,7 @@ export function setEnding(score: Score, mi: number, numbers: number[] | undefine
   });
 }
 
+/** Forces a system or page break before measure `mi`, or clears it with `undefined`. */
 export function setBreak(score: Score, mi: number, b: 'system' | 'page' | undefined): Score {
   return edit(score, (d) => {
     if (b) d.measures[mi].breakBefore = b;
@@ -1208,6 +1253,7 @@ export function setBreak(score: Score, mi: number, b: 'system' | 'page' | undefi
   });
 }
 
+/** Sets the clef a staff starts with. */
 export function setStaffClef(score: Score, staff: string, clef: Clef): Score {
   return edit(score, (d) => {
     const s = d.staves.find((x) => x.id === staff);
@@ -1215,6 +1261,7 @@ export function setStaffClef(score: Score, staff: string, clef: Clef): Score {
   });
 }
 
+/** Merges title, composer and the other metadata fields into the score; an empty value removes the field. */
 export function setMeta(score: Score, patch: Partial<Score['meta']>): Score {
   return edit(score, (d) => {
     for (const [k, v] of Object.entries(patch)) {
@@ -1244,6 +1291,10 @@ export function connections(score: Score): Connection[] {
   return out;
 }
 
+/**
+ * Rebuilds the staff groups from the connection kind between each pair of neighbouring staves `ids`: a run of
+ * equal kinds is one group, a missing kind joins nothing.
+ */
 function groupsFrom(ids: string[], conn: Connection[]): Score['groups'] {
   const groups: Score['groups'] = [];
   for (let i = 0; i < conn.length; i++) {
@@ -1256,6 +1307,7 @@ function groupsFrom(ids: string[], conn: Connection[]): Score['groups'] {
   return groups;
 }
 
+/** Sets how the staves on both sides of `boundary` are joined (brace, bracket, ...) and rebuilds the groups. */
 export function setConnection(score: Score, boundary: number, kind: Connection): Score {
   return edit(score, (d) => {
     const conn = connections(score);
@@ -1294,6 +1346,10 @@ export function addStaff(score: Score, o: { clef: Clef; name?: string; at?: numb
   });
 }
 
+/**
+ * Removes staff `id` with its music from every measure, repairs the groups around it and drops cross-staff
+ * notes that pointed to it. The last staff cannot go.
+ */
 export function removeStaff(score: Score, id: string): Score {
   const i = score.staves.findIndex((s) => s.id === id);
   if (i < 0) throw new EditError('No such staff');
@@ -1435,6 +1491,7 @@ export function addInstrument(score: Score, key: string, at?: number): Score {
   return sc;
 }
 
+/** Sets the name printed at the start of a staff; an empty name removes it. */
 export function setStaffName(score: Score, id: string, name: string): Score {
   return edit(score, (d) => {
     const s = d.staves.find((x) => x.id === id);
@@ -1445,6 +1502,7 @@ export function setStaffName(score: Score, id: string, name: string): Score {
   });
 }
 
+/** Sets which measure numbers are printed (`undefined` is the default). */
 export function setMeasureNumbers(score: Score, mode: 'all' | 'none' | undefined): Score {
   return edit(score, (d) => {
     if (mode) d.page.measureNumbers = mode;
@@ -1452,6 +1510,7 @@ export function setMeasureNumbers(score: Score, mode: 'all' | 'none' | undefined
   });
 }
 
+/** Switches the engraving of runs of empty measures as multi-measure rests on or off. */
 export function setMultiRests(score: Score, on: boolean): Score {
   return edit(score, (d) => {
     if (on) d.page.multiRests = true;
@@ -1459,22 +1518,10 @@ export function setMultiRests(score: Score, on: boolean): Score {
   });
 }
 
+/** Merges `patch` into the page setup (size, margins, staff space, ...). */
 export function setPage(score: Score, patch: Partial<Score['page']>): Score {
   return edit(score, (d) => {
     Object.assign(d.page, patch);
-  });
-}
-
-/** Remove a (non-first) voice that holds nothing but rests. */
-export function removeVoice(score: Score, loc: Loc): Score {
-  return edit(score, (d) => {
-    const sm = staffMeasure(d, loc.mi, loc.staff);
-    if (loc.voice === 1) {
-      const v = sm.voices.find((x) => x.id === 1);
-      if (v) v.items = measureRest(measureTicks(timeAt(d as Score, loc.mi))) as Draft<Item>[];
-      return;
-    }
-    sm.voices = sm.voices.filter((v) => v.id !== loc.voice);
   });
 }
 
