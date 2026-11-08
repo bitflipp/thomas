@@ -108,6 +108,9 @@ function pushBox(ctx: SysCtx, s: number, x0: number, x1: number, y0: number, y1:
   ctx.sky[s].add(x0, x1, y0, y1, false, acc);
 }
 
+// The width (staff spaces) of the slices into which the band of a sloping tuplet bracket is cut for the skyline.
+const SLOPED_BAND_SLICE = 1;
+
 /** Stem length in staff spaces for a note with `levels` flags/beams: 3.5, plus 0.75 for every level beyond two. */
 function stemLength(levels: number): number {
   return levels <= 2 ? 3.5 : 3.5 + 0.75 * (levels - 2);
@@ -1560,9 +1563,19 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
       italic: true,
       anchor: 'middle',
     });
-  const yLo = Math.min(ya, yb) - (above ? 1.0 : 0);
-  const yHi = Math.max(ya, yb) + (above ? 0 : 1.0);
-  if (bracket) pushBox(ctx, s, bx0, bx1, above ? yLo - 0.2 : yLo, above ? yHi : yHi + 0.2); // Without a bracket there is no band.
+  // The bracket may slope, so its band is cut into slices that follow it: one box over the whole span would stand as
+  // high as the higher end all along, and a slur under a steep bracket would bulge over a wall that is not there.
+  // Without a bracket there is no band.
+  if (bracket) {
+    const n = Math.max(1, Math.ceil((bx1 - bx0) / SLOPED_BAND_SLICE));
+    for (let i = 0; i < n; i++) {
+      const f0 = i / n;
+      const f1 = (i + 1) / n;
+      const lo = Math.min(ya + (yb - ya) * f0, ya + (yb - ya) * f1) - (above ? 1.0 : 0);
+      const hi = Math.max(ya + (yb - ya) * f0, ya + (yb - ya) * f1) + (above ? 0 : 1.0);
+      pushBox(ctx, s, bx0 + (bx1 - bx0) * f0, bx0 + (bx1 - bx0) * f1, above ? lo - 0.2 : lo, above ? hi : hi + 0.2);
+    }
+  }
   if (showNum)
     pushBox(
       ctx,
