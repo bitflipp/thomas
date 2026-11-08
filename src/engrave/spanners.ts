@@ -461,9 +461,10 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
         )
       : -1;
   const flagged = e.stem === (above ? 'up' : 'down') && e.te.ev.dur.base >= 8 && !e.beam && !e.tremPair;
-  let x0 = e.x + h.dx + g.hw + 0.12 + (dots ? 0.4 + DOT_STEP * dots : 0);
-  if (sibs.some((i) => ledgerNear(e, e.heads[i], tieAbove(e, i))))
-    x0 = Math.max(x0, e.x + h.dx + g.hw + ledgerExt + 0.1);
+  const x0Plain = e.x + h.dx + g.hw + 0.12 + (dots ? 0.4 + DOT_STEP * dots : 0);
+  let x0 = x0Plain;
+  const ledgerStart = sibs.some((i) => ledgerNear(e, e.heads[i], tieAbove(e, i)));
+  if (ledgerStart) x0 = Math.max(x0, e.x + h.dx + g.hw + ledgerExt + 0.1);
   if (flagged) x0 = Math.max(x0, g.stemX + sm.bbox(flagGlyph(beamLevels(e.te.ev.dur.base), above)).x1 + 0.1);
   const si = systems[e.mi >= 0 ? sysOfIndex(systems, e.mi) : 0];
   const thick = D.tieMidpointThickness as number;
@@ -490,6 +491,7 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
       if (gap > 0 && gap < 3) hgt = Math.max(hgt, gap / (f * 0.95));
     }
     hgt = Math.min(hgt, 1.6, Math.max(0.4 + len * 0.045, 0.5 + 0.12 * len)); // A short tie never becomes a hump.
+    if (len < 2) hgt = Math.min(hgt, 0.05 + 0.25 * len); // Nor a steep stub.
     return {
       hgt,
       draw: (hh: number) => {
@@ -511,9 +513,15 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
     return;
   }
   const sj = systems[sysOfIndex(systems, next.mi)];
-  let x1 = next.x + next.heads[nh].dx - 0.12;
-  if (sibs.some((i) => nextOf(i) >= 0 && ledgerNear(next, next.heads[nextOf(i)], tieAbove(e, i))))
-    x1 = Math.min(x1, next.x + next.heads[nh].dx - ledgerExt - 0.1);
+  const x1Plain = next.x + next.heads[nh].dx - 0.12;
+  let x1 = x1Plain;
+  const ledgerEnd = sibs.some((i) => nextOf(i) >= 0 && ledgerNear(next, next.heads[nextOf(i)], tieAbove(e, i)));
+  if (ledgerEnd) x1 = Math.min(x1, next.x + next.heads[nh].dx - ledgerExt - 0.1);
+  // Clearing the ledger lines must not squeeze a tie into a steep stub: then it keeps its plain ends.
+  if ((ledgerStart || ledgerEnd) && x1 - x0 < 1.8 && sj === si) {
+    x0 = x0Plain;
+    x1 = x1Plain;
+  }
   const yN = posToY(next.heads[nh].pos) + (above ? -0.38 : 0.38);
   if (sj === si) solo(place(si, x0, x1, y));
   else {
@@ -586,8 +594,8 @@ const slurReach = (f: SlurFrame, a: number, b: number) => (f.above ? f.sky.top(a
 function slurEndHeights(f: SlurFrame, x0: number, y0: number, x1: number, y1: number): [number, number] {
   const { above, sky, openL, openR } = f;
   const edge = 7;
-  const near = 3.5;
-  const maxUp = 2.0;
+  const near = 2.2;
+  const maxUp = 0.8;
   const openY = (y: number, o: number): number =>
     above ? Math.max(y - 3, Math.min(y, o - 0.9)) : Math.min(y + 3, Math.max(y, o + 0.9));
   const attach = (y: number, xa: number, xb: number): number => {
@@ -598,11 +606,11 @@ function slurEndHeights(f: SlurFrame, x0: number, y0: number, x1: number, y1: nu
   if (openL) {
     const o = slurReach(f, x0, x0 + edge);
     if (Math.abs(o) < 90) y0 = openY(y0, o);
-  } else y0 = attach(y0, x0 - 0.3, x0 + near);
+  } else y0 = attach(y0, x0 + 0.7, x0 + near);
   if (openR) {
     const o = slurReach(f, x1 - edge, x1);
     if (Math.abs(o) < 90) y1 = openY(y1, o);
-  } else y1 = attach(y1, x1 - near, x1 + 0.3);
+  } else y1 = attach(y1, x1 - near, x1 - 0.7);
   return [y0, y1];
 }
 
