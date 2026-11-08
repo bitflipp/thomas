@@ -271,6 +271,8 @@ button.mini {
   font-weight: 700;
 }
 .args {
+  width: 0; /* The fields fill the width the button groups give the palette instead of widening it. */
+  min-width: 100%;
   margin-top: var(--sp-2);
   display: flex;
   flex-direction: column;
