@@ -712,6 +712,8 @@ button.dd {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: var(--sp-1);
+  overflow: auto;
+  box-sizing: border-box;
 }
 .dd-list [role="option"] {
   display: flex;

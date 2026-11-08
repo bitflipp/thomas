@@ -2,7 +2,7 @@
 // can be disabled. It behaves like a select: click or ArrowUp/Down to open, arrows to move, Enter or Space to pick,
 // Esc or a click elsewhere to close. The list is `position: fixed`, so scrolling panels do not clip it.
 
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import { must } from '../src/util.ts';
 
@@ -14,6 +14,9 @@ export type DropdownOpt<T> = {
   title?: string;
   disabled?: boolean;
 };
+
+/** The room kept free between the list and the window edges. */
+const EDGE = 8;
 
 type Place = { x: number; w: number; top?: number; bottom?: number; max: number };
 
@@ -54,20 +57,32 @@ export function Dropdown<T>({
       document.removeEventListener('scroll', close, true);
     };
   }, [open]);
+  // The list opens flush with the button's left edge. When it would run past the window's right edge it is
+  // flush with the button's right edge instead, and then clamped into the window.
+  useLayoutEffect(() => {
+    const el = list.current;
+    const r = btn.current?.getBoundingClientRect();
+    if (!(open && el && r)) return;
+    const room = innerWidth - 2 * EDGE;
+    el.style.maxWidth = `${room}px`;
+    const w = Math.min(el.offsetWidth, room);
+    const x = (r.left + w > innerWidth - EDGE ? r.right - w : r.left) + 1;
+    el.style.left = `${Math.max(EDGE, Math.min(x, innerWidth - EDGE - w))}px`;
+  }, [open]);
   useEffect(() => {
     if (open) list.current?.children[active]?.scrollIntoView({ block: 'nearest' });
   }, [open, active]);
 
   const show = () => {
     const r = must(btn.current).getBoundingClientRect();
-    const below = innerHeight - r.bottom - 8;
-    const above = r.top - 8;
+    const below = innerHeight - r.bottom - 2 - EDGE;
+    const above = r.top - 2 - EDGE;
     const want = opts.length * 26 + 8;
     const up = below < Math.min(want, 160) && above > below;
     setAt(
       up
-        ? { x: r.left, w: r.width, bottom: innerHeight - r.top + 2, max: Math.min(want, above) }
-        : { x: r.left, w: r.width, top: r.bottom + 2, max: Math.min(want, below) },
+        ? { x: r.left, w: r.width, bottom: innerHeight - r.top + 2, max: above }
+        : { x: r.left, w: r.width, top: r.bottom + 2, max: below },
     );
     setActive(Math.max(cur, 0));
     setOpen(true);
