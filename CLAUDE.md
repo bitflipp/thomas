@@ -66,6 +66,7 @@ Pipeline: text/MusicXML → `Score` model → `prepare` → per-measure spacing 
 
 - **Headless editing, `src/editor/`** (testable with `node --test`, `test/editor.test.ts`):
   - `commands.ts`: pure `Score -> Score` functions on Immer drafts. A refusal throws `EditError` (message for the user). Every command leaves each voice exactly as long as its measure; `edit()` re-runs `tidy()` on the touched measures (dissolves beam/tremolo groups that lost notes, drops dangling slurs).
+  - Copy and paste (`copyEvents`, `pasteEvents`, `copyMarks`, `pasteMarks` in `commands.ts`; the clipboard is in `ui/keys.ts`): a `Clip` holds the events (graces, ornaments and lyrics are event fields) with the marks that stay complete, spans that run past the copy bring their stops as `tail` (hung on the event after the pasted ones), and pasted hairpins get free ids.
   - `voice.ts`: `putEvent` writes an event at a tick: it overwrites what is there, leftovers become rests (`splitTicks`), a tick inside a tuplet descends into it (positions are *written* ticks per level), `overwrite` refuses to cut a tuplet/tremolo in half.
   - `addr.ts`: `Ref`s name things by (measure, staff id, voice id, flat event index), not by object, so they survive edits; `indexScore` maps model objects to addresses.
   - `context.ts`: clef/ottava/key/accidentals in force at a position, staff position <-> pitch, transposition.

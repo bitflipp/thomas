@@ -24,7 +24,7 @@ const ROWS: [string, string][] = [
   ['Home', 'Playhead back to the start'],
   ['Alt + click (select)', 'Put the playhead there'],
   ['Ctrl Z / Ctrl Shift Z', 'Undo / redo'],
-  ['Ctrl C / X / V', 'Copy / cut / paste notes (paste starts at the selected note)'],
+  ['Ctrl C / X / V', 'Copy / cut / paste notes with their dynamics, ornaments, graces and complete hairpins or pedals (paste starts at the selected note); a copied dynamic, text or tempo mark is pasted onto every selected note'],
   [
     'Ctrl Shift A',
     'Select everything the Properties panel would edit together with the selection (marks of one type, all notes (or all rests), all slurs, ties or tuplets)',

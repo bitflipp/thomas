@@ -50,7 +50,7 @@ import {
 
 import { must } from '../util.ts';
 import type { EvAddr, MarkAddr } from './addr.ts';
-import { eventOf } from './addr.ts';
+import { eventOf, markOf } from './addr.ts';
 import { comparePitch, transposeSemis, transposeSteps } from './context.ts';
 import { durOfTicks, EditError, eventAtTick, itemsTicks, putEvent, rest, restsFor, splitTicks } from './voice.ts';
 
@@ -1553,27 +1553,169 @@ export function setPage(score: Score, patch: Partial<Score['page']>): Score {
   });
 }
 
-/** Paste events (as copied from a voice) one after another from `tick`; slur flags are not carried over. */
-export function pasteEvents(score: Score, loc: Loc, tick: number, evs: Event[]): Score {
+/**
+ * What copying events takes along: the events (with graces, ornaments and lyrics, which are fields of the event) and their marks
+ * that stay complete: dynamics, text, tempo, and spans whose start and stop are both in the copy. A span that starts in the copy and
+ * stops after it brings that stop in `tail`, to hang on whatever follows the pasted events.
+ */
+export interface Clip {
+  events: Event[];
+  tail: MarkBody[];
+}
+
+/** The key that pairs the start of a span with its stop (hairpins by id; pedal, ottava and trill lines by kind). */
+function spanKey(m: MarkBody): string | undefined {
+  if (m.type === 'hairpin') return `hairpin:${m.id}`;
+  if (m.type === 'stop') return m.of === 'hairpin' ? `hairpin:${m.id}` : m.of;
+  return m.type === 'pedal' || m.type === 'ottava' || m.type === 'trill' ? m.type : undefined;
+}
+
+/** Whether a mark opens a span (as opposed to closing one or being a point mark). */
+const opensSpan = (m: MarkBody): boolean =>
+  m.type === 'hairpin' || m.type === 'pedal' || m.type === 'ottava' || m.type === 'trill';
+
+/** The first stops after event `last` in its voice, for the span keys in `want`; a span without one is not in the result. */
+function stopsAfter(score: Score, last: EvAddr, want: Set<string>): Map<string, MarkBody> {
+  const found = new Map<string, MarkBody>();
+  const take = (m: MarkBody) => {
+    const key = m.type === 'stop' ? spanKey(m) : undefined;
+    if (key && want.has(key) && !found.has(key)) found.set(key, JSON.parse(JSON.stringify(m)) as MarkBody);
+  };
+  for (let mi = last.mi; mi < score.measures.length && found.size < want.size; mi++) {
+    const v = score.measures[mi].staves[last.staff]?.voices.find((x) => x.id === last.voice);
+    if (!v) continue;
+    for (const te of flattenVoice(v).slice(mi === last.mi ? last.idx + 1 : 0))
+      for (const m of te.ev.marks ?? []) take(m);
+    for (const m of v.end ?? []) take(m);
+  }
+  return found;
+}
+
+/** Copies the events at `refs` (in score order, one voice) with the marks that stay complete (see `Clip`). */
+export function copyEvents(score: Score, refs: EvAddr[]): Clip {
+  const evs = refs.map((r) => eventOf(score, r)).filter((e): e is Event => !!e);
+  if (!evs.length) throw new EditError('Nothing to copy');
+  const events = JSON.parse(JSON.stringify(evs)) as Event[];
+  const open = new Map<string, { ev: Event; mark: MarkBody }>();
+  for (const e of events) {
+    const kept: MarkBody[] = [];
+    for (const m of e.marks ?? []) {
+      const key = spanKey(m);
+      if (m.type === 'clef') continue;
+      if (!key) kept.push(m);
+      else if (opensSpan(m)) {
+        open.set(key, { ev: e, mark: m });
+        kept.push(m);
+      } else if (open.delete(key)) kept.push(m);
+    }
+    if (kept.length) e.marks = kept;
+    else delete e.marks;
+  }
+  const tail: MarkBody[] = [];
+  const stops = open.size
+    ? stopsAfter(score, refs[refs.length - 1], new Set(open.keys()))
+    : new Map<string, MarkBody>();
+  for (const [key, { ev, mark }] of open) {
+    const stop = stops.get(key);
+    if (stop) tail.push(stop);
+    else {
+      ev.marks = ev.marks?.filter((m) => m !== mark);
+      if (!ev.marks?.length) delete ev.marks;
+    }
+  }
+  return { events, tail };
+}
+
+/** The point marks (dynamics, text, tempo) at `addrs`, to paste onto other events; spans and clefs cannot be copied alone. */
+export function copyMarks(score: Score, addrs: MarkAddr[]): MarkBody[] {
+  const out: MarkBody[] = [];
+  for (const a of addrs) {
+    const m = markOf(score, a);
+    if (!(m && (m.type === 'dynamic' || m.type === 'text' || m.type === 'tempo'))) continue;
+    const { tick: _t, voice: _v, idx: _i, k: _k, ...body } = m;
+    out.push(JSON.parse(JSON.stringify(body)) as MarkBody);
+  }
+  if (!out.length) throw new EditError('Only dynamics, text and tempo marks can be copied on their own');
+  return out;
+}
+
+/** Hangs copies of `marks` on each event at `addrs` (a dynamic or tempo replaces the one already there). */
+export function pasteMarks(score: Score, addrs: EvAddr[], marks: MarkBody[]): Score {
+  return edit(score, (d) => {
+    for (const a of addrs) for (const m of marks) hang(d, a, JSON.parse(JSON.stringify(m)) as MarkBody);
+  });
+}
+
+/** Hairpin ids of the clip renumbered to ids not used by the staff, so that a pasted hairpin cannot pair with another one. */
+function renumberHairpins(d: Draft<Score>, staff: string, clip: Clip): void {
+  const used = new Set<number>();
+  for (const m of d.measures) {
+    const sm = m.staves[staff];
+    if (sm) for (const mk of collectMarks(sm as StaffMeasure)) if (mk.type === 'hairpin') used.add(mk.id);
+  }
+  const map = new Map<number, number>();
+  const fresh = (id: number) => {
+    let n = map.get(id);
+    if (n === undefined) {
+      n = 1;
+      while (used.has(n)) n++;
+      used.add(n);
+      map.set(id, n);
+    }
+    return n;
+  };
+  const fix = (m: MarkBody) => {
+    if (m.type === 'hairpin' || (m.type === 'stop' && m.of === 'hairpin')) m.id = fresh(m.id);
+  };
+  for (const e of clip.events) for (const m of e.marks ?? []) fix(m);
+  for (const m of clip.tail) fix(m);
+}
+
+/**
+ * Paste events (as copied from a voice) one after another from `tick`; slur flags are not carried over. A `Clip` brings its marks
+ * (hairpins get fresh ids) and hangs the stops of spans that run past the copy on the event after the pasted ones, or on the
+ * voice end. Plain events come without marks.
+ */
+export function pasteEvents(score: Score, loc: Loc, tick: number, source: Event[] | Clip): Score {
+  const clip: Clip = JSON.parse(
+    JSON.stringify(
+      Array.isArray(source) ? { events: source.map((e) => ({ ...e, marks: undefined })), tail: [] } : source,
+    ),
+  );
   return edit(score, (d) => {
     const v = voiceIn(d, loc, true);
     const len = measureTicks(timeAt(d as Score, loc.mi));
+    renumberHairpins(d, loc.staff, clip);
     let t = tick;
-    for (const e of evs) {
-      const c = JSON.parse(JSON.stringify(e)) as Event;
+    let all = true;
+    for (const c of clip.events) {
       delete c.slurStart;
       delete c.slurStop;
       delete c.lineStart;
       delete c.lineStop;
       delete c.staff;
-      delete c.marks;
       const w = baseTicks(c.dur);
       if (t + w > len) {
         if (t === tick) throw new EditError('Does not fit into the measure');
+        all = false;
         break;
       }
       v.items = putEvent(v.items as Item[], t, c) as Draft<Item>[];
       t += w;
+    }
+    if (!(all && clip.tail.length)) return;
+    const next = flattenVoice(v as Voice).find((te) => te.start === t);
+    for (const stop of clip.tail) {
+      if (!next) {
+        v.end ??= [];
+        v.end.push(stop as Draft<MarkBody>);
+        continue;
+      }
+      // The stop goes before the marks that start something at the same position.
+      next.ev.marks ??= [];
+      const marks = next.ev.marks as Draft<MarkBody>[];
+      const i = marks.findIndex((m) => m.type !== 'stop');
+      marks.splice(i < 0 ? marks.length : i, 0, stop as Draft<MarkBody>);
     }
   });
 }

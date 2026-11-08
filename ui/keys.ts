@@ -2,9 +2,10 @@
 // `installKeys` adds one global listener that ignores keys while the user types in an input or in the
 // text pane's editor. The clipboard for copy/paste is kept here as plain events, not in the system clipboard.
 
-import { eventOf, voiceOf } from '../src/editor/addr.ts';
+import type { Ref } from '../src/editor/addr.ts';
+import { voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
-import type { Event } from '../src/model.ts';
+import type { MarkBody } from '../src/model.ts';
 import { flattenVoice } from '../src/model.ts';
 
 import {
@@ -24,7 +25,8 @@ import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
 import { dots, redo, run, say, score, selection, showProperties, showText, tool, undo, voice } from './state.ts';
 
-let clip: Event[] = [];
+/** What Ctrl+C took: events with their complete marks, or point marks to hang on the selected events. */
+let clip: { events: C.Clip } | { marks: MarkBody[] } | undefined;
 
 /** Whether the key event comes from a text input, where shortcuts must not fire. */
 function typing(e: KeyboardEvent): boolean {
@@ -39,30 +41,48 @@ function typing(e: KeyboardEvent): boolean {
   );
 }
 
-/** Copies the selected events to the clipboard of the editor; false if none are selected. */
+/** Copies the selected events, or else the selected dynamics, text and tempo marks; false if neither is selected. */
 function copySel(): boolean {
   const sc = score.peek();
   const refs = [...evRefs()].sort((a, b) => a.mi - b.mi || a.idx - b.idx);
-  const evs = refs.map((r) => eventOf(sc, r)).filter((e): e is Event => !!e);
-  if (!evs.length) return false;
-  clip = JSON.parse(JSON.stringify(evs));
-  say(`Copied ${evs.length} event${evs.length > 1 ? 's' : ''}`);
-  return true;
+  try {
+    if (refs.length) {
+      const events = C.copyEvents(sc, refs);
+      clip = { events };
+      say(`Copied ${refs.length} event${refs.length > 1 ? 's' : ''}`);
+      return true;
+    }
+    const marks = selection.peek().filter((r): r is Extract<Ref, { t: 'mark' }> => r.t === 'mark');
+    if (!marks.length) return false;
+    clip = { marks: C.copyMarks(sc, marks) };
+    say(`Copied ${clip.marks.length} mark${clip.marks.length > 1 ? 's' : ''}`);
+    return true;
+  } catch (e) {
+    if (e instanceof C.EditError) say(e.message, true);
+    else throw e;
+    return false;
+  }
 }
 
-/** Pastes the copied events from the first selected event on. */
+/** Pastes the copied events from the first selected event on, or hangs the copied marks on every selected event. */
 function paste(): void {
   const refs = evRefs();
-  if (!(clip.length && refs.length)) {
-    say(clip.length ? 'Select where to paste' : 'Nothing to paste', true);
+  if (!(clip && refs.length)) {
+    say(clip ? 'Select where to paste' : 'Nothing to paste', true);
     return;
   }
+  if ('marks' in clip) {
+    const marks = clip.marks;
+    run((s) => C.pasteMarks(s, refs, marks));
+    return;
+  }
+  const events = clip.events;
   const r = refs[0];
   const sc = score.peek();
   const v = voiceOf(sc, r);
   const te = v && flattenVoice(v)[r.idx];
   if (!te) return;
-  run((s) => C.pasteEvents(s, r, te.start, clip));
+  run((s) => C.pasteEvents(s, r, te.start, events));
 }
 
 const DURATION_KEYS = [1, 2, 4, 8, 16, 32, 64, 128] as const;

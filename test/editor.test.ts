@@ -434,3 +434,56 @@ test('similarTo can select by ornament: fermatas, trills and graces', async () =
     [2],
   );
 });
+
+test('copy and paste bring complete marks, graces and ornaments, and renumber hairpins', () => {
+  const sc = parseText(
+    'page 210x297 margin=10 space=1.75\nstaff rh clef=G2\nm1 time=4/4 key=0\n' +
+      '  rh.1: \\f \\< \\acc{b4:8} c5:4+mo d5:4 \\! \\p e5:4 \\ped f5:4\n' +
+      'm2 time=4/4\n  rh.1: \\<2 c5:4 d5:4 \\!2 e5:4 f5:4\n',
+  );
+  const a = (mi: number, idx: number) => ({ mi, staff: 'rh', voice: 1, idx });
+  const clip = C.copyEvents(sc, [a(0, 0), a(0, 1)]);
+  // The dynamic and the hairpin start stay; the hairpin's stop (on the next event) comes as the tail; the graces and the mordent ride along.
+  assert.equal(clip.events.length, 2);
+  assert.deepEqual(
+    clip.events[0].marks?.map((m) => m.type),
+    ['dynamic', 'hairpin'],
+  );
+  assert.deepEqual(
+    clip.tail.map((m) => m.type),
+    ['stop'],
+  );
+  assert.equal(clip.events[0].kind === 'note' && clip.events[0].graces?.length, 1);
+  assert.equal(clip.events[0].kind === 'note' && clip.events[0].ornament, 'mordent');
+  // A span that never stops in or after the copy is left out; the pedal on the last event has no stop.
+  const noPed = C.copyEvents(sc, [a(0, 3)]);
+  assert.equal(noPed.events[0].marks, undefined);
+  // Pasted into measure 2 the hairpin gets an id that is free there, so it pairs with its own stop.
+  const out = ok(C.pasteEvents(sc, { mi: 1, staff: 'rh', voice: 1 }, 0, clip));
+  const text = writeText(out);
+  assert.match(text, /\\f \\<3 \\acc\{b4:8\} c5:4\+mo/);
+  assert.match(text, /\\!3 e5/);
+  assert.equal(validate(out).length, 0);
+  assert.deepEqual(parseText(writeText(out)), out);
+});
+
+test('marks copied on their own are hung on other events', () => {
+  const sc = parseText(
+    'page 210x297 margin=10 space=1.75\nstaff rh clef=G2\nm1 time=4/4 key=0\n  rh.1: \\f c5:4 d5:4 \\p e5:4 f5:4\n',
+  );
+  const marks = C.copyMarks(sc, [{ mi: 0, staff: 'rh', voice: 1, idx: 0, k: 0 }]);
+  assert.deepEqual(marks, [{ type: 'dynamic', text: 'f' }]);
+  const out = ok(
+    C.pasteMarks(
+      sc,
+      [
+        { mi: 0, staff: 'rh', voice: 1, idx: 2 },
+        { mi: 0, staff: 'rh', voice: 1, idx: 3 },
+      ],
+      marks,
+    ),
+  );
+  // The dynamic on the third event is replaced, the fourth gets one.
+  assert.match(writeText(out), /\\f c5:4 d5 \\f e5 \\f f5/);
+  assert.throws(() => C.copyMarks(sc, []), /Only dynamics/);
+});
