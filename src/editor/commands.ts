@@ -26,6 +26,7 @@ import type {
   Pitch,
   Score,
   StaffMeasure,
+  Syllable,
   TimeSig,
   TupletGroup,
   Voice,
@@ -622,6 +623,60 @@ export function setTrillAcc(score: Score, addrs: EvAddr[], acc: -1 | 0 | 1 | und
 
 // Grace notes belong to the note that follows them and take no time, so these commands never
 // change a voice's length. A grace is addressed by its note and its index in `graces`.
+
+// Lyrics: a syllable is entered per note and verse. `syllabic` is never given by the caller: it follows
+// from the hyphens (`joinNext` for the new syllable, the previous syllable's join for the start), and
+// `normalizeVerse` repairs the chain of the verse after every change.
+
+/**
+ * Sets the syllable of `verse` on the note at `a`, or removes it (`input` undefined or an empty text).
+ * Hyphens at the ends of `text` are taken as `joinNext`/join to the previous one.
+ */
+export function setSyllable(
+  score: Score,
+  a: EvAddr,
+  verse: number,
+  input: { text: string; joinNext?: boolean; extend?: boolean } | undefined,
+): Score {
+  const e = flattenEv(score, a);
+  if (e?.kind !== 'note') throw new EditError('Lyrics belong under a note');
+  return edit(score, (d) => {
+    const n = eventIn(d, a);
+    if (n.kind !== 'note') return;
+    const text = input?.text.replace(/^-+|-+$/g, '').trim();
+    const rest = (n.lyrics ?? []).filter((y) => y.verse !== verse);
+    if (input && text) {
+      const joinNext = !!input.joinNext || (input.text.length > 1 && input.text.endsWith('-'));
+      const y: Syllable = { verse, text, syllabic: joinNext ? 'begin' : 'single' };
+      if (input.extend) y.extend = true;
+      rest.push(y);
+      rest.sort((p, q) => p.verse - q.verse);
+    }
+    if (rest.length) n.lyrics = rest;
+    else delete n.lyrics;
+    normalizeVerse(d as Score, a.staff, a.voice, verse);
+  });
+}
+
+/** Recomputes `syllabic` along one verse of a voice: a syllable is joined to the previous one exactly when that one is joined to the next. */
+function normalizeVerse(d: Score, staff: string, voiceId: number, verse: number): void {
+  const list: Syllable[] = [];
+  for (const m of d.measures) {
+    const v = m.staves[staff]?.voices.find((x) => x.id === voiceId);
+    if (!v) continue;
+    for (const t of flattenVoice(v)) {
+      if (t.ev.kind !== 'note') continue;
+      const y = t.ev.lyrics?.find((q) => q.verse === verse);
+      if (y) list.push(y);
+    }
+  }
+  let prevJoins = false;
+  for (const y of list) {
+    const joinsNext = y.syllabic === 'begin' || y.syllabic === 'middle';
+    y.syllabic = prevJoins ? (joinsNext ? 'middle' : 'end') : joinsNext ? 'begin' : 'single';
+    prevJoins = joinsNext;
+  }
+}
 
 /** Adds a grace note before the note at `a`, after its existing graces (or at `index`). It starts as a single pitch, given or a step above the note's lowest. */
 export function addGrace(score: Score, a: EvAddr, grace: Grace, index?: number): Score {

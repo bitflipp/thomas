@@ -7,9 +7,10 @@ import { useState } from 'preact/hooks';
 import type { BeamMode } from '../src/beams.ts';
 import { beamModes, beatTicks, canJoin } from '../src/beams.ts';
 import type { EvAddr, Ref } from '../src/editor/addr.ts';
-import { eventOf, markOf, tupletOf, voiceOf } from '../src/editor/addr.ts';
+import { eventOf, markOf, refKey, tupletOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import { transposeSteps } from '../src/editor/context.ts';
+import { neighbourNote, syllableText } from '../src/editor/lyrics.ts';
 import type { Event, MarkBody, MarkPlacement, NoteEvent, Score } from '../src/model.ts';
 import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import { chooseDots, flipStem, lineSelection, slurSelection, tieSelection } from './actions.ts';
@@ -525,6 +526,88 @@ function eventTitle(sc: Score, refs: Ref[]): string {
   return evs[0].kind === 'note' ? (evs[0].pitches.length > 1 ? 'Chord' : 'Note') : 'Rest';
 }
 
+/** The verse the lyric input edits, and whether the input takes the focus when it next appears (after moving to another note). */
+const lyricVerse = signal(1);
+
+let refocusLyric = false;
+
+/**
+ * The syllable of a single selected note, for one verse. Typing is a stream: Space ends the word and
+ * moves to the next note, `-` ends the syllable inside a word and moves on, `_` adds an extender and
+ * moves on, Backspace in an empty box goes back one note, Enter keeps the note, Escape leaves the box.
+ */
+function LyricRows({ ref0, note, sc }: { ref0: EvAddr; note: NoteEvent; sc: Score }) {
+  const verse = lyricVerse.value;
+  const maxVerse = Math.max(1, ...(note.lyrics ?? []).map((y) => y.verse));
+  const verses = Array.from({ length: Math.min(maxVerse + 1, 8) }, (_, i) => i + 1);
+  const cur = note.lyrics?.find((y) => y.verse === verse);
+  const goto = (to: EvAddr | undefined) => {
+    if (!to) return;
+    refocusLyric = true;
+    select([{ t: 'ev', ...to }]);
+  };
+  const commit = (el: HTMLInputElement, joinNext: boolean, extend: boolean) => {
+    el.dataset.done = '1';
+    const text = el.value.trim();
+    if (text !== (cur ? syllableText(cur) : '') || joinNext || extend)
+      run((x) => C.setSyllable(x, ref0, verse, text ? { text, joinNext, extend } : undefined));
+  };
+  return (
+    <>
+      <Row label="Verse">
+        <Pick
+          value={verse}
+          opts={verses.map((v): [number, string] => [v, String(v)])}
+          onChange={(v) => (lyricVerse.value = v)}
+        />
+      </Row>
+      <Row label="Lyric">
+        <input
+          type="text"
+          key={`${refKey({ t: 'ev', ...ref0 })}|${verse}|${cur ? syllableText(cur) : ''}`}
+          defaultValue={cur ? syllableText(cur) : ''}
+          placeholder="Space: next, -: hyphen"
+          ref={(el) => {
+            if (el && refocusLyric) {
+              refocusLyric = false;
+              el.focus();
+              el.select();
+            }
+          }}
+          onBlur={(e) => {
+            const el = e.target as HTMLInputElement;
+            if (!el.dataset.done) commit(el, false, !!cur?.extend);
+          }}
+          onKeyDown={(e) => {
+            const el = e.target as HTMLInputElement;
+            const forward = (join: boolean, extend: boolean) => {
+              e.preventDefault();
+              if (!el.value.trim()) return goto(neighbourNote(sc, ref0, 1));
+              commit(el, join, extend);
+              goto(neighbourNote(score.peek(), ref0, 1));
+            };
+            if (e.key === ' ') forward(false, false);
+            else if (e.key === '-' && el.value.trim()) forward(true, false);
+            else if (e.key === '_' && el.value.trim()) forward(false, true);
+            else if (e.key === 'Enter') {
+              e.preventDefault();
+              commit(el, false, !!cur?.extend);
+              el.blur();
+            } else if (e.key === 'Backspace' && !el.value) {
+              e.preventDefault();
+              goto(neighbourNote(sc, ref0, -1));
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              el.dataset.done = '1';
+              el.blur();
+            }
+          }}
+        />
+      </Row>
+    </>
+  );
+}
+
 /** The grace notes of a single selected note: value, slash, step up/down and removal for each, and a button to add one. */
 function GraceRows({ ref0, note }: { ref0: EvAddr; note: NoteEvent }) {
   const graces = note.graces ?? [];
@@ -748,6 +831,7 @@ function EventSection() {
           </Row>
         )}
         {notes.length === 1 && refs.length === 1 && <GraceRows ref0={r0} note={notes[0]} />}
+        {notes.length === 1 && refs.length === 1 && <LyricRows ref0={r0} note={notes[0]} sc={sc} />}
       </Group>
       {notes.length > 0 && (
         <Group id="pitch" title="Pitch">

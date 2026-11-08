@@ -101,7 +101,7 @@ function drawVerse(ctx: SysCtx, s: number, base: number, list: Placed[], here: S
     const from = p.cx + p.w / 2;
     if (p.y.syllabic === 'begin' || p.y.syllabic === 'middle') {
       const to = sameSystem ? next.cx - next.w / 2 : from + 2 * LYRIC_GAP + 0.6;
-      const n = Math.max(1, Math.floor((to - from) / 4));
+      const n = Math.max(1, Math.floor((to - from) / 6));
       for (let k = 0; k < n; k++) {
         const hx = from + ((to - from) * (k + 0.5)) / n;
         P.push({ t: 'line', x1: hx - 0.25, x2: hx + 0.25, y1: base - 0.3, y2: base - 0.3, w: 0.1 });

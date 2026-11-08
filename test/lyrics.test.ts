@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as C from '../src/editor/commands.ts';
+import { neighbourNote } from '../src/editor/lyrics.ts';
 import { findCollisions } from '../src/engrave/collide.ts';
 import { engrave } from '../src/engrave/system.ts';
 import type { NoteEvent } from '../src/model.ts';
@@ -80,4 +82,40 @@ test('a long syllable pushes its neighbours apart', () => {
     return p?.t === 'text' ? p.x : 0;
   };
   assert.ok(x(wide, 'a') - x(wide, 'thanksgiving') > x(tight, 'a') - x(tight, 'than'));
+});
+
+const EDIT = `# music typesetter score
+page 210x297 margin=10 space=1.75
+staff rh clef=G2
+
+m1 time=4/4 key=0
+  rh.1: c5:4~ c5 r d5 e5
+m2
+  rh.1: f5:1
+`;
+
+test('setSyllable chains hyphens and keeps syllabic consistent', () => {
+  const at = (mi: number, idx: number) => ({ mi, staff: 'rh', voice: 1, idx });
+  let s = parseText(EDIT);
+  s = C.setSyllable(s, at(0, 0), 1, { text: 'Ly', joinNext: true });
+  s = C.setSyllable(s, at(0, 3), 1, { text: 'ric', joinNext: true });
+  s = C.setSyllable(s, at(0, 4), 1, { text: 'al' });
+  const ys = () => writeText(s).match(/"[^"]*"/g);
+  assert.deepEqual(ys(), ['"Ly-"', '"-ric-"', '"-al"']);
+  // Ending the word at the first syllable turns the middle one into the start of a new word.
+  s = C.setSyllable(s, at(0, 0), 1, { text: 'Ly' });
+  assert.deepEqual(ys(), ['"Ly"', '"ric-"', '"-al"']);
+  // An empty text removes a syllable; a word left open at the end stays open for the next one.
+  s = C.setSyllable(s, at(0, 4), 1, { text: '' });
+  assert.deepEqual(ys(), ['"Ly"', '"ric-"']);
+  assert.throws(() => C.setSyllable(s, at(0, 2), 1, { text: 'x' }), /note/);
+});
+
+test('neighbourNote skips rests and tied notes, across measures', () => {
+  const s = parseText(EDIT);
+  const at = (mi: number, idx: number) => ({ mi, staff: 'rh', voice: 1, idx });
+  assert.deepEqual(neighbourNote(s, at(0, 0), 1), at(0, 3));
+  assert.deepEqual(neighbourNote(s, at(0, 4), 1), at(1, 0));
+  assert.deepEqual(neighbourNote(s, at(1, 0), -1), at(0, 4));
+  assert.equal(neighbourNote(s, at(1, 0), 1), undefined);
 });
