@@ -393,9 +393,6 @@ export function drawStaffMarks(systems: SysCtx[]): void {
 // its arc. One value keeps the distances even; the slur's own thickness comes on top where it matters.
 const SLUR_CLEAR = 0.45;
 
-// The extra gap at a stem tip that carries a flag or a beam.
-const SLUR_TIP_EXTRA = 0.4;
-
 // Half the height of a notehead, one staff space high.
 const HEAD_HALF = 0.5;
 
@@ -408,13 +405,10 @@ function headPoint(e: EvL, side: 'above' | 'below'): { x: number; y: number; ste
   // began at the head would run through the articulation.
   const ax = articExtent.get(e);
   const artEdge = ax && ax.above === above ? ax.edge + (above ? -SLUR_CLEAR : SLUR_CLEAR) : undefined;
-  // A flag or a beam is attached to the stem tip, so the clear gap is measured beyond a further allowance for it.
-  const attached = e.te.ev.dur.base >= 8 || !!e.beam || !!e.tremPair;
-  const tipGap = SLUR_CLEAR + (attached ? SLUR_TIP_EXTRA : 0);
   if (stemSide)
     return {
       x: g.stemX,
-      y: artEdge ?? (above ? g.stemTip - tipGap : g.stemTip + tipGap),
+      y: artEdge ?? (above ? g.stemTip - SLUR_CLEAR : g.stemTip + SLUR_CLEAR),
       stemSide,
       homed: !!g.homed,
     };
@@ -592,35 +586,28 @@ interface SlurFrame {
   openR: boolean;
 }
 
-/** The skyline edge over a window of the span: the nearest obstacle on the slur's side. */
-const slurReach = (f: SlurFrame, a: number, b: number) => (f.above ? f.sky.top(a, b, 99) : f.sky.bottom(a, b, -99));
+/** The skyline edge over a window of the span: the nearest obstacle on the slur's side. Accidentals do not count: a slur may cross them, which keeps its arc from rising steeply over a sharp or flat next to its notes. */
+const slurReach = (f: SlurFrame, a: number, b: number) =>
+  f.above ? f.sky.top(a, b, 99, false, true) : f.sky.bottom(a, b, -99, false, true);
 
 /**
- * Where the two ends start. An open (system-break) end has no note to attach to: it starts clear of
- * whatever stands within `edge` spaces of the system edge, but at most 3 spaces off the original y. An
- * attached end sits just beyond whatever stands next to its note (neighbouring notes, beams, dots,
- * articulations - not other slurs), never more than a couple of spaces off the note itself.
+ * Where the two ends start. An attached end stays exactly where `headPoint` put it, so that every slur begins and ends
+ * at the same clearance from its note. An open (system-break) end has no note to attach to: it starts clear of whatever
+ * stands within `edge` spaces of the system edge, but at most 3 spaces off the original y.
  */
 function slurEndHeights(f: SlurFrame, x0: number, y0: number, x1: number, y1: number): [number, number] {
-  const { above, sky, openL, openR } = f;
-  const edge = 7;
-  const near = 1.4;
-  const maxUp = 0.8;
+  const { above, openL, openR } = f;
+  const edge = 12;
   const openY = (y: number, o: number): number =>
     above ? Math.max(y - 3, Math.min(y, o - 0.9)) : Math.min(y + 3, Math.max(y, o + 0.9));
-  const attach = (y: number, xa: number, xb: number): number => {
-    const o = above ? sky.top(xa, xb, 99, true) : sky.bottom(xa, xb, -99, true);
-    if (Math.abs(o) > 90) return y;
-    return above ? Math.max(y - maxUp, Math.min(y, o - SLUR_CLEAR)) : Math.min(y + maxUp, Math.max(y, o + SLUR_CLEAR));
-  };
   if (openL) {
     const o = slurReach(f, x0, x0 + edge);
     if (Math.abs(o) < 90) y0 = openY(y0, o);
-  } else y0 = attach(y0, x0 + 0.7, x0 + near);
+  }
   if (openR) {
     const o = slurReach(f, x1 - edge, x1);
     if (Math.abs(o) < 90) y1 = openY(y1, o);
-  } else y1 = attach(y1, x1 - near, x1 - 0.7);
+  }
   return [y0, y1];
 }
 
@@ -638,46 +625,6 @@ function sampleObstacles(f: SlurFrame, x0: number, x1: number): { t: number; o: 
     if (Math.abs(o) < 90) samples.push({ t: (x - x0) / L, o });
   }
   return samples;
-}
-
-/**
- * The end points may move away from their notes (each on its own, so the slope can change) when that
- * makes a flatter arc possible; moving costs, and so does a tall arc, so the cheapest wins. `need` is
- * the height the arc needs, with end points at the given y, to clear everything underneath; the arc is
- * modelled as a parabola 4t(1-t) of its height over the chord, slightly flattened (0.95).
- */
-function cheapestEndLift(
-  f: SlurFrame,
-  samples: { t: number; o: number }[],
-  y0: number,
-  y1: number,
-  L: number,
-): { d0: number; d1: number; h: number } {
-  const dir = f.above ? -1 : 1; // This is the direction away from the notes.
-  const hPref = Math.max(0.7, Math.min(3.0, 0.09 * L + 0.6));
-  const need = (ya: number, yb: number): number => {
-    let h = hPref;
-    for (const { t, o } of samples) {
-      const chord = ya + (yb - ya) * t;
-      const gap = f.above ? chord - (o - SLUR_CLEAR) : o + SLUR_CLEAR - chord; // A positive value means the chord is beyond the obstacle edge, so the arc must bulge.
-      if (gap > 0) h = Math.max(h, gap / (4 * t * (1 - t) * 0.95));
-    }
-    return h;
-  };
-  const hLimit = Math.max(3.5, 0.07 * L); // Long slurs may arch higher before the end points are lifted instead.
-  let best = { cost: Number.POSITIVE_INFINITY, d0: 0, d1: 0, h: hPref };
-  for (let d0 = 0; d0 <= 8; d0 += 0.5) {
-    for (let d1 = 0; d1 <= 8; d1 += 0.5) {
-      const h = need(y0 + dir * d0, y1 + dir * d1);
-      const cost =
-        2.5 * (d0 + d1) +
-        0.25 * (h - hPref) +
-        (h > hLimit ? 6 * (h - hLimit) : 0) +
-        0.04 * Math.abs(y1 + dir * d1 - y0 - dir * d0);
-      if (cost < best.cost - 1e-9) best = { cost, d0, d1, h };
-    }
-  }
-  return best;
 }
 
 /** A slur piece laid out but not yet drawn: its natural height, and a function drawing it at a (possibly shared) height. */
@@ -736,14 +683,11 @@ function planSlurPiece(
   const L = x1 - x0;
   if (L < 0.5) return undefined;
   const frame: SlurFrame = { above: st.above, sky: slurSkyline(ctx, staff, st.from, b), openL, openR };
-  const [y0Start, y1Start] = slurEndHeights(frame, x0, y0In, x1, y1In);
-  const lift = cheapestEndLift(frame, sampleObstacles(frame, x0, x1), y0Start, y1Start, L);
-  const dir = st.above ? -1 : 1;
-  const y0 = y0Start + dir * lift.d0;
-  const y1 = y1Start + dir * lift.d1;
-  // The arc model of `cheapestEndLift` is a parabola; the drawn curve differs over a sloped chord, so raise the
-  // height until the curve itself clears every obstacle under it.
+  const [y0, y1] = slurEndHeights(frame, x0, y0In, x1, y1In);
   const samples = sampleObstacles(frame, x0, x1);
+  // The end points stay at their notes, so the arc alone clears what is under it: it starts from a preferred height
+  // and grows until the drawn curve (not an approximation) clears every obstacle, the slur's own thickness included.
+  const hPref = Math.max(0.7, Math.min(3.0, 0.09 * L + 0.6));
   const clears = (h: number) =>
     samples.every(({ t, o }) => {
       const y = crescentY(x0, y0, x1, y1, h, st.above, x0 + t * L, 0.2);
@@ -751,7 +695,7 @@ function planSlurPiece(
     });
   let hMin = 0.3;
   while (hMin < 8 && !clears(hMin)) hMin += 0.1;
-  const h0 = Math.max(Math.min(lift.h, Math.max(7, 0.12 * L)), hMin);
+  const h0 = Math.max(Math.min(hPref, Math.max(7, 0.12 * L)), hMin);
   return {
     h: h0,
     hMin,
@@ -802,7 +746,13 @@ function drawSlur(
   // (a stem end that is already in those coordinates is not).
   if (a.staff !== a.home && !(pa.stemSide && pa.homed)) pa.y += staffOffset(sa, a.home, a.staff);
   if (b.staff !== a.home && !(pb.stemSide && pb.homed)) pb.y += staffOffset(sb, a.home, b.staff);
-  const style: SlurStyle = { above, thick: D.slurMidpointThickness as number, id, slurId: slurOwner(a, id), from: a };
+  const style: SlurStyle = {
+    above,
+    thick: D.slurMidpointThickness as number,
+    id,
+    slurId: slurOwner(a, id),
+    from: a,
+  };
   if (sa === sb) {
     const p = planSlurPiece(sa, style, b, [pa.x, pa.y, pb.x, pb.y], a.home, false, false);
     p?.draw(p.h);
