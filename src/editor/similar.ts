@@ -11,11 +11,13 @@ import { eventOf } from './addr.ts';
 const markKey = (m: MarkBody): string => m.type;
 
 /** An ornament that `similarTo` can select by: the events that carry a fermata, a trill or grace notes. */
-export type OrnamentKind = 'fermata' | 'trill' | 'grace';
+export type OrnamentKind = 'fermata' | 'trill' | 'ornament' | 'grace';
 
 /** Whether an event carries the ornament. */
 const hasOrnament = (ev: Event, by: OrnamentKind): boolean =>
-  by === 'fermata' ? !!ev.fermata : ev.kind === 'note' && (by === 'trill' ? !!ev.trill : !!ev.graces?.length);
+  by === 'fermata'
+    ? !!ev.fermata
+    : ev.kind === 'note' && (by === 'trill' ? !!ev.trill : by === 'ornament' ? !!ev.ornament : !!ev.graces?.length);
 
 /**
  * Refs to everything in `score` that is like `ref` (including `ref` itself): everything the Properties panel would bulk-edit along with it; empty for measures.

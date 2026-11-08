@@ -87,6 +87,7 @@ export interface NoteEvent extends EventBase {
   art?: Articulation[];
   artSide?: 'above' | 'below'; // This forces the side of the articulations (default: by stem and voice).
   arpeggio?: boolean;
+  ornament?: Ornament; // A mordent or turn sign above the note.
   trill?: boolean; // A trill mark (tr) sits above the note.
   trillAcc?: -1 | 0 | 1; // The alteration of the trill's upper note, shown as a small accidental above the mark (flat, natural, sharp); absent: none shown, a whole tone up.
   lyrics?: Syllable[]; // These are the syllables sung on this note, one per verse, in ascending verse order.
@@ -142,6 +143,9 @@ export interface Voice {
   /** Marks at the end of the measure: the stops of spans (hairpin, pedal, ottava) that run up to the barline. */
   end?: MarkBody[];
 }
+
+/** A mordent or turn: `mordent` has the vertical line (main, lower neighbour, main), `mordent-inverted` has none (main, upper neighbour, main); a `turn` plays upper, main, lower, main and an inverted one lower, main, upper, main. */
+export type Ornament = 'mordent' | 'mordent-inverted' | 'turn' | 'turn-inverted';
 
 /** A fermata's shape besides the normal round one: short (angled, MusicXML `angled`) and long (square). */
 export type FermataShape = 'short' | 'long';

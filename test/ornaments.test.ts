@@ -93,3 +93,35 @@ test('fermata shape and side round-trip, import from MusicXML, draw the right gl
   };
   assert.ok(len(ONE.replace('+fm', '+fms')) < len(ONE) && len(ONE) < len(ONE.replace('+fm', '+fml')));
 });
+
+test('mordents and turns: text round trip, drawing and playback', () => {
+  const src = SRC.replace('c5:4+tr d5->+fm r+fm e5:4+tr+fm', 'c5:4+mo d5:4+mi e5:4+tu f5:4+ti+fm');
+  for (const [code, o] of [
+    ['+mo', 'mordent'],
+    ['+mi', 'mordent-inverted'],
+    ['+tu', 'turn'],
+    ['+ti', 'turn-inverted'],
+  ] as const) {
+    const s = parseText(src);
+    assert.deepEqual(parseText(writeText(s)), s);
+    assert.ok(writeText(s).includes(code));
+    assert.ok(
+      flattenVoice(s.measures[0].staves.rh.voices[0]).some((te) => te.ev.kind === 'note' && te.ev.ornament === o),
+    );
+  }
+  const out = engrave(parseText(src));
+  assert.deepEqual(
+    out.pages[0].prims.filter((p) => p.k === 'ornament').map((p) => (p.t === 'glyph' ? p.name : '')),
+    ['ornamentMordent', 'ornamentShortTrill', 'ornamentTurn', 'ornamentTurnInverted'],
+  );
+  assert.deepEqual(findCollisions(out.pages), []);
+  const pitches = (text: string) =>
+    buildSequence(parseText(text))
+      .msgs.filter((m) => (m.bytes[0] & 0xf0) === 0x90)
+      .map((m) => m.bytes[1]);
+  const one = (o: string) => `${SRC.split('m1')[0]}m1 time=4/4 key=0\n  rh.1: e5:2${o} r:2\n`;
+  assert.deepEqual(pitches(one('+mo')), [76, 74, 76]);
+  assert.deepEqual(pitches(one('+mi')), [76, 77, 76]);
+  assert.deepEqual(pitches(one('+tu')), [77, 76, 74, 76]);
+  assert.deepEqual(pitches(one('+ti')), [74, 76, 77, 76]);
+});

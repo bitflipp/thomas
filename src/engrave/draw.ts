@@ -7,7 +7,7 @@
 // spanner pass. Every primitive pushed here is tagged (`tagFrom`) for collision checking and hit testing,
 // and its occupied area is added to the staff's skyline (`pushBox`) so that spanners and marks can avoid it.
 
-import type { Articulation, FermataShape, NoteEvent, TupletGroup } from '../model.ts';
+import type { Articulation, FermataShape, NoteEvent, Ornament, TupletGroup } from '../model.ts';
 
 import { loadSmufl } from '../smufl.ts';
 import { must, round3 } from '../util.ts';
@@ -326,7 +326,8 @@ function drawArticulationsOfStaff(ctx: SysCtx, mi: number, s: number): void {
 function drawOrnamentsOfStaff(ctx: SysCtx, mi: number, s: number): void {
   for (const e of ctx.prep.measures[mi][s].evs) {
     const trill = e.ev.kind === 'note' && e.ev.trill;
-    if (!(trill || e.ev.fermata)) continue;
+    const ornament = e.ev.kind === 'note' ? e.ev.ornament : undefined;
+    if (!(trill || ornament || e.ev.fermata)) continue;
     let cx: number;
     let top = -1; // The top edge (y) of whatever is already there; ornaments go above it.
     let bottom = STAFF_HEIGHT + 1; // The bottom edge of what is there; a fermata below goes beneath it.
@@ -347,6 +348,7 @@ function drawOrnamentsOfStaff(ctx: SysCtx, mi: number, s: number): void {
     }
     for (const [name, on, kind] of [
       ['ornamentTrill', trill, 'trill'],
+      [ornament ? ORNAMENT_GLYPH[ornament] : 'ornamentTrill', !!ornament, 'ornament'],
       [`fermata${shapeName(e.ev.fermataShape)}Above`, e.ev.fermata && !e.ev.fermataBelow, 'fermata'],
     ] as const) {
       if (!on) continue;
@@ -390,6 +392,14 @@ function drawOrnamentsOfStaff(ctx: SysCtx, mi: number, s: number): void {
     }
   }
 }
+
+/** The SMuFL glyph of each ornament: the mordent has the vertical line, the inverted one (the upper mordent) none. */
+const ORNAMENT_GLYPH: Record<Ornament, string> = {
+  mordent: 'ornamentMordent',
+  'mordent-inverted': 'ornamentShortTrill',
+  turn: 'ornamentTurn',
+  'turn-inverted': 'ornamentTurnInverted',
+};
 
 /** The part of a fermata's SMuFL glyph name that stands for its shape (empty for the normal one). */
 const shapeName = (shape: FermataShape | undefined): string =>

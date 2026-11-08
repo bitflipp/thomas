@@ -50,6 +50,7 @@ const PRIO: Partial<Record<Kind, number>> = {
   artic: 1,
   fermata: 1,
   trill: 1,
+  ornament: 1,
   arpeggio: 1,
   dyn: 1,
   hairpin: 1,

@@ -24,6 +24,7 @@ import type {
   MarkBody,
   NoteEvent,
   NotePitch,
+  Ornament,
   Pitch,
   Score,
   StaffMeasure,
@@ -636,6 +637,16 @@ export function setFermataStyle(score: Score, addrs: EvAddr[], shape: FermataSha
     else delete e.fermataShape;
     if (below) e.fermataBelow = true;
     else delete e.fermataBelow;
+  });
+}
+
+/** Sets the mordent or turn of the notes at `addrs` (undefined: none); rests are left alone. */
+export function setOrnament(score: Score, addrs: EvAddr[], ornament: Ornament | undefined): Score {
+  const notes = addrs.filter((a) => eventOf(score, a)?.kind === 'note');
+  if (!notes.length) throw new EditError('Only notes can have a mordent or turn');
+  return updateNotes(score, notes, (n) => {
+    if (ornament) n.ornament = ornament;
+    else delete n.ornament;
   });
 }
 

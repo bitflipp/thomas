@@ -21,6 +21,7 @@ import type {
   Measure,
   NoteEvent,
   NotePitch,
+  Ornament,
   Pitch,
   RestEvent,
   Score,
@@ -98,6 +99,18 @@ function quote(s: string): string {
 }
 
 /** Writes a mark placement: `^` above, `_` below, `=` between the staves. */
+/** The text-format codes of the ornaments (`+mo` mordent, `+mi` inverted mordent, `+tu` turn, `+ti` inverted turn). */
+const ORNAMENT_CODE: Record<Ornament, string> = {
+  mordent: '+mo',
+  'mordent-inverted': '+mi',
+  turn: '+tu',
+  'turn-inverted': '+ti',
+};
+
+const ORNAMENT_OF_CODE: Record<string, Ornament> = Object.fromEntries(
+  Object.entries(ORNAMENT_CODE).map(([o, c]) => [c, o as Ornament]),
+);
+
 const sideStr = (p?: MarkPlacement) => (p === 'above' ? '^' : p === 'below' ? '_' : p === 'between' ? '=' : '');
 
 /** Slur and hairpin ids are written only when they are not 1: the common case of one span at a time needs no number. */
@@ -226,6 +239,7 @@ class VoiceWriter {
       for (const a of e.art ?? []) arts += a === 'accent' ? '->' : a === 'marcato' ? '-^' : '-.';
       if (e.art?.length && e.artSide) arts += sideStr(e.artSide);
       if (e.trill) arts += `+tr${e.trillAcc === undefined ? '' : e.trillAcc > 0 ? '#' : e.trillAcc < 0 ? 'b' : '='}`;
+      if (e.ornament) arts += ORNAMENT_CODE[e.ornament];
     }
     if (e.fermata)
       arts += `+fm${e.fermataShape === 'short' ? 's' : e.fermataShape === 'long' ? 'l' : ''}${e.fermataBelow ? '_' : ''}`;
@@ -834,6 +848,8 @@ class VoiceLineParser {
       else if (tr.endsWith('b')) note.trillAcc = -1;
       else if (tr.endsWith('=')) note.trillAcc = 0;
     }
+    const orn = sc.take(/\+(?:mo|mi|tu|ti)/y);
+    if (orn) note.ornament = must(ORNAMENT_OF_CODE[orn]);
     this.readFermata(note);
     for (;;) {
       const m = sc.take(/(?:v(\d+))?("(?:[^"\\]|\\.)*")(_)?/y);

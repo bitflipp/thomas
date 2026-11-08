@@ -431,6 +431,12 @@ function readNotations(el: XNode, ev: NoteEvent | RestEvent, isChord: boolean): 
   }
   if (ev.kind !== 'note') return;
   const ornaments = child(notations, 'ornaments');
+  if (!isChord && ornaments) {
+    if (child(ornaments, 'mordent')) ev.ornament = 'mordent';
+    else if (child(ornaments, 'inverted-mordent')) ev.ornament = 'mordent-inverted';
+    else if (child(ornaments, 'turn')) ev.ornament = 'turn';
+    else if (child(ornaments, 'inverted-turn')) ev.ornament = 'turn-inverted';
+  }
   if (!isChord && child(ornaments, 'trill-mark')) {
     ev.trill = true;
     const mark = child(ornaments, 'accidental-mark')?.text.trim();

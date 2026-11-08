@@ -77,6 +77,7 @@ function pieces(e: Event, from: number, to: number, head: boolean): Event[] {
       delete n.artSide;
       delete n.arpeggio;
       delete n.trill;
+      delete n.ornament;
       delete n.trillAcc;
       delete n.fermata;
       delete n.fermataShape;

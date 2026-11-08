@@ -17,6 +17,7 @@ export type Kind =
   | 'artic'
   | 'fermata'
   | 'trill'
+  | 'ornament'
   | 'tie'
   | 'slur'
   | 'link'

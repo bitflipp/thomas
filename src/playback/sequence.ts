@@ -7,7 +7,7 @@
 // different instruments.
 
 import { keyAlter } from '../engrave/prep.ts';
-import type { Grace, NoteEvent, Pitch, Score, TimedEvent, TremoloGroup, Voice } from '../model.ts';
+import type { Grace, NoteEvent, Ornament, Pitch, Score, TimedEvent, TremoloGroup, Voice } from '../model.ts';
 import { baseTicks, flattenVoice, keyAt, marksOf, measureTicks, PPQ, pitchMidi, STEPS, timeAt } from '../model.ts';
 
 export interface Msg {
@@ -340,6 +340,46 @@ function transposeStep(p: Pitch): Pitch {
   return { step: STEPS[i % 7], octave: p.octave + (i >= 7 ? 1 : 0), alter: p.alter };
 }
 
+/** The pitch one letter name below (the alteration is replaced by the caller). */
+function transposeStepDown(p: Pitch): Pitch {
+  const i = STEPS.indexOf(p.step) - 1;
+  return { step: STEPS[(i + 7) % 7], octave: p.octave - (i < 0 ? 1 : 0), alter: p.alter };
+}
+
+/**
+ * A mordent or turn: a few quick notes (32nds) on the start of the note, which then sounds on its main pitch for the rest of its
+ * time. The neighbours are the diatonic ones in the key. The quick notes shrink for short notes so that the main note keeps
+ * at least a quarter of the time.
+ */
+function addOrnament(
+  sink: VoiceNotes,
+  pitch: Pitch,
+  ornament: Ornament,
+  key: number,
+  vel: number,
+  start: number,
+  end: number,
+): void {
+  const main = pitchMidi(pitch);
+  const upP = transposeStep(pitch);
+  const loP = transposeStepDown(pitch);
+  const up = pitchMidi({ ...upP, alter: keyAlter(key, upP.step) });
+  const low = pitchMidi({ ...loP, alter: keyAlter(key, loP.step) });
+  const seq =
+    ornament === 'mordent'
+      ? [main, low]
+      : ornament === 'mordent-inverted'
+        ? [main, up]
+        : ornament === 'turn'
+          ? [up, main, low]
+          : [low, main, up];
+  const step = Math.min(PPQ / 8, ((end - start) * 3) / 4 / seq.length);
+  seq.forEach((midi, i) => {
+    sink.add(start + i * step, start + (i + 1) * step, midi, vel, false, false, true);
+  });
+  sink.add(start + seq.length * step, end, main, vel, false, false, true);
+}
+
 /** A trill: the pitch alternates with the diatonic upper neighbour (by the key, or `upAcc`), in 32nds, starting on the main note and ending on it. */
 function addTrill(
   sink: VoiceNotes,
@@ -375,6 +415,10 @@ function addChord(sink: VoiceNotes, sp: StaffPlayback, te: TimedEvent & { ev: No
   const step = te.ev.arpeggio && n > 1 ? Math.min(PPQ / 8, (end - mainOn) / (3 * (n - 1))) : 0;
   te.ev.pitches.forEach((np, k) => {
     const on = mainOn + k * step;
+    if (te.ev.ornament && !te.ev.trill && k === n - 1) {
+      addOrnament(sink, np.pitch, te.ev.ornament, sp.key, vel, on, end);
+      return;
+    }
     if (te.ev.trill && k === n - 1) {
       addTrill(sink, np.pitch, te.ev.trillAcc, sp.key, vel, on, end);
       return;

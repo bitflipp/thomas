@@ -497,6 +497,7 @@ function OrnamentSimilar({ evs }: { evs: Event[] }) {
   const kinds: [OrnamentKind, string, (e: Event) => boolean][] = [
     ['fermata', 'Fermatas', (e) => !!e.fermata],
     ['trill', 'Trills', (e) => e.kind === 'note' && !!e.trill],
+    ['ornament', 'Mordents and turns', (e) => e.kind === 'note' && !!e.ornament],
     ['grace', 'Graces', (e) => e.kind === 'note' && !!e.graces?.length],
   ];
   const shown = kinds.filter(([, , has]) => evs.some(has));
@@ -925,6 +926,21 @@ function EventNotation({ ctx }: { ctx: EvSel }) {
               [true, 'below'],
             ]}
             onChange={(v) => run((x) => C.setFermataStyle(x, refs, evs[0].fermataShape, v))}
+          />
+        </Row>
+      )}
+      {notes.length > 0 && (
+        <Row label="Ornament">
+          <Pick
+            value={same(notes.map((n) => n.ornament))}
+            opts={[
+              [undefined, 'none'],
+              ['mordent', 'mordent'],
+              ['mordent-inverted', 'inverted mordent'],
+              ['turn', 'turn'],
+              ['turn-inverted', 'inverted turn'],
+            ]}
+            onChange={(v) => run((x) => C.setOrnament(x, refs, v))}
           />
         </Row>
       )}
