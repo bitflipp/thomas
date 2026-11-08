@@ -548,11 +548,17 @@ button.mini {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  padding: var(--sp-2) var(--sp-4);
+  padding: var(--sp-4);
   max-width: 640px;
   max-height: 86vh;
   overflow: auto;
   box-shadow: var(--shadow-lg);
+}
+.modal h3 {
+  margin: 0 0 var(--sp-3);
+}
+.modal .hint {
+  margin: var(--sp-3) 0;
 }
 .modal table {
   border-collapse: collapse;
