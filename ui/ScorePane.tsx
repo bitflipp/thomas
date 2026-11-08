@@ -12,8 +12,7 @@ import type { Ref } from '../src/editor/addr.ts';
 import { refKey } from '../src/editor/addr.ts';
 import type { HitIndex } from '../src/editor/hit.ts';
 import { dependentNotes, noteBoxes, primRef } from '../src/editor/hit.ts';
-import { findCollisions } from '../src/engrave/collide.ts';
-import type { Page, Prim } from '../src/engrave/scene.ts';
+import type { Prim } from '../src/engrave/scene.ts';
 import type { Engraved } from '../src/engrave/system.ts';
 import { pageToSvg } from '../src/render.ts';
 import { loadSmufl } from '../src/smufl.ts';
@@ -42,7 +41,6 @@ import {
   printing,
   score,
   selection,
-  showCollisions,
   shownZoom,
   tool,
   VOICE_COLORS,
@@ -260,10 +258,6 @@ function PageView({
       for (const f of undo) f();
     };
   }, [hovered, svg]);
-  const collisions = useMemo(
-    () => (showCollisions.value && near ? findCollisionsOn(p, i) : []),
-    [res, showCollisions.value, near],
-  );
   const bands = selection.value.filter((r) => r.t === 'measure') as Extract<Ref, { t: 'measure' }>[];
   return (
     <div
@@ -287,9 +281,6 @@ function PageView({
             <rect x={gs[0].x0} y={top} width={gs[0].x1 - gs[0].x0} height={bot - top} fill={SEL} fill-opacity="0.09" />
           );
         })}
-        {collisions.map((c) => (
-          <rect x={c.x} y={c.y} width={c.w} height={c.h} fill="none" stroke="#d33" stroke-width="0.12" />
-        ))}
         <NotesSvg page={i} h={h} />
         <GhostSvg g={ghost.value} page={i} />
         <PlayheadSvg page={i} />
@@ -351,11 +342,6 @@ function PlayheadSvg({ page }: { page: number }) {
       stroke-linecap="round"
     />
   );
-}
-
-/** The collisions of page `p`, numbered as page `i + 1`. */
-function findCollisionsOn(p: Page, i: number) {
-  return findCollisions([p]).map((c) => ({ ...c, page: i + 1 }));
 }
 
 /**

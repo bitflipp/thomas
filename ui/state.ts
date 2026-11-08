@@ -176,7 +176,6 @@ export const fit = signal(true); // When set, the pages are fitted to the pane w
 export const showText = signal(false);
 export const showProperties = signal(true);
 export const space = signal<number | null>(null);
-export const showCollisions = signal(false);
 
 /** True while the PDF print dialog is being prepared: every page then generates its SVG, whether near the viewport or not. */
 export const printing = signal(false);

@@ -34,7 +34,6 @@ import {
   redo,
   say,
   score,
-  showCollisions,
   shownZoom,
   showProperties,
   showText,
@@ -236,14 +235,6 @@ function Toolbar() {
                 onChange={(e) => (voiceColors.value = (e.target as HTMLInputElement).checked)}
               />{' '}
               Voice colours
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={showCollisions.value}
-                onChange={(e) => (showCollisions.value = (e.target as HTMLInputElement).checked)}
-              />{' '}
-              Outline overlaps in red
             </label>
           </div>
         )}
