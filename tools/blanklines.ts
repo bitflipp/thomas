@@ -76,7 +76,7 @@ function analyze(text: string): LineInfo[] {
     if (c === '"' || c === "'") {
       i++;
       while (i < text.length && text[i] !== c && text[i] !== '\n') i += text[i] === '\\' ? 2 : 1;
-      i++;
+      if (text[i] !== '\n') i++; // An unterminated string stops before the newline, which must still be counted.
       prev = c;
       continue;
     }
@@ -94,7 +94,7 @@ function analyze(text: string): LineInfo[] {
         else if (text[i] === ']') inClass = false;
         i++;
       }
-      i++;
+      if (text[i] !== '\n') i++; // A "regex" that was really JSX text (`/>`) ends before the newline, which must still be counted.
       prev = '/';
       continue;
     }
