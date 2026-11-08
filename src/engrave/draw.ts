@@ -1310,6 +1310,8 @@ interface TupletFrame {
   x1: number;
   /** A beam between two staves: the number goes on top of it. */
   crossBeam: boolean;
+  /** The slope of the beam a bare number sits over: the number keeps one distance from it along its whole length. */
+  beamSlope?: number;
 }
 
 /** Whether staff-local y is within `tolerance` of one of the five staff lines. */
@@ -1384,7 +1386,7 @@ function fitTupletLine(f: TupletFrame, slope: number): { a: number; gap: number 
  */
 function slopedTupletLine(f: TupletFrame, clearance: number): { ya: number; yb: number } {
   const { above, notes, x0, x1, crossBeam } = f;
-  const headSlope = Math.max(-MAX_TUPLET_SLOPE, Math.min(MAX_TUPLET_SLOPE, headSlopeOf(notes, above)));
+  const headSlope = f.beamSlope ?? Math.max(-MAX_TUPLET_SLOPE, Math.min(MAX_TUPLET_SLOPE, headSlopeOf(notes, above)));
   let slope = headSlope;
   let best = fitTupletLine(f, slope);
   if (crossBeam)
@@ -1443,6 +1445,13 @@ function planTuplet(
     x1: geoms[evs.length - 1] ? stemXs[evs.length - 1] : bx1,
     crossBeam: !!crossY,
   };
+  // A bare number over its beam runs parallel to the beam, so that its distance does not depend on the note heads.
+  const first = geoms[0];
+  const last = geoms[evs.length - 1];
+  if (!(bracket || crossY) && fullyBeamed && beamDir && above === (beamDir === 'up') && first && last) {
+    const dx = last.stemX - first.stemX;
+    if (dx > 0.5) frame.beamSlope = (last.stemTip - first.stemTip) / dx;
+  }
   const { x0, x1, reach } = frame;
   const numberHalfHeight = (sm.bbox('tuplet6').y1 - sm.bbox('tuplet6').y0) / 2;
   const clearance = bracket ? 1.1 : numberHalfHeight + 0.5; // The number sits clear of beams and stems.
