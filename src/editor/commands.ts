@@ -41,6 +41,7 @@ import {
   isBeam,
   isEvent,
   isTremolo,
+  keyAt,
   lineEnds,
   marksOf,
   measureTicks,
@@ -1183,6 +1184,107 @@ export function insertMeasures(score: Score, at: number, count = 1): Score {
       // The new first measure carries the time and key.
       d.measures[0].time = d.measures[count].time;
       if (d.measures[count].key !== undefined) d.measures[0].key = d.measures[count].key;
+    }
+  });
+}
+
+/** Copied measures: the staff contents of a run of measures (not their time, key, barline or repeat signs). */
+export interface MeasureClip {
+  measures: Record<string, StaffMeasure>[];
+  /** The length of each copied measure in ticks. */
+  lengths: number[];
+}
+
+/** Copies the staves of measures `from` to `to` (inclusive). */
+export function copyMeasures(score: Score, from: number, to: number): MeasureClip {
+  if (from < 0 || to >= score.measures.length || from > to) throw new EditError('No such measures');
+  const ms = score.measures.slice(from, to + 1);
+  return {
+    measures: JSON.parse(JSON.stringify(ms.map((m) => m.staves))),
+    lengths: ms.map((_, i) => measureTicks(timeAt(score, from + i))),
+  };
+}
+
+/** Every mark body of a staff measure, in the events and in the voice ends. */
+function marksInMeasure(sm: StaffMeasure): MarkBody[] {
+  const out: MarkBody[] = [];
+  for (const v of sm.voices) {
+    for (const te of flattenVoice(v)) out.push(...(te.ev.marks ?? []));
+    out.push(...(v.end ?? []));
+  }
+  return out;
+}
+
+/**
+ * Pastes copied measures over the measures from `at` on (more measures are added at the end of the score when they do not
+ * fit); each target measure must have the length of the copied one. Hairpins get ids that the rest of the staff does not use.
+ */
+export function pasteMeasures(score: Score, at: number, clip: MeasureClip): Score {
+  if (at < 0 || at >= score.measures.length) throw new EditError('No such measure');
+  clip.lengths.forEach((len, i) => {
+    const mi = at + i;
+    if (mi < score.measures.length && measureTicks(timeAt(score, mi)) !== len)
+      throw new EditError(`Measure ${mi + 1} has a different length than the copied one`);
+  });
+  const copy: MeasureClip = JSON.parse(JSON.stringify(clip));
+  return edit(score, (d) => {
+    const extra = at + copy.measures.length - d.measures.length;
+    for (let i = 0; i < extra; i++)
+      d.measures.push(emptyMeasure(d as Score, d.measures.length - 1) as Draft<Score['measures'][number]>);
+    for (const st of d.staves) {
+      const used = new Set<number>();
+      d.measures.forEach((m, mi) => {
+        const sm = m.staves[st.id];
+        if (sm && (mi < at || mi >= at + copy.measures.length))
+          for (const mk of marksInMeasure(sm as StaffMeasure)) if (mk.type === 'hairpin') used.add(mk.id);
+      });
+      const map = new Map<number, number>();
+      const fresh = (id: number) => {
+        let n = map.get(id);
+        if (n === undefined) {
+          n = 1;
+          while (used.has(n)) n++;
+          used.add(n);
+          map.set(id, n);
+        }
+        return n;
+      };
+      copy.measures.forEach((staves, i) => {
+        const sm = staves[st.id];
+        if (!sm) return;
+        for (const mk of marksInMeasure(sm))
+          if (mk.type === 'hairpin' || (mk.type === 'stop' && mk.of === 'hairpin')) mk.id = fresh(mk.id);
+        d.measures[at + i].staves[st.id] = sm as Draft<StaffMeasure>;
+      });
+    }
+  });
+}
+
+/**
+ * Sets the key signature (in fifths) for measures `from` to `to`: a change at `from`, the later changes inside the run
+ * removed, and the key that was in force after the run restored where it would otherwise change.
+ */
+export function setKeySigRange(score: Score, from: number, to: number, fifths: number): Score {
+  return edit(score, (d) => {
+    const after = to + 1 < d.measures.length ? keyAt(score, to + 1) : undefined;
+    d.measures[from].key = fifths;
+    for (let m = from + 1; m <= to; m++) delete d.measures[m].key;
+    if (after !== undefined && after !== fifths && d.measures[to + 1].key === undefined) d.measures[to + 1].key = after;
+  });
+}
+
+/** The same for the time signature of measures `from` to `to`; the measures are refitted to their new length. */
+export function setTimeSigRange(score: Score, from: number, to: number, ts: TimeSig): Score {
+  if (ts.beats < 1 || ![1, 2, 4, 8, 16, 32].includes(ts.beatType)) throw new EditError('Invalid time signature');
+  return edit(score, (d) => {
+    const after = to + 1 < d.measures.length ? timeAt(score, to + 1) : undefined;
+    d.measures[from].time = { ...ts };
+    for (let m = from + 1; m <= to; m++) delete d.measures[m].time;
+    const same = after && after.beats === ts.beats && after.beatType === ts.beatType;
+    if (after && !same && !d.measures[to + 1].time) d.measures[to + 1].time = { ...after };
+    for (let m = from; m < d.measures.length; m++) {
+      if (m > to + 1) break;
+      refit(d, m, measureTicks(timeAt(d as Score, m)));
     }
   });
 }

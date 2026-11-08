@@ -79,3 +79,13 @@ export function similarTo(score: Score, ref: Ref, by?: OrnamentKind): Ref[] {
   }
   return out;
 }
+
+/** Refs to every event in measures `from` to `to` (inclusive), on all staves and voices: what "select the notes of these measures" means. */
+export function eventsInMeasures(score: Score, from: number, to: number): Ref[] {
+  const out: Ref[] = [];
+  for (let mi = Math.max(0, from); mi <= Math.min(to, score.measures.length - 1); mi++)
+    for (const [staff, sm] of Object.entries(score.measures[mi].staves))
+      for (const vv of sm.voices)
+        for (const te of flattenVoice(vv)) out.push({ t: 'ev', mi, staff, voice: vv.id, idx: te.index });
+  return out;
+}

@@ -76,7 +76,8 @@ Pipeline: text/MusicXML → `Score` model → `prepare` → per-measure spacing 
 - In dev builds `window.__t` exposes the state signals (`score`, `hit`, `engraved`, `selection`, ...), used for scripted tests with `playwright-core` + the system Chromium (`executablePath: '/usr/bin/chromium'`, `--no-sandbox`).
 - The engraver runs in the page: `ui/fonts.ts` feeds Leland to `setSmuflSource`; `loadSmufl()` is a lazy facade (and `D` in `draw.ts` a lazy proxy), so engraver modules may touch the font at import time. Nothing under `src/` may import `node:*` at top level. UI files are `.tsx` and Vite-only.
 - **Playback**: `src/playback/sequence.ts` (headless, tested) turns a `Score` into timed MIDI messages (tempo map, ties merged, velocity from dynamics, hairpins ramp to the next dynamic (`readDynamicsAndPedal`), pedal -> CC64, channel per staff); `ui/player.ts` sends them to a Web MIDI output with a look-ahead scheduler and owns `playTick`/`playhead` (absolute ticks, kept across stops so play resumes). Edits while playing rebuild the sequence and carry on; a new document (`docId`) resets to the start. No built-in synth (decided against).
-- Not done: MIDI keyboard input, range selection of measures, multi-staff-part scores beyond the model's own limits.
+- Range selection of measures: the selection holds `measure` refs (Shift-click in `interact.ts` grows a run from the last clicked measure, Ctrl adds one); the Measure tab edits the whole run (`setKeySigRange`/`setTimeSigRange`, barline at the end, repeat start and break at the start, voltas on all), Ctrl+C/V copy and paste the staff contents (`copyMeasures`/`pasteMeasures`, hairpins renumbered, same lengths required).
+- Not done: MIDI keyboard input, multi-staff-part scores beyond the model's own limits.
 
 ## Desktop app (`electron/`)
 

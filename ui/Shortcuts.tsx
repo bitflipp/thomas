@@ -24,7 +24,10 @@ const ROWS: [string, string][] = [
   ['Home', 'Playhead back to the start'],
   ['Alt + click (select)', 'Put the playhead there'],
   ['Ctrl Z / Ctrl Shift Z', 'Undo / redo'],
-  ['Ctrl C / X / V', 'Copy / cut / paste notes with their dynamics, ornaments, graces and complete hairpins or pedals (paste starts at the selected note); a copied dynamic, text or tempo mark is pasted onto every selected note'],
+  [
+    'Ctrl C / X / V',
+    'Copy / cut / paste notes with their dynamics, ornaments, graces and complete hairpins or pedals (paste starts at the selected note); a copied dynamic, text or tempo mark is pasted onto every selected note',
+  ],
   [
     'Ctrl Shift A',
     'Select everything the Properties panel would edit together with the selection (marks of one type, all notes (or all rests), all slurs, ties or tuplets)',
@@ -35,6 +38,10 @@ const ROWS: [string, string][] = [
   ['Ctrl S', 'Save'],
   ['Alt + click (note input)', 'Replace a tuplet as a whole instead of entering into it'],
   ['Shift / Ctrl + click', 'Add to the selection'],
+  [
+    'Shift + click (measure)',
+    'Select the run of measures from the last clicked one; Ctrl adds one; Ctrl C / V copies and pastes them over the first selected measure',
+  ],
   ['Double-click', 'Edit the text or tempo of a mark'],
 ];
 

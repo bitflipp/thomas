@@ -287,6 +287,33 @@ function isSelected(r: Ref): boolean {
   );
 }
 
+/** The measure a Shift-click range grows from: the last measure clicked without Shift. */
+let measureAnchor: number | undefined;
+
+/** The measures selected, in order. */
+export const measureRefs = (): number[] =>
+  selection.value
+    .filter((r): r is Extract<Ref, { t: 'measure' }> => r.t === 'measure')
+    .map((r) => r.mi)
+    .sort((a, b) => a - b);
+
+/** Selects the measures `a` to `b` (either order) as the selection. */
+export function selectMeasureRange(a: number, b: number): void {
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  select(Array.from({ length: hi - lo + 1 }, (_, k) => ({ t: 'measure' as const, mi: lo + k })));
+}
+
+/** A click on a measure: it becomes the selection; Shift extends from the anchor to it, Ctrl or Cmd adds or removes it. */
+function selectMeasure(mi: number, e: PointerEvent): void {
+  if (e.shiftKey) {
+    selectMeasureRange(measureAnchor ?? measureRefs()[0] ?? mi, mi);
+    return;
+  }
+  measureAnchor = mi;
+  if (e.ctrlKey || e.metaKey) select([{ t: 'measure', mi }], true);
+  else select([{ t: 'measure', mi }]);
+}
+
 /**
  * Select tool. Clicking a target selects it (shift/ctrl adds); pressing on a head or mark also
  * starts a drag. Clicking empty space starts a marquee. A click on something that is already
@@ -297,7 +324,7 @@ function pressWithSelectTool(e: PointerEvent, w: Where, h: HitIndex, target: Tar
   if (!target) {
     const g = measureAt(h.layout, w.page, w.x, w.y);
     drag = { k: 'marquee', start: w, additive, moved: false, base: additive ? selection.value : [] };
-    if (g) select([{ t: 'measure', mi: g.mi }], false);
+    if (g) selectMeasure(g.mi, e);
     else if (!additive) select([]);
     return;
   }

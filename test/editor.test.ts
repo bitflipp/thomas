@@ -487,3 +487,37 @@ test('marks copied on their own are hung on other events', () => {
   assert.match(writeText(out), /\\f c5:4 d5 \\f e5 \\f f5/);
   assert.throws(() => C.copyMarks(sc, []), /Only dynamics/);
 });
+
+test('measure ranges: copy and paste, key and time over a run, notes of a run', async () => {
+  const { eventsInMeasures } = await import('../src/editor/similar.ts');
+  const sc = parseText(
+    'page 210x297 margin=10 space=1.75\nstaff rh clef=G2\nm1 time=4/4 key=0\n  rh.1: \\< c5:4 d5:4 \\! e5:4 f5:4\n' +
+      'm2 time=4/4\n  rh.1: g5:1\nm3 time=4/4\n  rh.1: \\<2 a5:4 b5:4 c6:4 d6:4\nm4 time=4/4\n  rh.1: \\!2 e6:1\n',
+  );
+  assert.equal(eventsInMeasures(sc, 0, 1).length, 5);
+  const clip = C.copyMeasures(sc, 0, 1);
+  const out = ok(C.pasteMeasures(sc, 2, clip));
+  const text = writeText(out);
+  // The hairpin of the pasted measures gets an id that the hairpin running through m3-m4 does not use (m1's hairpin still uses 1, so the pasted one becomes 2).
+  assert.equal(out.measures.length, 4);
+  assert.match(text, /m3 time=4\/4\n {2}rh\.1: \\<2 c5:4 d5 \\!2 e5 f5\nm4 time=4\/4\n {2}rh\.1: g5:1/);
+  assert.equal(validate(out).length, 0);
+  // Pasting past the end adds measures.
+  assert.equal(ok(C.pasteMeasures(sc, 3, clip)).measures.length, 5);
+  // A measure of another length refuses.
+  const odd = ok(C.setTimeSig(sc, 1, { beats: 3, beatType: 4 }));
+  assert.throws(() => C.pasteMeasures(odd, 1, C.copyMeasures(sc, 1, 1)), /different length/);
+  // A key over a run: m2 and m3 in D major, m4 keeps C major.
+  const k = ok(C.setKeySigRange(sc, 1, 2, 2));
+  assert.deepEqual(
+    k.measures.map((m) => m.key),
+    [0, 2, undefined, 0],
+  );
+  // The same for the time: m2-m3 in 2/4, m4 stays 4/4 and every measure fits its length.
+  const t = ok(C.setTimeSigRange(sc, 1, 2, { beats: 2, beatType: 4 }));
+  assert.deepEqual(
+    t.measures.map((m) => m.time),
+    [{ beats: 4, beatType: 4 }, { beats: 2, beatType: 4 }, undefined, { beats: 4, beatType: 4 }],
+  );
+  assert.equal(validate(t).length, 0);
+});

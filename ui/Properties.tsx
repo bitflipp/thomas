@@ -12,12 +12,13 @@ import * as C from '../src/editor/commands.ts';
 import { transposeSteps } from '../src/editor/context.ts';
 import { neighbourNote, syllableText } from '../src/editor/lyrics.ts';
 import type { OrnamentKind } from '../src/editor/similar.ts';
+import { eventsInMeasures } from '../src/editor/similar.ts';
 import type { Event, MarkBody, MarkPlacement, NoteEvent, Score, Syllable } from '../src/model.ts';
 import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import { chooseDots, flipStem, lineSelection, slurSelection, tieSelection } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
-import { deleteSelection, evRefs, select, selectSimilar, tupletsAround } from './interact.ts';
+import { deleteSelection, evRefs, measureRefs, select, selectSimilar, tupletsAround } from './interact.ts';
 import { DYNAMICS } from './Palette.tsx';
 import { run, score, selection, space } from './state.ts';
 
@@ -342,10 +343,11 @@ function StavesSection() {
 }
 
 /** The time and key signature that start at a measure, with a button to inherit them again. */
-function MeasureSignatures({ mi }: { mi: number }) {
+function MeasureSignatures({ mi, to }: { mi: number; to: number }) {
   const s = score.value;
   const m = s.measures[mi];
   const ts = timeAt(s, mi);
+  const range = to > mi;
   return (
     <Group title="Signatures">
       <Row label="Time">
@@ -354,13 +356,23 @@ function MeasureSignatures({ mi }: { mi: number }) {
           min={1}
           max={32}
           w="3.5em"
-          onChange={(n) => run((x) => C.setTimeSig(x, mi, { ...ts, beats: n }))}
+          onChange={(n) =>
+            run((x) =>
+              range ? C.setTimeSigRange(x, mi, to, { ...ts, beats: n }) : C.setTimeSig(x, mi, { ...ts, beats: n }),
+            )
+          }
         />{' '}
         /{' '}
         <Dropdown
           value={ts.beatType}
           opts={[1, 2, 4, 8, 16].map((b) => ({ value: b, label: String(b) }))}
-          onChange={(b) => run((x) => C.setTimeSig(x, mi, { ...ts, beatType: b }))}
+          onChange={(b) =>
+            run((x) =>
+              range
+                ? C.setTimeSigRange(x, mi, to, { ...ts, beatType: b })
+                : C.setTimeSig(x, mi, { ...ts, beatType: b }),
+            )
+          }
         />
         {mi > 0 && m.time && (
           <button
@@ -377,7 +389,7 @@ function MeasureSignatures({ mi }: { mi: number }) {
         <Dropdown
           value={keyAt(s, mi)}
           opts={KEYS.map((k) => ({ value: k, label: KEYNAME(k) }))}
-          onChange={(k) => run((x) => C.setKeySig(x, mi, k))}
+          onChange={(k) => run((x) => (range ? C.setKeySigRange(x, mi, to, k) : C.setKeySig(x, mi, k)))}
         />
         {mi > 0 && m.key !== undefined && (
           <button
@@ -395,20 +407,21 @@ function MeasureSignatures({ mi }: { mi: number }) {
 }
 
 /** Barline, repeat start, volta and forced break of a measure. */
-function MeasureLayout({ mi }: { mi: number }) {
+function MeasureLayout({ mi, to }: { mi: number; to: number }) {
   const m = score.value.measures[mi];
+  const last = score.value.measures[to];
   return (
     <Group title="Layout">
       <Row label="Barline">
         <Pick
-          value={m.barline ?? 'single'}
+          value={last.barline ?? 'single'}
           opts={[
             ['single', 'single', <Ui.barSingle />],
             ['double', 'double', <Ui.barDouble />],
             ['final', 'final', <Ui.barFinal />],
             ['repeat-end', 'repeat end', <Ui.barRepeatEnd />],
           ]}
-          onChange={(v) => run((x) => C.setBarline(x, mi, v))}
+          onChange={(v) => run((x) => C.setBarline(x, to, v))}
         />
       </Row>
       <Row label="Repeat start">
@@ -431,7 +444,13 @@ function MeasureLayout({ mi }: { mi: number }) {
             ['3', '3.'],
             ['1,2', '1.,2.'],
           ]}
-          onChange={(v) => run((x) => C.setEnding(x, mi, v === 'none' ? undefined : v.split(',').map(Number)))}
+          onChange={(v) =>
+            run((x) => {
+              let y = x;
+              for (let k = mi; k <= to; k++) y = C.setEnding(y, k, v === 'none' ? undefined : v.split(',').map(Number));
+              return y;
+            })
+          }
         />
       </Row>
       <Row label="Break before">
@@ -450,14 +469,14 @@ function MeasureLayout({ mi }: { mi: number }) {
 }
 
 /** Properties of one measure: time and key signature, barline, breaks, repeats and voltas. */
-function MeasureSection({ mi }: { mi: number }) {
+function MeasureSection({ mi, to }: { mi: number; to: number }) {
   const s = score.value;
   const m = s.measures[mi];
-  if (!m) return null;
+  if (!m || to >= s.measures.length) return null;
   return (
     <section>
-      <MeasureSignatures mi={mi} />
-      <MeasureLayout mi={mi} />
+      <MeasureSignatures mi={mi} to={to} />
+      <MeasureLayout mi={mi} to={to} />
       <Group title="Actions">
         <div class="btns">
           <button
@@ -470,9 +489,16 @@ function MeasureSection({ mi }: { mi: number }) {
           <button
             type="button"
             title="Insert a measure after this one"
-            onClick={() => run((x) => C.insertMeasures(x, mi + 1))}
+            onClick={() => run((x) => C.insertMeasures(x, to + 1))}
           >
             Add after
+          </button>
+          <button
+            type="button"
+            title="Select every note and rest of these measures"
+            onClick={() => select(eventsInMeasures(s, mi, to))}
+          >
+            Select notes
           </button>
           <button type="button" class="danger" onClick={() => deleteSelection()}>
             Delete
@@ -1386,7 +1412,12 @@ export function Properties() {
   const mi = first ? first.mi : undefined; // Every ref kind carries its measure.
   const tabs: [string, string][] = [];
   if (selLabel) tabs.push(['sel', selLabel]);
-  if (mi !== undefined && mi < sc.measures.length) tabs.push(['measure', `Measure ${mi + 1}`]);
+  const picked = measureRefs();
+  const rangeOnly = picked.length > 1 && sel.every((r) => r.t === 'measure');
+  const lo = rangeOnly ? picked[0] : mi;
+  const hi = rangeOnly ? picked[picked.length - 1] : mi;
+  if (mi !== undefined && mi < sc.measures.length)
+    tabs.push(['measure', hi !== lo ? `Measures ${(lo ?? 0) + 1}–${(hi ?? 0) + 1}` : `Measure ${mi + 1}`]);
   tabs.push(['score', 'Score']);
   const want = userTab.value;
   const active = tabs.find(([id]) => id === want)?.[0] ?? tabs[0][0];
@@ -1432,7 +1463,7 @@ export function Properties() {
             )}
           </>
         )}
-        {active === 'measure' && mi !== undefined && <MeasureSection mi={mi} />}
+        {active === 'measure' && lo !== undefined && <MeasureSection mi={lo} to={hi ?? lo} />}
         {active === 'score' && <ScoreSection />}
       </div>
     </aside>

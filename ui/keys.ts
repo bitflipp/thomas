@@ -19,14 +19,14 @@ import {
   toggleOrnament,
 } from './actions.ts';
 
-import { cancelDrag, deleteSelection, evRefs, selectSimilar, zoomBy } from './interact.ts';
+import { cancelDrag, deleteSelection, evRefs, measureRefs, selectSimilar, zoomBy } from './interact.ts';
 import { rewind, toggle } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
 import { dots, redo, run, say, score, selection, showProperties, showText, tool, undo, voice } from './state.ts';
 
 /** What Ctrl+C took: events with their complete marks, or point marks to hang on the selected events. */
-let clip: { events: C.Clip } | { marks: MarkBody[] } | undefined;
+let clip: { events: C.Clip } | { marks: MarkBody[] } | { measures: C.MeasureClip } | undefined;
 
 /** Whether the key event comes from a text input, where shortcuts must not fire. */
 function typing(e: KeyboardEvent): boolean {
@@ -52,6 +52,12 @@ function copySel(): boolean {
       say(`Copied ${refs.length} event${refs.length > 1 ? 's' : ''}`);
       return true;
     }
+    const ms = measureRefs();
+    if (ms.length && selection.peek().every((r) => r.t === 'measure')) {
+      clip = { measures: C.copyMeasures(sc, ms[0], ms[ms.length - 1]) };
+      say(`Copied ${ms.length} measure${ms.length > 1 ? 's' : ''}`);
+      return true;
+    }
     const marks = selection.peek().filter((r): r is Extract<Ref, { t: 'mark' }> => r.t === 'mark');
     if (!marks.length) return false;
     clip = { marks: C.copyMarks(sc, marks) };
@@ -66,6 +72,15 @@ function copySel(): boolean {
 
 /** Pastes the copied events from the first selected event on, or hangs the copied marks on every selected event. */
 function paste(): void {
+  if (clip && 'measures' in clip) {
+    const at = measureRefs()[0];
+    if (at === undefined) say('Select the measure to paste over', true);
+    else {
+      const ms = clip.measures;
+      run((s) => C.pasteMeasures(s, at, ms));
+    }
+    return;
+  }
   const refs = evRefs();
   if (!(clip && refs.length)) {
     say(clip ? 'Select where to paste' : 'Nothing to paste', true);
