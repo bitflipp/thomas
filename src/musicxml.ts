@@ -200,6 +200,8 @@ function cutAcross(n: RawNote, mlen: number, number: number, warn: (msg: string)
         delete (ev as { trill?: unknown }).trill;
         delete (ev as { trillAcc?: unknown }).trillAcc;
         delete (ev as { fermata?: unknown }).fermata;
+        delete (ev as { fermataShape?: unknown }).fermataShape;
+        delete (ev as { fermataBelow?: unknown }).fermataBelow;
       }
       if (!last) delete ev.slurStop;
       if (ev.kind === 'note') {

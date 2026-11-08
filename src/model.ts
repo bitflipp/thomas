@@ -67,6 +67,8 @@ export interface EventBase {
   lineStart?: LineStart[];
   lineStop?: number[];
   fermata?: boolean; // A fermata sits above the event (a note, chord or rest).
+  fermataShape?: FermataShape; // The fermata's shape; absent: the normal round one. Only with `fermata`.
+  fermataBelow?: true; // The fermata sits below the event, upside down. Only with `fermata`.
   marks?: MarkBody[]; // These marks (dynamics, hairpin/pedal/ottava starts and stops, clef changes, tempo, text) sit at the start of this event.
 }
 
@@ -140,6 +142,9 @@ export interface Voice {
   /** Marks at the end of the measure: the stops of spans (hairpin, pedal, ottava) that run up to the barline. */
   end?: MarkBody[];
 }
+
+/** A fermata's shape besides the normal round one: short (angled, MusicXML `angled`) and long (square). */
+export type FermataShape = 'short' | 'long';
 
 export type Placement = 'above' | 'below';
 

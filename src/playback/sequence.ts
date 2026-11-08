@@ -87,17 +87,22 @@ export function measureStarts(score: Score): { measureStart: number[]; total: nu
   return { measureStart, total };
 }
 
-/** How much longer a fermata event lasts. */
-const FERMATA_STRETCH = 2;
+/** How much longer a fermata event lasts, by shape: short ones hold less, long ones more. */
+const FERMATA_STRETCH = { normal: 2, short: 1.5, long: 3 };
 
-/** The absolute tick spans [start, end) of all events with a fermata, in any staff. */
-function fermataSpans(score: Score, measureStart: number[]): [number, number][] {
-  const spans: [number, number][] = [];
+/** The absolute tick spans [start, end) of all events with a fermata, in any staff, with the stretch of the longest fermata there. */
+function fermataSpans(score: Score, measureStart: number[]): [number, number, number][] {
+  const spans: [number, number, number][] = [];
   score.measures.forEach((m, mi) => {
     for (const st of Object.values(m.staves))
       for (const v of st.voices)
         for (const te of flattenVoice(v))
-          if (te.ev.fermata) spans.push([measureStart[mi] + te.start, measureStart[mi] + te.start + te.ticks]);
+          if (te.ev.fermata)
+            spans.push([
+              measureStart[mi] + te.start,
+              measureStart[mi] + te.start + te.ticks,
+              FERMATA_STRETCH[te.ev.fermataShape ?? 'normal'],
+            ]);
   });
   return spans;
 }
@@ -125,9 +130,10 @@ function tempoMap(score: Score, measureStart: number[]): Pick<Sequence, 'tickToS
     for (const t of tempi) if (t.tick <= tick) spt = t.spt;
     return spt;
   };
-  const inHold = (tick: number) => holds.some(([a, b]) => a <= tick && tick < b);
-  const cuts = [...new Set([...tempi.map((t) => t.tick), ...holds.flat()])].sort((a, b) => a - b);
-  const pieces = cuts.map((tick) => ({ tick, spt: baseAt(tick) * (inHold(tick) ? FERMATA_STRETCH : 1) }));
+  const stretchAt = (tick: number) =>
+    Math.max(1, ...holds.filter(([a, b]) => a <= tick && tick < b).map(([, , stretch]) => stretch));
+  const cuts = [...new Set([...tempi.map((t) => t.tick), ...holds.flatMap((h) => [h[0], h[1]])])].sort((a, b) => a - b);
+  const pieces = cuts.map((tick) => ({ tick, spt: baseAt(tick) * stretchAt(tick) }));
   const segs: { tick: number; sec: number; spt: number }[] = [];
   for (const t of pieces) {
     const last = segs[segs.length - 1];

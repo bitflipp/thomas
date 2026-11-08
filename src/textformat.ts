@@ -227,7 +227,8 @@ class VoiceWriter {
       if (e.art?.length && e.artSide) arts += sideStr(e.artSide);
       if (e.trill) arts += `+tr${e.trillAcc === undefined ? '' : e.trillAcc > 0 ? '#' : e.trillAcc < 0 ? 'b' : '='}`;
     }
-    if (e.fermata) arts += '+fm';
+    if (e.fermata)
+      arts += `+fm${e.fermataShape === 'short' ? 's' : e.fermataShape === 'long' ? 'l' : ''}${e.fermataBelow ? '_' : ''}`;
     if (e.kind === 'note') for (const y of e.lyrics ?? []) arts += syllableStr(y);
     // Durations are sticky: the base value is written only when it differs from the previous event's.
     // Dots are never sticky (a dotted note would otherwise make everything after it dotted), so they
@@ -793,8 +794,18 @@ class VoiceLineParser {
     }
     if (this.pendingEv.graces) sc.fail('grace notes belong in front of a note, not a rest');
     rest.dur = this.readDur();
-    if (sc.take(/\+fm/y)) rest.fermata = true;
+    this.readFermata(rest);
     return rest;
+  }
+
+  /** Reads `+fm`, with `s` (short) or `l` (long) for the shape and `_` for below, if there is one. */
+  private readFermata(ev: NoteEvent | RestEvent): void {
+    const m = this.sc.take(/\+fm([sl])?(_)?/y);
+    if (!m) return;
+    ev.fermata = true;
+    const [, shape, below] = must(/^\+fm([sl])?(_)?$/.exec(m));
+    if (shape) ev.fermataShape = shape === 's' ? 'short' : 'long';
+    if (below) ev.fermataBelow = true;
   }
 
   private readNoteEvent(): NoteEvent {
@@ -823,7 +834,7 @@ class VoiceLineParser {
       else if (tr.endsWith('b')) note.trillAcc = -1;
       else if (tr.endsWith('=')) note.trillAcc = 0;
     }
-    if (sc.take(/\+fm/y)) note.fermata = true;
+    this.readFermata(note);
     for (;;) {
       const m = sc.take(/(?:v(\d+))?("(?:[^"\\]|\\.)*")(_)?/y);
       if (!m) break;

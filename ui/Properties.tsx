@@ -898,6 +898,36 @@ function EventNotation({ ctx }: { ctx: EvSel }) {
           )}
         </>
       )}
+      {evs.length > 0 && evs.every((e) => e.fermata) && (
+        <Row label="Fermata">
+          <Pick
+            value={same(evs.map((e) => e.fermataShape))}
+            opts={[
+              [undefined, 'normal'],
+              ['short', 'short'],
+              ['long', 'long'],
+            ]}
+            onChange={(v) =>
+              run((x) =>
+                C.setFermataStyle(
+                  x,
+                  refs,
+                  v,
+                  evs.every((e) => e.fermataBelow),
+                ),
+              )
+            }
+          />
+          <Pick
+            value={same(evs.map((e) => !!e.fermataBelow))}
+            opts={[
+              [false, 'above'],
+              [true, 'below'],
+            ]}
+            onChange={(v) => run((x) => C.setFermataStyle(x, refs, evs[0].fermataShape, v))}
+          />
+        </Row>
+      )}
       {notes.length > 0 && notes.every((n) => n.trill) && (
         <Row label="Trill note">
           <Pick

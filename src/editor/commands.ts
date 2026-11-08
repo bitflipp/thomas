@@ -17,6 +17,7 @@ import type {
   Clef,
   Dur,
   Event,
+  FermataShape,
   Grace,
   Item,
   LineEnd,
@@ -605,7 +606,11 @@ export function toggleFermata(score: Score, addrs: EvAddr[]): Score {
   const on = !addrs.every((a) => eventOf(score, a)?.fermata);
   return updateEvents(score, addrs, (e) => {
     if (on) e.fermata = true;
-    else delete e.fermata;
+    else {
+      delete e.fermata;
+      delete e.fermataShape;
+      delete e.fermataBelow;
+    }
   });
 }
 
@@ -620,6 +625,17 @@ export function toggleTrill(score: Score, addrs: EvAddr[]): Score {
       delete n.trill;
       delete n.trillAcc;
     }
+  });
+}
+
+/** Sets the shape and side of the fermatas at `addrs` (undefined shape: the normal one); events without a fermata are left alone. */
+export function setFermataStyle(score: Score, addrs: EvAddr[], shape: FermataShape | undefined, below: boolean): Score {
+  return updateEvents(score, addrs, (e) => {
+    if (!e.fermata) return;
+    if (shape) e.fermataShape = shape;
+    else delete e.fermataShape;
+    if (below) e.fermataBelow = true;
+    else delete e.fermataBelow;
   });
 }
 

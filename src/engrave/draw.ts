@@ -7,7 +7,7 @@
 // spanner pass. Every primitive pushed here is tagged (`tagFrom`) for collision checking and hit testing,
 // and its occupied area is added to the staff's skyline (`pushBox`) so that spanners and marks can avoid it.
 
-import type { Articulation, NoteEvent, TupletGroup } from '../model.ts';
+import type { Articulation, FermataShape, NoteEvent, TupletGroup } from '../model.ts';
 
 import { loadSmufl } from '../smufl.ts';
 import { must, round3 } from '../util.ts';
@@ -28,6 +28,8 @@ import {
   restGlyph,
   STEM_T,
 } from './spacing.ts';
+
+import { STAFF_HEIGHT } from './staffgap.ts';
 
 const sm = loadSmufl();
 export const D = new Proxy({} as typeof sm.def, { get: (_, k) => sm.def[k as string] }); // The proxy is lazy because the font may not be loaded yet.
@@ -327,6 +329,7 @@ function drawOrnamentsOfStaff(ctx: SysCtx, mi: number, s: number): void {
     if (!(trill || e.ev.fermata)) continue;
     let cx: number;
     let top = -1; // The top edge (y) of whatever is already there; ornaments go above it.
+    let bottom = STAFF_HEIGHT + 1; // The bottom edge of what is there; a fermata below goes beneath it.
     if (e.ev.kind === 'note') {
       const g = must(geomOf.get(e));
       const dxs = e.heads.map((h) => h.dx);
@@ -335,13 +338,16 @@ function drawOrnamentsOfStaff(ctx: SysCtx, mi: number, s: number): void {
       if (e.stem === 'up') top = Math.min(top, g.stemTip - 0.4);
       const ext = articExtent.get(e);
       if (ext?.above) top = Math.min(top, ext.edge - 0.3);
+      bottom = Math.max(bottom, g.yBot + 1);
+      if (e.stem === 'down') bottom = Math.max(bottom, g.stemTip + 0.4);
+      if (ext && !ext.above) bottom = Math.max(bottom, ext.edge + 0.3);
     } else {
       const b = sm.bbox(restGlyph(e.te.ev.dur.base, e.ev.kind === 'rest' && e.ev.style === 'measure'));
       cx = e.x + (b.x0 + b.x1) / 2;
     }
     for (const [name, on, kind] of [
       ['ornamentTrill', trill, 'trill'],
-      ['fermataAbove', e.ev.fermata, 'fermata'],
+      [`fermata${shapeName(e.ev.fermataShape)}Above`, e.ev.fermata && !e.ev.fermataBelow, 'fermata'],
     ] as const) {
       if (!on) continue;
       const b = sm.bbox(name);
@@ -372,8 +378,22 @@ function drawOrnamentsOfStaff(ctx: SysCtx, mi: number, s: number): void {
       tagFrom(ctx.prims[s], start, kind, e);
       top -= h + 0.3;
     }
+    if (e.ev.fermata && e.ev.fermataBelow) {
+      const name = `fermata${shapeName(e.ev.fermataShape)}Below`;
+      const b = sm.bbox(name);
+      const h = b.y1 - b.y0;
+      const w = b.x1 - b.x0;
+      const start = ctx.prims[s].length;
+      ctx.prims[s].push(glyphCentered(name, cx, bottom + h / 2));
+      pushBox(ctx, s, cx - w / 2, cx + w / 2, bottom, bottom + h);
+      tagFrom(ctx.prims[s], start, 'fermata', e);
+    }
   }
 }
+
+/** The part of a fermata's SMuFL glyph name that stands for its shape (empty for the normal one). */
+const shapeName = (shape: FermataShape | undefined): string =>
+  shape === 'short' ? 'Short' : shape === 'long' ? 'Long' : '';
 
 /**
  * Phase 5: tuplets. Brackets and numbers avoid the stems, beams and articulations drawn so far, which

@@ -24,7 +24,7 @@ Repeat signs (`Measure.repeatStart`, `barline=repeat-end`) and voltas (`Measure.
 ## Smaller follow-ups
 - **Grace notes in the editor:** click to select or drag a grace head (hit targets via the existing `r`/`n` tags), a palette tool to place one on the staff, chord graces.
 - **Trills:** (key-aware upper note in playback is done; accidentals earlier in the measure are not considered), a wavy line for long trills across several notes, a trill-start/stop mark. Mordent, turn and other ornaments follow the same pattern as `trill`.
-- **Fermata:** a stronger or shorter variant (square, triangle), fermata on barlines, placement below the staff.
+- **Fermata:** shapes (short/triangle, long/square) and placement below are done (`fermataShape`, `fermataBelow`; `+fms`, `+fml`, `_`; Properties "Fermata" row; playback holds 1.5x/2x/3x). Open: fermata on barlines, the other MusicXML shapes (double-angled, double-square, half-curve ...).
 - **Playback:** dynamics are done (`velAt`; `sf`/`fp` are not shaped within a note); no built-in synth (decided against), repeat/fermata aware tempo handling.
 - **Editor:** MIDI keyboard input, range selection of measures, copy and paste of marks and graces.
 - **Shortcuts and select similar (done):** `F` toggles a fermata, `Shift+T` a trill; Properties has "All fermatas/trills/graces" buttons (`similarTo(..., by)`). Graces have no key yet.

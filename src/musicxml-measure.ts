@@ -421,7 +421,14 @@ function readArticulations(articulations: XNode, ev: NoteEvent): void {
 function readNotations(el: XNode, ev: NoteEvent | RestEvent, isChord: boolean): RawNote['trem'] {
   const notations = child(el, 'notations');
   if (!notations) return;
-  if (!isChord && child(notations, 'fermata')) ev.fermata = true;
+  const fermata = isChord ? undefined : child(notations, 'fermata');
+  if (fermata) {
+    ev.fermata = true;
+    const shape = text(fermata);
+    if (shape === 'angled') ev.fermataShape = 'short';
+    else if (shape === 'square') ev.fermataShape = 'long';
+    if (fermata.attrs.type === 'inverted') ev.fermataBelow = true;
+  }
   if (ev.kind !== 'note') return;
   const ornaments = child(notations, 'ornaments');
   if (!isChord && child(ornaments, 'trill-mark')) {

@@ -69,3 +69,27 @@ test('a trill accidental round-trips, is drawn and sets the upper note', () => {
   assert.ok(out.pages[0].prims.some((p) => p.k === 'trill' && p.t === 'glyph' && p.name === 'accidentalSharp'));
   assert.deepEqual(findCollisions(out.pages), []);
 });
+
+const ONE = SRC.replace(/\+fm|\+tr/g, '').replace('d5->', 'd5->+fm');
+
+test('fermata shape and side round-trip, import from MusicXML, draw the right glyph and stretch playback', () => {
+  const src = SRC.replace(/\+fm/g, '+fms_');
+  assert.match(writeText(parseText(src)), /\+fms_/);
+  for (const t of ['+fm', '+fms', '+fml', '+fm_', '+fml_']) {
+    const s = parseText(ONE.replace('+fm', t));
+    assert.equal(writeText(parseText(writeText(s))), writeText(s));
+    assert.deepEqual(parseText(writeText(s)), s);
+  }
+  const names = (text: string) =>
+    engrave(parseText(text))
+      .pages[0].prims.filter((p) => p.k === 'fermata')
+      .map((p) => (p.t === 'glyph' ? p.name : ''));
+  assert.deepEqual(names(ONE.replace('+fm', '+fml_')), ['fermataLongBelow']);
+  assert.deepEqual(names(ONE.replace('+fm', '+fms')), ['fermataShortAbove']);
+  assert.deepEqual(findCollisions(engrave(parseText(ONE.replace('+fm', '+fml_'))).pages), []);
+  const len = (t: string) => {
+    const s = buildSequence(parseText(t));
+    return s.tickToSec(s.totalTicks);
+  };
+  assert.ok(len(ONE.replace('+fm', '+fms')) < len(ONE) && len(ONE) < len(ONE.replace('+fm', '+fml')));
+});

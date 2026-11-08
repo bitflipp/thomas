@@ -79,6 +79,8 @@ function pieces(e: Event, from: number, to: number, head: boolean): Event[] {
       delete n.trill;
       delete n.trillAcc;
       delete n.fermata;
+      delete n.fermataShape;
+      delete n.fermataBelow;
       delete n.graces;
       delete n.stem;
     }
