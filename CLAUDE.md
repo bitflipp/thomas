@@ -22,7 +22,6 @@ npm run ui:build                                  # build the UI into out/ui; an
 npm run app                                       # build and start the desktop app (Electron); `just run-electron`
 just install-desktop                              # build the app and install a GNOME launcher + icon under ~/.local/share (points at this checkout)
 npm run icon                                      # regenerate build/icon.svg + icon.png (tools/make-icon.ts)
-npm run app:dist                                  # installers via electron-builder -> out/dist
 ```
 
 `tools/blanklines.ts` checks the blank lines Biome does not (see Comment and blank-line style below); `lint:fix` repairs them.
@@ -94,3 +93,7 @@ Pipeline: text/MusicXML → `Score` model → `prepare` → per-measure spacing 
 - No `// ---- name ---` banner headers. A section of a file starts with a plain `//` comment of a few lines that says what the section is for and how it relates to the rest, followed by a blank line, so that it cannot be mistaken for the doc comment of the first function below it.
 - A file starts with a header comment (what the module is for, how it fits the pipeline), then a blank line, then the imports.
 - Blank lines on the top level of a file (checked by `tools/blanklines.ts`, part of `npm run lint`): items are separated by exactly one blank line, except a run of one-line declarations without comments (imports, constants, type aliases); a doc comment sits directly above its declaration; a `/** */` comment is never left standing alone. Biome already collapses repeated blank lines and cleans up the edges of blocks; blank lines inside functions and classes are not checked.
+
+## Commits
+
+- Never add `Co-Authored-By` trailers or any other attribution (to Claude or anyone else) to commit messages or PR bodies.

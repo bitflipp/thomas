@@ -1,5 +1,5 @@
 // Generates the app icon: build/icon.svg (a staff with a treble and a bass clef on a dark rounded square, drawn with the
-// engraver's own Leland glyph) and, through rsvg-convert, build/icon.png for electron-builder.
+// engraver's own Leland glyph) and, through rsvg-convert, build/icon.png (used by the desktop launcher of `just install-desktop`).
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
