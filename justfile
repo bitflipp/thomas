@@ -1,9 +1,5 @@
 # Thomas task runner. `just` alone lists recipes.
 
-# Builds the UI into out/ui (needs `npm install` once).
-build-ui:
-    npm run ui:build
-
 # The desktop app: the same UI in an Electron window with native file dialogs and PDF export.
 run-electron:
     npm run app
