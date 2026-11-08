@@ -1332,50 +1332,26 @@ function tupletReach(ctx: SysCtx, evs: EvL[], geoms: (Geom | null)[], above: boo
       : stemSide
         ? Math.max(g.stemTip, g.yBot + 0.5)
         : g.yBot + 0.5;
+    // A head far above the staff has ledger lines between it and the staff, a head far below has them above it:
+    // a bracket on the staff's side of the heads must not run through them.
+    const ledgerEdge = (above ? g.yBot > 5 : g.yTop < -1) ? (above ? 5 : -1) + (above ? -0.2 : 0.2) : undefined;
+    const reachBase = ledgerEdge === undefined ? base : above ? Math.min(base, ledgerEdge) : Math.max(base, ledgerEdge);
     // Whatever the skyline holds at this note's position (accidentals, articulations, ...),
     // so that the bracket also clears what is attached to the note and not only the note.
     const lx = g.headL - (e.heads.some((h) => h.acc) ? 1.6 : 0.2);
     const other = above
       ? sky.top(lx, g.headR, Number.POSITIVE_INFINITY)
       : sky.bottom(lx, g.headR, Number.NEGATIVE_INFINITY);
-    return above ? Math.min(base, other) : Math.max(base, other);
+    return above ? Math.min(reachBase, other) : Math.max(reachBase, other);
   });
 }
 
 /**
- * The slope of the beams of a tuplet made of beam groups or tremolo pairs: with several groups their
- * slopes are averaged, weighted by length, so a tuplet made of two beamed halves still gets one
- * straight bracket. Undefined if there is no usable beam.
+ * The bracket rises or falls with the notes themselves, whatever else stands near its ends (beams, stems): the slope
+ * through the first and the last head on the bracket's side, of the upper staff when the notes are on two. The notes of
+ * the lower staff are on the other side of a cross-staff beam and say nothing about it.
  */
-function beamSlopeOf(notes: EvL[]): number | undefined {
-  const groups = new Map<object, EvL[]>();
-  for (const n of notes) {
-    const key = n.beam ?? (n.tremPair ? (n.tremIsFirst ? n : n.tremPair) : undefined);
-    if (!key) continue;
-    const list = groups.get(key) ?? [];
-    list.push(n);
-    groups.set(key, list);
-  }
-  let weighted = 0;
-  let length = 0;
-  for (const list of groups.values()) {
-    const ga = must(geomOf.get(list[0]));
-    const gb = must(geomOf.get(list[list.length - 1]));
-    const dx = gb.stemX - ga.stemX;
-    if (list.length > 1 && dx > 0.5 && !list[0].beam?.cross) {
-      weighted += ((gb.stemTip - ga.stemTip) / dx) * dx;
-      length += dx;
-    }
-  }
-  return length > 0 ? weighted / length : undefined;
-}
-
-/**
- * Over a cross-staff beam the bracket rises or falls with the notes themselves, whatever else stands
- * near its ends: the slope through the heads of the upper staff. The notes of the lower staff are on
- * the other side of the beam and say nothing about it.
- */
-function crossBeamHeadSlope(notes: EvL[], above: boolean): number {
+function headSlopeOf(notes: EvL[], above: boolean): number {
   const topStaff = Math.min(...notes.map((n) => n.staff));
   const on = notes.filter((n) => n.staff === topStaff);
   const ga = must(geomOf.get(on[0]));
@@ -1401,17 +1377,14 @@ function fitTupletLine(f: TupletFrame, slope: number): { a: number; gap: number 
 }
 
 /**
- * The bracket line (y at x0 and at x1) of a sloped tuplet: parallel to the beams when there are any;
- * over a cross-staff beam it follows the heads, but only as far as keeps it close to them (ten
- * slopes from the heads' slope down to flat are tried, the one with the smallest gap wins);
- * otherwise through the reach of the first and last member.
+ * The bracket line (y at x0 and at x1) of a sloped tuplet: it traces the noteheads, and is moved away from them only as
+ * far as it takes to clear stems, beams and whatever else is attached. Over a cross-staff beam it follows the heads
+ * only as far as keeps it close to them (ten slopes from the heads' slope down to flat are tried, the one with the
+ * smallest gap wins).
  */
 function slopedTupletLine(f: TupletFrame, clearance: number): { ya: number; yb: number } {
-  const { above, notes, reach, x0, x1, crossBeam } = f;
-  const m =
-    beamSlopeOf(notes) ??
-    (crossBeam ? crossBeamHeadSlope(notes, above) : (reach[reach.length - 1] - reach[0]) / (x1 - x0));
-  const headSlope = Math.max(-MAX_TUPLET_SLOPE, Math.min(MAX_TUPLET_SLOPE, m));
+  const { above, notes, x0, x1, crossBeam } = f;
+  const headSlope = Math.max(-MAX_TUPLET_SLOPE, Math.min(MAX_TUPLET_SLOPE, headSlopeOf(notes, above)));
   let slope = headSlope;
   let best = fitTupletLine(f, slope);
   if (crossBeam)
@@ -1473,7 +1446,7 @@ function planTuplet(
   const { x0, x1, reach } = frame;
   const numberHalfHeight = (sm.bbox('tuplet6').y1 - sm.bbox('tuplet6').y0) / 2;
   const clearance = bracket ? 1.1 : numberHalfHeight + 0.5; // The number sits clear of beams and stems.
-  // The line follows the beam when the tuplet is fully beamed, or when a bracket is drawn. Otherwise
+  // The line follows the noteheads when the tuplet is fully beamed, or when a bracket is drawn. Otherwise
   // (a bare number) it is flat and only decides where the number goes.
   const sloped = (fullyBeamed || bracket) && x1 > x0 && notes.length > 1;
   const flatY = (above ? Math.min(...reach) : Math.max(...reach)) + (above ? -clearance : clearance);
