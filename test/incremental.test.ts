@@ -179,3 +179,31 @@ test('changing the staves or the page drops what was cached', () => {
   same({ ...score, page: { ...score.page, staffSpace: score.page.staffSpace * 1.1 } }, cache, 'bigger staff space');
   same(C.setStaffClef(score, score.staves[0].id, { sign: 'F', line: 4 }), cache, 'clef of the first staff');
 });
+
+test('incremental engraving with multi-measure rests equals a fresh one after random edits', () => {
+  const head = 'page 120x160 margin=10 space=1.75 multirests=on\nstaff rh clef=G2\nstaff lh clef=F4\nbrace rh lh\n';
+  const body = Array.from({ length: 28 }, (_, i) =>
+    i % 5 < 2
+      ? `m${i + 1}${i === 0 ? ' time=4/4 key=0' : ''}\n  rh.1: c5:4 d5 e5 f5\n  lh.1: c3:2 g3:2`
+      : `m${i + 1}\n  rh.1: R:1\n  lh.1: R:1`,
+  ).join('\n');
+  const rand = rng(4242);
+  const cache = createEngraveCache();
+  let score = parseText(`${head}\n${body}\n`);
+  same(score, cache, 'initial');
+  assert.ok(engrave(score, opts).systems >= 1);
+  let applied = 0;
+  for (let i = 0; i < 80; i++) {
+    let next: { score: Score; what: string };
+    try {
+      next = randomEdit(score, rand);
+    } catch (e) {
+      if (e instanceof C.EditError) continue;
+      throw e;
+    }
+    score = next.score;
+    applied++;
+    same(score, cache, `edit ${i}: ${next.what}`);
+  }
+  assert.ok(applied > 30, `only ${applied} edits applied`);
+});

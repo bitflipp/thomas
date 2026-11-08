@@ -4,14 +4,11 @@ Planned features, in the suggested order. Each item names the layers it touches 
 
 Done so far: grace notes (engraving, import, playback, Properties editing), fermatas, trills with upper-note accidental.
 
-## 1. Multi-measure rests
-Smallest of the remaining features and a prerequisite for sensible part layout.
-- **Model:** a per-staff-measure-run setting is not needed; collapsing is a layout decision. Add a score option (`multiRests`, default off) and a per-measure `breakBefore`-like opt-out so a measure with a mark or a double barline is never absorbed.
-- **Engraver:** in `planSystems` (`linebreak.ts`) treat a run of consecutive measures whose staff measures are all `R` or empty (no marks, no key/time change, no barline change) as one spacing column. Draw the H-bar (`restHBar` glyphs) with the count above. Measure numbers must skip correctly.
-- **Text format / import:** an option line; MusicXML `<multiple-rest>` is read as a hint.
-- **Editor:** a toggle in the Score tab; an absorbed measure is still selectable (ghost hit targets as for hidden rests).
-- **Playback:** unchanged (the measures still exist).
-- **Risks:** incremental engraving (`measureSignature`) and the editor's `Layout` (a hit on the bar must map to the first measure).
+## 1. Multi-measure rests (done)
+Engraving only, switched on with `multirests=on` (Score tab: "Multi-rests"; a MusicXML `<multiple-rest>` turns it on at import). Open follow-ups:
+- A minimum run length setting (now two) and a bar style with a wide H-bar or church-rest symbols for long runs.
+- Selecting a swallowed measure in the editor: clicking the bar selects the first measure of the run; the others have no width on the page.
+- Marks inside a run (rehearsal marks, tempo changes) end the run for now; a rehearsal mark could sit over the bar.
 
 ## 2. Repeats and voltas
 - **Model:** extend `Measure` with `startBarline` (single, repeat-start) and the end barline with `repeat-end` plus a repeat count; add `Measure.ending?: { numbers: number[]; closed: boolean }` for voltas (a bracket spanning measures that share an ending number). Later: segno, coda, D.C./D.S. text jumps.

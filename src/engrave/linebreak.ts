@@ -37,7 +37,7 @@ function lineCost(nat: number, cmp: number, W: number, isLastLineOfPiece: boolea
 }
 
 /**
- * The cheapest line breaks within a segment of `len` measures, as the exclusive end index of every line.
+ * The cheapest line breaks within a segment of `len` measures, as the exclusive end index of every line (`noCut(i)`: no line may end before measure i).
  * `width(j, i, compressed)` is the width of the measures j..i-1 of the segment.
  */
 function cheapestCuts(
@@ -45,11 +45,13 @@ function cheapestCuts(
   isFinalSegment: boolean,
   width: (j: number, i: number, compressed: boolean) => number,
   W: number,
+  noCut: (i: number) => boolean,
 ): number[] {
   const best: number[] = new Array(len + 1).fill(Number.POSITIVE_INFINITY);
   const from: number[] = new Array(len + 1).fill(-1);
   best[0] = 0;
   for (let i = 1; i <= len; i++) {
+    if (i < len && noCut(i)) continue; // A line may not end inside a multi-measure rest.
     for (let j = Math.max(0, i - MAX_MEASURES_PER_LINE); j < i; j++) {
       if (best[j] === Number.POSITIVE_INFINITY) continue;
       const nat = width(j, i, false);
@@ -104,6 +106,7 @@ export function planSystems(
       segEnd === n - 1,
       (j, i, compressed) => rangeWidth(segStart + j, segStart + i - 1, compressed),
       W,
+      (i) => !!prep.absorbed?.has(segStart + i),
     );
     let prev = 0;
     for (const c of cuts) {

@@ -127,6 +127,9 @@ export interface Prepared {
   entries?: MeasureEntry[];
   /** Editor aid: hidden rests are drawn as faint, tagged `ghost` glyphs (not in the skyline), so that they can be clicked. */
   ghostRests?: boolean;
+  /** Multi-measure rests (see `multirest.ts`): the length of the run starting at a measure, and the measures that a run swallows after its first. */
+  multi?: Map<number, number>;
+  absorbed?: Set<number>;
 }
 
 /**

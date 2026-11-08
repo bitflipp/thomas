@@ -1377,6 +1377,13 @@ export function setMeasureNumbers(score: Score, mode: 'all' | 'none' | undefined
   });
 }
 
+export function setMultiRests(score: Score, on: boolean): Score {
+  return edit(score, (d) => {
+    if (on) d.page.multiRests = true;
+    else delete d.page.multiRests;
+  });
+}
+
 export function setPage(score: Score, patch: Partial<Score['page']>): Score {
   return edit(score, (d) => {
     Object.assign(d.page, patch);

@@ -6,6 +6,7 @@ import type { Score, StaffGroup } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import type { SysCtx } from './draw.ts';
 import { D } from './draw.ts';
+import { barlineHidden } from './multirest.ts';
 import type { Prim } from './scene.ts';
 import { oid, tagFrom } from './scene.ts';
 import { clefGlyph, drawMidSystemChanges, drawSystemStart } from './signatures.ts';
@@ -75,7 +76,7 @@ function drawMeasureNumbers(P: Prim[], ctx: SysCtx, numbering: MeasureNumbering)
   const size = MEASURE_NUMBER_SIZE;
   const measures = numbering === 'all' ? Array.from({ length: ctx.b - ctx.a + 1 }, (_, k) => ctx.a + k) : [ctx.a];
   for (const mi of measures) {
-    if (mi === 0) continue;
+    if (mi === 0 || ctx.prep.absorbed?.has(mi)) continue;
     const label = String(mi + 1);
     const x = mi === ctx.a ? 0.2 : ctx.mx[mi] + 0.3;
     const w = label.length * size * 0.5 + 0.4;
@@ -144,6 +145,7 @@ function drawBarlines(P: Prim[], ctx: SysCtx): void {
     o: oid({}),
   });
   for (let mi = ctx.a; mi <= ctx.b; mi++) {
+    if (barlineHidden(ctx.prep, mi)) continue;
     const x = ctx.mx[mi] + ctx.placed[mi].endX;
     const declared = score.measures[mi].barline ?? 'single';
     const endOfPiece = mi === ctx.b && mi === score.measures.length - 1;

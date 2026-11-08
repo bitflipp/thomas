@@ -298,7 +298,7 @@ function write(score: Score, tags?: Tags): string {
   for (const k of ['title', 'subtitle', 'composer', 'rights'] as const)
     if (meta[k]) L.push(`${k} ${quote(must(meta[k]))}`);
   L.push(
-    `page ${page.width}x${page.height} margin=${page.margin} space=${page.staffSpace}${page.measureNumbers ? ` numbers=${page.measureNumbers}` : ''}`,
+    `page ${page.width}x${page.height} margin=${page.margin} space=${page.staffSpace}${page.measureNumbers ? ` numbers=${page.measureNumbers}` : ''}${page.multiRests ? ' multirests=on' : ''}`,
   );
   for (const s of score.staves)
     L.push(`staff ${s.id} clef=${clefStr(s.clef)}${s.name ? ` name=${quote(s.name)}` : ''}`);
@@ -896,6 +896,7 @@ function parseStatement(st: TextState, t: string[]): void {
       margin: Number(o.margin ?? 10),
       staffSpace: Number(o.space ?? 1.91),
       ...(o.numbers === 'all' || o.numbers === 'none' ? { measureNumbers: o.numbers } : {}),
+      ...(o.multirests === 'on' ? { multiRests: true } : {}),
     };
   } else if (head === 'staff') {
     const o = kv(t.slice(2));

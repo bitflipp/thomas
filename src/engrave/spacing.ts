@@ -102,6 +102,8 @@ export interface MeasureSpacing {
   minWidth: number;
   compWidth: number; // This is the width when the measure is compressed to `COMPRESS`.
   restOnly: boolean;
+  multi?: number; // This measure is the first of a multi-measure rest of this many measures.
+  absorbed?: boolean; // This measure is swallowed by the multi-measure rest before it: it has no width.
 }
 
 function newColumn(tick: number, nStaves: number): Column {
@@ -497,6 +499,7 @@ export const MIN_CLEARANCE = 0.75;
  * for a measure so dense that it does not fit a line even when compressed (`justifySystem`).
  */
 export function placeMeasure(sp: MeasureSpacing, f: number, z = 1): PlacedMeasure {
+  if (sp.absorbed) return { xs: [], width: 0, endX: 0 };
   const nS = sp.endReq.length;
   const xs: number[] = [];
   const lastOcc: number[] = new Array(nS).fill(-1);
@@ -514,7 +517,10 @@ export function placeMeasure(sp: MeasureSpacing, f: number, z = 1): PlacedMeasur
   });
   const last = xs.length ? xs[xs.length - 1] : sp.lead;
   let endX = last + f * sp.endIdeal;
-  if (sp.cols.length === 0 || sp.restOnly) endX = Math.max(endX, sp.lead + 5.5 * Math.min(1.5, f));
+  if (sp.cols.length === 0 || sp.restOnly) {
+    const room = sp.multi ? 5.5 + 0.7 * Math.min(sp.multi - 1, 7) : 5.5; // A multi-measure rest grows a little with its length.
+    endX = Math.max(endX, sp.lead + room * Math.min(1.5, f));
+  }
   for (let s = 0; s < nS; s++)
     if (lastOcc[s] >= 0) endX = Math.max(endX, xs[lastOcc[s]] + z * (sp.cols[lastOcc[s]].R[s] + sp.endTrail));
   const clefW = sm.adv('gClefChange') + 2 * END_CLEF_GAP;

@@ -141,6 +141,16 @@ function ScoreSection() {
           × <Num value={s.page.height} min={50} max={900} onChange={(n) => run((x) => C.setPage(x, { height: n }))} />{' '}
           mm
         </Row>
+        <Row label="Multi-rests">
+          <Pick
+            value={!!s.page.multiRests}
+            opts={[
+              [false, 'off'],
+              [true, 'on'],
+            ]}
+            onChange={(v) => run((x) => C.setMultiRests(x, v))}
+          />
+        </Row>
         <Row label="Numbering">
           <Pick
             value={s.page.measureNumbers ?? 'system'}

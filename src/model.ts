@@ -210,6 +210,8 @@ export interface PageSetup {
   staffSpace: number;
   /** Undefined: number the first measure of every system but the first. */
   measureNumbers?: 'all' | 'none';
+  /** Collapse runs of two or more empty measures into one multi-measure rest (engraving only; the measures stay in the model). */
+  multiRests?: boolean;
 }
 
 export interface Score {

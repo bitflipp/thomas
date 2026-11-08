@@ -13,6 +13,7 @@ import { finalizeSystem } from './finalize.ts';
 import { justifySystem } from './justify.ts';
 import type { SysPlan } from './linebreak.ts';
 import { planSystems } from './linebreak.ts';
+import { absorbedSpacing, findMultiRuns, multiRestSpacing } from './multirest.ts';
 import type { Layout, PlacedSystem } from './paginate.ts';
 import { paginate } from './paginate.ts';
 import type { MeasureEntry, PrepCache } from './prep.ts';
@@ -148,13 +149,25 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
     return [e.spN, e.spF];
   };
   const spacings = score.measures.map((_, mi) => spacing(mi));
-  const spacingNormal = spacings.map((s) => s[0]);
-  const spacingFirstInSystem = spacings.map((s) => s[1]);
   const forcedBreaks = new Set<number>();
   if (respectBreaks)
     score.measures.forEach((m, mi) => {
       if (m.breakBefore) forcedBreaks.add(mi);
     });
+  if (score.page.multiRests) {
+    const runs = findMultiRuns(prep, forcedBreaks);
+    prep.multi = runs.len;
+    prep.absorbed = runs.absorbed;
+    // The run's spacing is made new every time: the cache entries keep the spacing of the measures on their own.
+    for (const [start, n] of runs.len) {
+      const last = spacings[start + n - 1][0];
+      spacings[start] = [multiRestSpacing(spacings[start][0], n, last), multiRestSpacing(spacings[start][1], n, last)];
+      for (let mi = start + 1; mi < start + n; mi++)
+        spacings[mi] = [absorbedSpacing(spacings[mi][0]), absorbedSpacing(spacings[mi][1])];
+    }
+  }
+  const spacingNormal = spacings.map((s) => s[0]);
+  const spacingFirstInSystem = spacings.map((s) => s[1]);
   const plans = planSystems(prep, spacingNormal, spacingFirstInSystem, lineWidth, forcedBreaks);
 
   const warn = opts.warn ?? (() => undefined);

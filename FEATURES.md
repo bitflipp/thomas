@@ -77,7 +77,7 @@ The numbers are occurrence counts in the file, so they show how much each featur
 - **Pedal:** 81 start and stop pairs, with a line and the "Ped." sign (`sign="yes" line="yes"`) and release marks. Pedal changes appear as adjacent stops and starts.
 - **Octave shifts:** 9 pairs, 8va (7, `down`) and 8vb (2, `up`) with a dashed line and a closing hook. Notes under the shift are written an octave away from the sounding pitch.
 - **Tempo marking:** metronome mark ♩ = 115 above the first system.
-- **Not used (but plan the architecture to allow them later):** words and expression text, rehearsal marks, repeats and voltas, mordents and turns, lyrics, chord symbols, fingering, key or time changes, cue notes, multi-measure rests.
+- **Not used (but plan the architecture to allow them later):** words and expression text, rehearsal marks, repeats and voltas, mordents and turns, lyrics, chord symbols, fingering, key or time changes, cue notes.
 
 ## 3. Cross-cutting layout requirements
 
@@ -105,6 +105,6 @@ All features listed in section 2 are implemented and rendered for `gewitter.musi
 
 - Courtesy clefs at the end of a system before a clef change on the next system (not drawn).
 - Mid-piece key signature changes: the signature is drawn at system starts, but not as a change mid-system.
-- Whole-measure rests are always drawn as a whole rest (no multi-measure rests).
+- Whole-measure rests are drawn as a whole rest; with `multirests=on` runs of two or more empty measures are drawn as one multi-measure rest.
 - Ledger lines for rests displaced far outside the staff.
 - **Cross-staff notes** (`examples/tango.txt`): notes of one voice written on the other staff of the piano, usually arpeggio figures whose beam runs between the staves. Imported as `\staff <id>` switches within the voice.

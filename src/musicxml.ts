@@ -34,6 +34,7 @@ export function importMusicXml(xml: string, opts: ImportOptions = {}): Score {
   if (root.tag !== 'score-partwise') throw new Error('only score-partwise MusicXML is supported');
   const meta = readMeta(root);
   const page = readPage(root);
+  if (/<multiple-rest[\s>]/.test(xml)) page.multiRests = true; // The file asks for multi-measure rests.
   const { staves, groups, parts } = readParts(root);
   const read = readMeasures(parts, { keepStems: opts.keepStems, keepBreaks: opts.keepBreaks, warn, staves });
   const measures = buildMeasures(read, warn);

@@ -209,6 +209,7 @@ export function drawSystemNotes(ctx: SysCtx): void {
   const nStaves = ctx.prep.score.staves.length;
   ledgerSegs = [];
   for (let mi = ctx.a; mi <= ctx.b; mi++) {
+    if (ctx.prep.absorbed?.has(mi)) continue; // A multi-measure rest swallowed this measure.
     // The phases run over all staves in turn: each needs what the previous drew on every staff.
     for (let s = 0; s < nStaves; s++) {
       positionEvents(ctx, mi, s);
@@ -887,7 +888,37 @@ function drawRest(ctx: SysCtx, e: EvL, s: number, ghost = false): void {
   if (ghost) for (let i = n0; i < ctx.prims[s].length; i++) ctx.prims[s][i].ghost = true;
 }
 
+/**
+ * A multi-measure rest: a thick bar with a short vertical stroke at each end across the middle of the
+ * staff, from the first column to just before the barline, and the number of measures above the staff.
+ */
+function drawMultiRest(ctx: SysCtx, e: EvL, s: number, count: number): void {
+  const sp = ctx.spacing[e.mi];
+  const endX = ctx.placed[e.mi].endX;
+  const right = sp.endClef[s] ? endX - sm.adv('gClefChange') - 2 * END_CLEF_GAP : endX;
+  const x0 = ctx.mx[e.mi] + sp.lead;
+  const x1 = ctx.mx[e.mi] + right - 1.2; // This leaves room for a final or double barline.
+  const cx = (x0 + x1) / 2;
+  const P = ctx.prims[s];
+  P.push({ t: 'line', x1: x0, x2: x1, y1: 2, y2: 2, w: 1 });
+  for (const x of [x0, x1]) P.push({ t: 'line', x1: x, x2: x, y1: 1, y2: 3, w: 0.16 });
+  pushBox(ctx, s, x0, x1, 1, 3);
+  const digits = [...String(count)].map((d) => `timeSig${d}`);
+  const total = digits.reduce((a, d) => a + sm.adv(d), 0);
+  let x = cx - total / 2;
+  for (const d of digits) {
+    P.push({ t: 'glyph', name: d, x, y: -1.6 });
+    x += sm.adv(d);
+  }
+  pushBox(ctx, s, cx - total / 2, cx + total / 2, -2.7, -0.5);
+}
+
 function drawRestPrims(ctx: SysCtx, e: EvL, s: number, ghost: boolean): void {
+  const run = e.ev.kind === 'rest' && e.ev.style === 'measure' ? ctx.prep.multi?.get(e.mi) : undefined;
+  if (run) {
+    drawMultiRest(ctx, e, s, run);
+    return;
+  }
   const base = e.te.ev.dur.base;
   const name = restGlyph(base, e.ev.kind === 'rest' && e.ev.style === 'measure');
   let y = base === 1 || (e.ev.kind === 'rest' && e.ev.style === 'measure') ? 1 : 2;
