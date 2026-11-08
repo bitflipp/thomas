@@ -129,6 +129,46 @@ function drawBarline(P: Prim[], ctx: SysCtx, kind: 'single' | 'double' | 'final'
   } else vertical(x, thin);
 }
 
+/**
+ * A repeat sign at x between two measures: a thick line with, on the side of the measure that is
+ * repeated, a thin line and two dots. `end` closes the measure on the left of x, `start` opens the one
+ * on the right; with both it is the usual `:||:`. The thick line hangs inside the measure that needs it.
+ */
+function drawRepeatBar(
+  P: Prim[],
+  x: number,
+  end: boolean,
+  start: boolean,
+  runs: [number, number][],
+  ctx: SysCtx,
+): void {
+  const thin = D.thinBarlineThickness as number;
+  const thick = D.thickBarlineThickness as number;
+  const sep = D.barlineSeparation as number;
+  const dotGap = D.repeatBarlineDotSeparation as number;
+  const dotW = sm.adv('repeatDot');
+  const cx = end && !start ? x - thick / 2 : start && !end ? x + thick / 2 : x;
+  for (const [first, last] of runs) {
+    const n0 = P.length;
+    const y0 = ctx.staffY[first];
+    const y1 = ctx.staffY[last] + STAFF_HEIGHT;
+    P.push({ t: 'line', x1: cx, x2: cx, y1: y0, y2: y1, w: thick });
+    for (const [on, dir] of [
+      [end, -1],
+      [start, 1],
+    ] as const) {
+      if (!on) continue;
+      const tx = cx + dir * (thick / 2 + sep + thin / 2);
+      P.push({ t: 'line', x1: tx, x2: tx, y1: y0, y2: y1, w: thin });
+      const dx = tx + dir * (thin / 2 + dotGap);
+      for (let s = first; s <= last; s++)
+        for (const y of [1.5, 2.5])
+          P.push({ t: 'glyph', name: 'repeatDot', x: dir < 0 ? dx - dotW : dx, y: ctx.staffY[s] + y });
+    }
+    tagFrom(P, n0, 'barline', oid({}));
+  }
+}
+
 /** The barline at the system start and one at the end of every measure, per run of joined staves. */
 function drawBarlines(P: Prim[], ctx: SysCtx): void {
   const { score } = ctx.prep;
@@ -144,10 +184,16 @@ function drawBarlines(P: Prim[], ctx: SysCtx): void {
     k: 'barline',
     o: oid({}),
   });
+  if (score.measures[ctx.a].repeatStart) drawRepeatBar(P, ctx.mx[ctx.a], false, true, runs, ctx);
   for (let mi = ctx.a; mi <= ctx.b; mi++) {
     if (barlineHidden(ctx.prep, mi)) continue;
     const x = ctx.mx[mi] + ctx.placed[mi].endX;
     const declared = score.measures[mi].barline ?? 'single';
+    const opens = mi < ctx.b && score.measures[mi + 1].repeatStart === true;
+    if (declared === 'repeat-end' || opens) {
+      drawRepeatBar(P, x, declared === 'repeat-end', opens, runs, ctx);
+      continue;
+    }
     const endOfPiece = mi === ctx.b && mi === score.measures.length - 1;
     const kind = declared === 'final' || endOfPiece ? 'final' : declared;
     for (const [first, last] of runs) {

@@ -30,6 +30,7 @@ export const CP: Record<string, number> = {
   accidentalParensLeft: 0xe26a,
   accidentalParensRight: 0xe26b,
   augmentationDot: 0xe1e7,
+  repeatDot: 0xe044,
   flag8thUp: 0xe240,
   flag8thDown: 0xe241,
   flag16thUp: 0xe242,

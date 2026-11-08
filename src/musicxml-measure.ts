@@ -142,7 +142,10 @@ function readPrint(r: Reader, el: XNode): void {
 function readBarline(r: Reader, el: XNode): void {
   if (!isFirstPart(r)) return;
   const style = text(el, 'bar-style');
-  if (style === 'light-heavy') r.sink.measure.barline = 'final';
+  const repeat = el.children.find((c) => c.tag === 'repeat')?.attrs.direction;
+  if (repeat === 'forward') r.sink.measure.repeatStart = true;
+  else if (repeat === 'backward') r.sink.measure.barline = 'repeat-end';
+  else if (style === 'light-heavy') r.sink.measure.barline = 'final';
   else if (style === 'light-light') r.sink.measure.barline = 'double';
 }
 

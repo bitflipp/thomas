@@ -179,7 +179,10 @@ export interface Measure {
   /** Key signature in fifths (negative: flats); set where it changes. */
   key?: number;
   breakBefore?: 'system' | 'page';
-  barline?: 'single' | 'final' | 'double';
+  /** The barline at the end of the measure; `repeat-end` closes a repeated section (dots on its left). */
+  barline?: 'single' | 'final' | 'double' | 'repeat-end';
+  /** A repeat sign at the start of the measure (dots on the right of a thick-thin barline). */
+  repeatStart?: true;
   staves: Record<string, StaffMeasure>;
 }
 

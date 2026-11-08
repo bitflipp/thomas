@@ -29,7 +29,7 @@ m5 break=system barline=final                 # break=system|page (before this m
 rescales the music and re-flows measures, systems and pages, while the page size, margins and the point sizes of title and footer
 stay fixed. `render --space <mm>` overrides it without editing the file.
 
-Header attributes of a measure: `time=B/T`, `key=N`, `break=system|page`, `barline=single|double|final`.
+Header attributes of a measure: `time=B/T`, `key=N`, `break=system|page`, `barline=single|double|final|repeat-end`, `start=repeat` (a repeat sign at the start of the measure).
 The number in `m<N>` is only a label (the measure's number is its position). Lines indented by two spaces belong to the preceding measure: `<staff>.<voice>: <items>`.
 Voice numbers are local to a staff (`s1.1`, `s1.2`, `s2.1`, ...). Every voice of a measure must fill the measure exactly
 (use `s` spacers to skip time). `check` validates this.

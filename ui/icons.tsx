@@ -241,6 +241,15 @@ export const Ui = {
         <path d="M15 4v16" stroke-width="4" />
       </>,
     ),
+  barRepeatEnd: () =>
+    S(
+      <>
+        <path d="M13 4v16" />
+        <path d="M18 4v16" stroke-width="4" />
+        <circle cx="7" cy="10" r="1.2" />
+        <circle cx="7" cy="14" r="1.2" />
+      </>,
+    ),
   accent: () => S(<path d="M5 8l14 4-14 4" />),
   marcato: () => S(<path d="M6 18l6-12 6 12" />),
   staccato: () => S(<circle cx="12" cy="12" r="2.6" />, true),

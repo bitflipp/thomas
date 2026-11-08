@@ -385,8 +385,19 @@ function MeasureSection({ mi }: { mi: number }) {
               ['single', 'single', <Ui.barSingle />],
               ['double', 'double', <Ui.barDouble />],
               ['final', 'final', <Ui.barFinal />],
+              ['repeat-end', 'repeat end', <Ui.barRepeatEnd />],
             ]}
             onChange={(v) => run((x) => C.setBarline(x, mi, v))}
+          />
+        </Row>
+        <Row label="Repeat start">
+          <Pick
+            value={m.repeatStart ? 'on' : 'off'}
+            opts={[
+              ['off', 'none'],
+              ['on', 'start'],
+            ]}
+            onChange={(v) => run((x) => C.setRepeatStart(x, mi, v === 'on'))}
           />
         </Row>
         <Row label="Break before">

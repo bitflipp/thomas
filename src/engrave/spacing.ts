@@ -88,6 +88,9 @@ export interface Column {
   minFrom: { j: number; d: number }[]; // Each entry requires at least `d` to the right of column `j` (the stems of a cross-staff beam).
 }
 
+/** Width a repeat sign takes beside its barline: the thick and thin lines and the dots. */
+export const REPEAT_WIDTH = 1.4;
+
 /** What system layout needs to know about one measure: its columns and how narrow or wide it can get. */
 export interface MeasureSpacing {
   mi: number;
@@ -229,8 +232,12 @@ export function spaceMeasure(prep: Prepared, mi: number): MeasureSpacing {
     mi,
     cols,
     endIdeal,
-    lead: 0.9 + prefix + Math.max(0, ...cols.slice(0, 1).flatMap((c) => c.L)),
-    endTrail: 0.75,
+    lead:
+      0.9 +
+      prefix +
+      (prep.score.measures[mi].repeatStart ? REPEAT_WIDTH : 0) +
+      Math.max(0, ...cols.slice(0, 1).flatMap((c) => c.L)),
+    endTrail: 0.75 + (prep.score.measures[mi].barline === 'repeat-end' ? REPEAT_WIDTH : 0),
     endReq,
     endClef: clefAtStart(prep.score, mi + 1).map((c) => c !== undefined),
     prefix,

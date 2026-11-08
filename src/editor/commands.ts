@@ -1119,10 +1119,22 @@ export function setKeySig(score: Score, mi: number, fifths: number | undefined):
   });
 }
 
-export function setBarline(score: Score, mi: number, b: 'single' | 'double' | 'final' | undefined): Score {
+export function setBarline(
+  score: Score,
+  mi: number,
+  b: 'single' | 'double' | 'final' | 'repeat-end' | undefined,
+): Score {
   return edit(score, (d) => {
     if (!b || b === 'single') delete d.measures[mi].barline;
     else d.measures[mi].barline = b;
+  });
+}
+
+/** Puts a repeat sign at the start of measure `mi`, or takes it away. */
+export function setRepeatStart(score: Score, mi: number, on: boolean): Score {
+  return edit(score, (d) => {
+    if (on) d.measures[mi].repeatStart = true;
+    else delete d.measures[mi].repeatStart;
   });
 }
 

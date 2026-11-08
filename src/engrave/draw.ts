@@ -46,7 +46,7 @@ export interface SysCtx {
   prims: Prim[][]; // There is one list per staff, in staff-local coordinates.
   sky: Skyline[];
   staffY: number[]; // This is the y of each staff's top line (system-local).
-  barlines: { x: number; type: 'single' | 'final' | 'double'; mi: number }[];
+  barlines: { x: number; type: 'single' | 'final' | 'double' | 'repeat-end'; mi: number }[];
   tupletBoxes: [number, number][];
   /** Staff-to-staff gap (bottom of staff s-1 to top of staff s) that cross-staff geometry is drawn for; finalize must keep it */
   gap: number[];
