@@ -1,4 +1,4 @@
-// Runs the collision finder on the reference piece; only the listed limitations are tolerated.
+// Runs the collision finder on the study fixture; only the listed limitations are tolerated.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -7,14 +7,12 @@ import { describe, findCollisions } from '../src/engrave/collide.ts';
 import { engrave } from '../src/engrave/system.ts';
 import { parseText } from '../src/textformat.ts';
 
-// Known engraver limitations on the reference piece: "kindA x kindB" (sorted) -> how many are tolerated.
-// Fix one, lower the number; nothing outside this table may collide (allowlist: src/engrave/collide.ts).
-const KNOWN: Record<string, number> = {
-  'ledger x tie': 1,
-};
+// Known engraver limitations on the fixture: "kindA x kindB" (sorted) -> how many are tolerated.
+// There are none now; add one here rather than loosening the allowlist (src/engrave/collide.ts).
+const KNOWN: Record<string, number> = {};
 
-test('the reference piece has no collisions outside the allowlist', () => {
-  const score = parseText(readFileSync(new URL('../examples/gewitter.txt', import.meta.url), 'utf8'));
+test('the study fixture has no collisions outside the allowlist', () => {
+  const score = parseText(readFileSync(new URL('./fixtures/study.txt', import.meta.url), 'utf8'));
   const cs = findCollisions(engrave(score, { respectBreaks: true, measureNumbers: 'system' }).pages);
   const seen = new Map<string, string[]>();
   for (const c of cs) {

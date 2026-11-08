@@ -1,0 +1,51 @@
+# music typesetter score
+page 210x297 margin=10 space=1.75
+staff s1 clef=G2 name="Piano"
+staff s2 clef=F4 name="Piano"
+brace s1 s2
+
+m1 time=4/4 key=0
+  s1.1: \tempo 4=124 \p= (e5:4 d5 c5:2~
+  s2.1: \ped <c3 g3>:2 \unped <a2~ e3~>
+m2
+  s1.1: c5:4) r r d5;
+  s2.1: <a2 e3>:2 &g3:4 f3
+m3
+  s1.1: [\mf c5:8 d5 e5 f5] g5:4-> e5-.
+  s1.2: g4:2 c4
+  s2.1: c3:1
+m4
+  s1.1: 3:2{c5:8 d5 e5} 5:4{f5:16 e5 d5 e5 f5} trem2{g5:4 e5}
+  s2.1: c3:4 g3 c3 g3
+m5
+  s1.1: R:1
+  s2.1: c3:4 r:16 \< d3 e3 d3 c3:2
+m6
+  s1.1: R:1
+  s2.1: d3:16 e3 d3 e3 5:4{\! d3 e3 d3 e3 d3} c3:2
+m7 break=system
+  s1.1: c5:2 d5
+  s1.2: (2e4:4 f4 g4 a4
+  s2.1: c3:1
+m8
+  s1.1: g4:4 e5 d5:2
+  s1.2: g4:4)2 r:2 r:4
+  s2.1: g2:1
+m9
+  s1.1: \tempo 4=96 \acc{d5:8} c5:4 e5+tr \grace{b4:16 c5:16} d5 e5+mo
+  s2.1: c3:2 \clef G2 e4
+m10
+  s1.1: \8va c6:4 d6 e6 f6 \8off
+  s2.1: \clef F4 c3:1
+m11
+  s1.1: c5:4"Hel-" d5"-lo" e5:2"world"_
+  s2.1: c3:2 g2
+m12 start=repeat
+  s1.1: e5:2 d5
+  s2.1: c3:1
+m13 barline=repeat-end ending=1
+  s1.1: c5:2 e5
+  s2.1: c3:1
+m14 barline=final ending=2
+  s1.1: R:1
+  s2.1: [c3:16 e3 g3 \staff s1 c4 e4 g4 e5 g5] \staff s2 r:2

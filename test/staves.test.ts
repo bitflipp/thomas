@@ -7,7 +7,7 @@ import * as C from '../src/editor/commands.ts';
 import { parseText as parse } from '../src/textformat.ts';
 
 test('staves: instrument presets, moveStaffTo, duplicateStaff', () => {
-  const s = parse(readFileSync('examples/gewitter.txt', 'utf8'));
+  const s = parse(readFileSync(new URL('./fixtures/study.txt', import.meta.url), 'utf8'));
   const n = s.staves.length;
   const a = C.addInstrument(s, 'satb', 0);
   assert.equal(a.staves.length, n + 4);

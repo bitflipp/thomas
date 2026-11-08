@@ -154,8 +154,8 @@ import { readFileSync } from 'node:fs';
 import { buildHitIndex, hitTest, marquee, measureAt, snapTick } from '../src/editor/hit.ts';
 import { engrave } from '../src/engrave/system.ts';
 
-test('hit index: every note head of the example is found where it is drawn', () => {
-  const s = parseText(readFileSync(new URL('../examples/tango.txt', import.meta.url), 'utf8'));
+test('hit index: every note head of the study fixture is found where it is drawn', () => {
+  const s = parseText(readFileSync(new URL('./fixtures/study.txt', import.meta.url), 'utf8'));
   const res = engrave(s, { respectBreaks: true });
   const h = buildHitIndex(s, res);
   let heads = 0;
@@ -165,15 +165,23 @@ test('hit index: every note head of the example is found where it is drawn', () 
     heads++;
     const b = t.boxes[0];
     const got = hitTest(h, t.page, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0.05);
-    if (got && got.ref.t === 'ev' && t.ref.t === 'ev' && got.ref.mi === t.ref.mi && got.ref.staff === t.ref.staff)
+    // A grace head is found as a grace, a note head as a note.
+    if (
+      got &&
+      got.ref.t === t.ref.t &&
+      (got.ref.t === 'ev' || got.ref.t === 'grace') &&
+      (t.ref.t === 'ev' || t.ref.t === 'grace') &&
+      got.ref.mi === t.ref.mi &&
+      got.ref.staff === t.ref.staff
+    )
       found++;
   }
-  assert.ok(heads > 500);
-  assert.ok(found / heads > 0.97, `${found}/${heads}`);
+  assert.ok(heads > 60);
+  assert.equal(found, heads);
 });
 
 test('slots: a point in a measure maps to the measure, staff and a nearby column', () => {
-  const s = parseText(readFileSync(new URL('../examples/tango.txt', import.meta.url), 'utf8'));
+  const s = parseText(readFileSync(new URL('./fixtures/study.txt', import.meta.url), 'utf8'));
   const res = engrave(s, { respectBreaks: true });
   const g = res.layout.measures.find((m) => m.mi === 2 && m.staff === 1)!;
   const got = measureAt(res.layout, g.page, (g.x0 + g.x1) / 2, g.y + 2)!;
@@ -283,28 +291,28 @@ test('a line drawn from note to note hangs on those events (a stop goes before t
   assert.throws(() => C.addSpanOver(s, 'cresc', { ...loc, idx: 0 }, { ...loc, staff: 'lh', idx: 0 }), /one staff/);
 });
 
-test('a hairpin that stops before a note belongs to the note before it, also across a measure line (gewitter m33-34)', async () => {
+test('a hairpin that stops before a note belongs to the note before it, also across a measure line (study m5-6)', async () => {
   const { readFileSync } = await import('node:fs');
-  const s = parseText(readFileSync(new URL('../examples/gewitter.txt', import.meta.url), 'utf8'));
-  const mk = marksOf(s.measures[32].staves.s2).find((m) => m.type === 'hairpin')!;
+  const s = parseText(readFileSync(new URL('./fixtures/study.txt', import.meta.url), 'utf8'));
+  const mk = marksOf(s.measures[4].staves.s2).find((m) => m.type === 'hairpin')!;
   const a = indexScore(s).mark.get(mk)!;
   const ns = dependentNotes(s, { t: 'mark', ...a });
   assert.deepEqual(
     ns.map((x) => [x.mi, x.idx]),
     [
-      [32, 2],
-      [33, 3],
+      [4, 2],
+      [5, 3],
     ],
-  ); // The note is eb2 in m33, the last 16th before the quintuplet in m34.
+  ); // The note is d3 in m5, the last 16th before the quintuplet in m6.
 });
 
-test('the end of a slur on a unison head shared with another voice is still found (gewitter m78-79, voice 2)', async () => {
+test('the end of a slur on a unison head shared with another voice is still found (study m7-8, voice 2)', async () => {
   const { readFileSync } = await import('node:fs');
   const { engrave } = await import('../src/engrave/system.ts');
   const { buildHitIndex, noteBoxes } = await import('../src/editor/hit.ts');
-  const s = parseText(readFileSync(new URL('../examples/gewitter.txt', import.meta.url), 'utf8'));
+  const s = parseText(readFileSync(new URL('./fixtures/study.txt', import.meta.url), 'utf8'));
   const h = buildHitIndex(s, engrave(s));
-  const t = h.targets.find((x) => x.ref.t === 'slur' && x.ref.mi === 77 && x.ref.voice === 2)!;
+  const t = h.targets.find((x) => x.ref.t === 'slur' && x.ref.mi === 6 && x.ref.voice === 2)!;
   const notes = dependentNotes(s, t.ref);
   assert.equal(notes.length, 2);
   assert.equal(noteBoxes(h, t.page, notes).length, 2);

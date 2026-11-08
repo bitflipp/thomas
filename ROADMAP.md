@@ -30,13 +30,12 @@ Repeat signs (`Measure.repeatStart`, `barline=repeat-end`) and voltas (`Measure.
 - **Shortcuts and select similar (done):** `F` toggles a fermata, `Shift+T` a trill; Properties has "All fermatas/trills/graces" buttons (`similarTo(..., by)`). Graces have no key yet.
 
 ## Gaps in the finished features
-- No round-trip test of the reference piece covers repeats, voltas or lyrics (they have their own tests in `test/repeats.test.ts` and `test/lyrics.test.ts`), and `test/incremental.test.ts` does not generate edits on them: voltas and lyrics are drawn with the marks, which are always redrawn, so they should be safe, but nothing checks it.
 - A volta bracket across a system break and a repeat start inside a multi-measure rest run are untested.
 
 ## Per-feature checklist
 1. Model field and `validate`.
 2. Text writer and parser (lossless), `FORMAT.md`.
-3. MusicXML importer; regenerate `examples/gewitter.txt` if its output changes.
+3. MusicXML importer.
 4. Engraver: tag prims (`tagFrom`), skyline, collision `ALLOW` pairs, `measureSignature` if records change.
 5. Editor: commands in `commands.ts`, hit testing, Properties, shortcuts.
 6. Playback if it affects sound or time.

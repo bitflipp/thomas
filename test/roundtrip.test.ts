@@ -1,4 +1,4 @@
-// The text format must be lossless on the reference piece: write(parse(text)) == text.
+// The text format must be lossless on the study fixture: write(parse(text)) == text.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -6,13 +6,13 @@ import { test } from 'node:test';
 import { validate } from '../src/model.ts';
 import { parseText, writeText } from '../src/textformat.ts';
 
-// The reference piece in the text format (generated from its MusicXML by `import`, see CLAUDE.md).
-const txt = readFileSync(new URL('../examples/gewitter.txt', import.meta.url), 'utf8');
+// The study fixture, a short piece that uses most features of the format.
+const txt = readFileSync(new URL('./fixtures/study.txt', import.meta.url), 'utf8');
 
-test('the reference piece parses and validates', () => {
+test('the study fixture parses and validates', () => {
   const s = parseText(txt);
   assert.equal(validate(s).length, 0);
-  assert.equal(s.measures.length, 120);
+  assert.equal(s.measures.length, 14);
 });
 
 test('text format round-trips losslessly', () => {

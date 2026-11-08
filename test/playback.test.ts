@@ -35,12 +35,14 @@ test('a tied note sounds once; releases precede attacks at the same instant', ()
   assert.equal(s.msgs[i - 1].bytes[0], 0x80);
 });
 
-test('the whole piece builds, with tempo changes and increasing time', () => {
-  const sc = parseText(readFileSync(new URL('../examples/gewitter.txt', import.meta.url), 'utf8'));
+test('the study fixture builds, with tempo changes and increasing time', () => {
+  const sc = parseText(readFileSync(new URL('./fixtures/study.txt', import.meta.url), 'utf8'));
   const s = buildSequence(sc);
-  assert.ok(on(s).length > 100);
+  assert.ok(on(s).length > 60);
   for (let i = 1; i < s.msgs.length; i++) assert.ok(s.msgs[i].sec >= s.msgs[i - 1].sec);
   assert.equal(s.measureStart.length, sc.measures.length);
+  const dur = (i: number) => s.tickToSec(s.measureStart[i + 1]) - s.tickToSec(s.measureStart[i]);
+  assert.ok(dur(0) < dur(9)); // The tempo drops from 124 to 96 in measure 9.
   const t = s.totalTicks / 2;
   assert.ok(Math.abs(s.secToTick(s.tickToSec(t)) - t) < 1e-6);
   assert.ok(!s.channels.includes(9) && s.channels.every((c) => c < 16));

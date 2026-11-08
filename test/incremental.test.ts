@@ -15,7 +15,7 @@ import type { Score } from '../src/model.ts';
 import { parseText } from '../src/textformat.ts';
 
 const load = (name: string): Score =>
-  parseText(readFileSync(new URL(`../examples/${name}.txt`, import.meta.url), 'utf8'));
+  parseText(readFileSync(new URL(`./fixtures/${name}.txt`, import.meta.url), 'utf8'));
 
 /** The primitive tags `o` and `g` number objects in the order they were first seen, which differs between runs; renumber by first appearance. */
 function normalize(res: Engraved): unknown {
@@ -148,7 +148,7 @@ function randomEdit(score: Score, rand: () => number): { score: Score; what: str
   }
 }
 
-for (const name of ['gewitter', 'tango']) {
+for (const name of ['study', 'ornaments']) {
   test(`incremental engraving of ${name} equals a fresh one after random edits`, () => {
     const rand = rng(name.length * 7919);
     const cache = createEngraveCache();
@@ -174,7 +174,7 @@ for (const name of ['gewitter', 'tango']) {
 
 test('changing the staves or the page drops what was cached', () => {
   const cache = createEngraveCache();
-  const score = load('tango');
+  const score = load('study');
   same(score, cache, 'initial');
   same({ ...score, page: { ...score.page, staffSpace: score.page.staffSpace * 1.1 } }, cache, 'bigger staff space');
   same(C.setStaffClef(score, score.staves[0].id, { sign: 'F', line: 4 }), cache, 'clef of the first staff');

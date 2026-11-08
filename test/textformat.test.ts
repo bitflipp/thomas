@@ -133,17 +133,14 @@ test('writeTextMap: same text as writeText, with the places of events, marks, tu
   const { readFileSync } = await import('node:fs');
   const { writeTextMap } = await import('../src/textformat.ts');
   const { refKey } = await import('../src/editor/addr.ts');
-  const s = parseText(readFileSync(new URL('../examples/gewitter.txt', import.meta.url), 'utf8'));
+  const s = parseText(readFileSync(new URL('./fixtures/study.txt', import.meta.url), 'utf8'));
   const { text, ranges } = writeTextMap(s);
   assert.equal(text, writeText(s));
   const at = (key: string) => (ranges.get(key) ?? []).map(([a, b]) => text.slice(a, b));
-  // The text being addressed is measure 33, s2 voice 1: `d2:4-^_) r:16 \< eb2 d2 eb2`. Each ref
+  // The text being addressed is measure 5, s2 voice 1: `c3:4 r:16 \< d3 e3 d3 c3:2`. Each ref
   // below must map to exactly the characters of its object in that text.
-  assert.deepEqual(at(refKey({ t: 'ev', mi: 32, staff: 's2', voice: 1, idx: 0 })), ['d2:4-^_)']);
-  assert.deepEqual(at(refKey({ t: 'mark', mi: 32, staff: 's2', voice: 1, idx: 2, k: 0 })), ['\\<']);
-  assert.deepEqual(
-    at(refKey({ t: 'tuplet', mi: 32, staff: 's1', voice: 1, idx: 0, depth: 0 })).map((x) => x.slice(0, 8)),
-    ['12:4(nob'],
-  );
-  assert.match(at(refKey({ t: 'measure', mi: 32 }))[0], /^m33\n {2}s1\.1: .*\n {2}s2\.1: .*d2 eb2$/);
+  assert.deepEqual(at(refKey({ t: 'ev', mi: 4, staff: 's2', voice: 1, idx: 0 })), ['c3:4']);
+  assert.deepEqual(at(refKey({ t: 'mark', mi: 4, staff: 's2', voice: 1, idx: 2, k: 0 })), ['\\<']);
+  assert.deepEqual(at(refKey({ t: 'tuplet', mi: 3, staff: 's1', voice: 1, idx: 0, depth: 0 })), ['3:2{c5:8 d5 e5}']);
+  assert.match(at(refKey({ t: 'measure', mi: 4 }))[0], /^m5\n {2}s1\.1: .*\n {2}s2\.1: .*c3:2$/);
 });
