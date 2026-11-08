@@ -10,13 +10,10 @@ Engraving only, switched on with `multirests=on` (Score tab: "Multi-rests"; a Mu
 - Selecting a swallowed measure in the editor: clicking the bar selects the first measure of the run; the others have no width on the page.
 - Marks inside a run (rehearsal marks, tempo changes) end the run for now; a rehearsal mark could sit over the bar.
 
-## 2. Repeats and voltas
-- **Model:** extend `Measure` with `startBarline` (single, repeat-start) and the end barline with `repeat-end` plus a repeat count; add `Measure.ending?: { numbers: number[]; closed: boolean }` for voltas (a bracket spanning measures that share an ending number). Later: segno, coda, D.C./D.S. text jumps.
-- **Text format:** header attributes on the measure line (`barline=repeat-end`, `start=repeat`, `ending=1,2`).
-- **MusicXML:** read `<repeat>`, `<ending>` and `heavy-light`/`light-heavy`/`dashed` barline styles (`readBarline` in `musicxml-measure.ts` currently drops everything but final and double).
-- **Engraver:** repeat barlines with dots (reserve width in `spacing.ts`; `drawBarline` in `finalize.ts` also draws a start barline), a volta bracket spanner across measures and systems (a new `spanners.ts` unit like slurs, with a skyline box), brace/group handling for the thick-thin lines.
-- **Editor:** barline picker gets repeat start/end; a Volta section in the measure properties.
-- **Playback:** unroll repeats and voltas into a play order, then map playback ticks back to score ticks for the playhead. The tempo map and `measureStarts` work on the unrolled sequence.
+## 2. Repeats and voltas (done, except the items below)
+Repeat signs (`Measure.repeatStart`, `barline=repeat-end`) and voltas (`Measure.ending`) are in the model, text format, MusicXML importer, engraver (`drawRepeatBar` in `finalize.ts`, `volta.ts`) and editor.
+- **Open:** repeat counts (`x3`), segno, coda and D.C./D.S. text jumps; `dashed`/`heavy-light` MusicXML barline styles; a start repeat at a system start is drawn after the clef and signatures, not before them.
+- **Playback (decided against for now):** repeats and voltas are ignored, the piece plays once front to back. An unrolled play order with a tick map back to the score would be the way, if it is ever needed.
 
 ## 3. Chord symbols
 - **Model:** `Mark` variant `{ type: 'chord', root, alter, quality, extensions, bass? }`, stored structurally (not as a string) so it can be transposed, with a free-text fallback for unparsed symbols.
