@@ -97,6 +97,37 @@ const sm = loadSmufl();
 // (Béziers sampled at 6-8 points, which is plenty at the 0.07 tolerance). Rings of a glyph are cached by name.
 const glyphRings = new Map<string, number[][]>();
 
+/** Appends 8 points of the cubic Bézier from (x0, y0) with control points (x1, y1), (x2, y2) to (x3, y3) to `out`. */
+function sampleCubic(
+  out: number[],
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  x3: number,
+  y3: number,
+): void {
+  for (let t = 1; t <= 8; t++) {
+    const u = t / 8;
+    const v = 1 - u;
+    out.push(
+      v * v * v * x0 + 3 * v * v * u * x1 + 3 * v * u * u * x2 + u * u * u * x3,
+      v * v * v * y0 + 3 * v * v * u * y1 + 3 * v * u * u * y2 + u * u * u * y3,
+    );
+  }
+}
+
+/** Appends 6 points of the quadratic Bézier from (x0, y0) with control point (x1, y1) to (x2, y2) to `out`. */
+function sampleQuad(out: number[], x0: number, y0: number, x1: number, y1: number, x2: number, y2: number): void {
+  for (let t = 1; t <= 6; t++) {
+    const u = t / 6;
+    const v = 1 - u;
+    out.push(v * v * x0 + 2 * v * u * x1 + u * u * x2, v * v * y0 + 2 * v * u * y1 + u * u * y2);
+  }
+}
+
 /**
  * Flattens SVG path data (M, L, H, V, C, Q, Z, absolute and relative) into one polygon ring per subpath, as flat
  * [x, y, ...] arrays.
@@ -140,34 +171,15 @@ function flattenPath(d: string): number[][] {
         cur.push(cx, cy);
         break;
       case 'C': {
-        const x1 = num();
-        const y1 = num();
-        const x2 = num();
-        const y2 = num();
-        const x3 = num();
-        const y3 = num();
-        for (let t = 1; t <= 8; t++) {
-          const u = t / 8;
-          const v = 1 - u;
-          cur.push(
-            v * v * v * cx + 3 * v * v * u * x1 + 3 * v * u * u * x2 + u * u * u * x3,
-            v * v * v * cy + 3 * v * v * u * y1 + 3 * v * u * u * y2 + u * u * u * y3,
-          );
-        }
+        const [x1, y1, x2, y2, x3, y3] = [num(), num(), num(), num(), num(), num()];
+        sampleCubic(cur, cx, cy, x1, y1, x2, y2, x3, y3);
         cx = x3;
         cy = y3;
         break;
       }
       case 'Q': {
-        const x1 = num();
-        const y1 = num();
-        const x2 = num();
-        const y2 = num();
-        for (let t = 1; t <= 6; t++) {
-          const u = t / 6;
-          const v = 1 - u;
-          cur.push(v * v * cx + 2 * v * u * x1 + u * u * x2, v * v * cy + 2 * v * u * y1 + u * u * y2);
-        }
+        const [x1, y1, x2, y2] = [num(), num(), num(), num()];
+        sampleQuad(cur, cx, cy, x1, y1, x2, y2);
         cx = x2;
         cy = y2;
         break;

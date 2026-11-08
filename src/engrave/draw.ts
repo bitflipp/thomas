@@ -462,18 +462,7 @@ function drawCrossBeam(ctx: SysCtx, beam: BeamL, home: number, levelsFor: (e: Ev
   const inner = (maxLv - 1) * (bt + bs) + bt;
   const gs = notes.map((n) => must(geomOf.get(n)));
   const off = notes.map((n) => staffOffset(ctx, home, n.staff));
-  const MIN = 3.0;
-  /** The admissible range for the y of the beam's top edge, narrowed by every stem below. */
-  let lo = Number.NEGATIVE_INFINITY;
-  let hi = Number.POSITIVE_INFINITY;
-  notes.forEach((n, i) => {
-    const g = gs[i];
-    g.stemX = n.stem === 'up' ? g.x + g.shift + g.hw - STEM_T / 2 : g.x + g.shift + STEM_T / 2;
-    // Stems run to the outer edge of the beam stack (hence `inner`): its bottom for the upper staff's
-    // notes, its top for the lower staff's. MIN keeps the stems a sensible minimum length.
-    if (n.stem === 'down') lo = Math.max(lo, g.yBot + off[i] + MIN - inner);
-    else hi = Math.min(hi, g.yTop + off[i] - MIN);
-  });
+  const { lo, hi } = crossBeamRange(notes, gs, off, inner);
   // The beam lives in the gap between the staves: centre it in the admissible range so that
   // the stems of both staves have the same slack.
   const a = Number.isFinite(lo) && Number.isFinite(hi) ? (lo + hi) / 2 : Number.isFinite(lo) ? lo : hi;
@@ -494,15 +483,7 @@ function drawCrossBeam(ctx: SysCtx, beam: BeamL, home: number, levelsFor: (e: Ev
   const n0 = ctx.prims[home].length;
   for (let lv = 1; lv <= maxLv; lv++) {
     const y0 = a + (lv - 1) * (bt + bs);
-    let i = 0;
-    while (i < notes.length) {
-      if (levelsFor(notes[i]) < lv) {
-        i++;
-        continue;
-      }
-      let j = i;
-      while (j + 1 < notes.length && levelsFor(notes[j + 1]) >= lv && !restBetween(notes[j], notes[j + 1], beam.evs))
-        j++;
+    for (const [i, j] of beamRuns(notes, lv, levelsFor, beam.evs)) {
       let xa: number;
       let xb: number;
       if (j > i) {
@@ -522,10 +503,51 @@ function drawCrossBeam(ctx: SysCtx, beam: BeamL, home: number, levelsFor: (e: Ev
         t: 'path',
         d: `M${xa.toFixed(3)} ${y0.toFixed(3)}L${xb.toFixed(3)} ${y0.toFixed(3)}L${xb.toFixed(3)} ${(y0 + bt).toFixed(3)}L${xa.toFixed(3)} ${(y0 + bt).toFixed(3)}Z`,
       });
-      i = j + 1;
     }
   }
   tagFrom(ctx.prims[home], n0, 'beam', beam);
+}
+
+/**
+ * The admissible range `[lo, hi]` for the y of a cross-staff beam's top edge (in the voice's staff), narrowed by every
+ * stem, and sets each note's `stemX` on the way. `off` is the offset of each note's staff to the voice's, `inner` the
+ * height of the beam stack. The range is empty (`lo > hi`) when the gap between the staves is too small; a side
+ * without stems stays infinite.
+ */
+function crossBeamRange(notes: EvL[], gs: Geom[], off: number[], inner: number): { lo: number; hi: number } {
+  const MIN = 3.0;
+  let lo = Number.NEGATIVE_INFINITY;
+  let hi = Number.POSITIVE_INFINITY;
+  notes.forEach((n, i) => {
+    const g = gs[i];
+    g.stemX = n.stem === 'up' ? g.x + g.shift + g.hw - STEM_T / 2 : g.x + g.shift + STEM_T / 2;
+    // Stems run to the outer edge of the beam stack (hence `inner`): its bottom for the upper staff's
+    // notes, its top for the lower staff's. MIN keeps the stems a sensible minimum length.
+    if (n.stem === 'down') lo = Math.max(lo, g.yBot + off[i] + MIN - inner);
+    else hi = Math.min(hi, g.yTop + off[i] - MIN);
+  });
+  return { lo, hi };
+}
+
+/**
+ * The runs of a beam group that carry beam level `level`, as inclusive note index pairs `[i, j]`. A note with fewer
+ * levels and a rest between two notes (looked up in the group's events `evs`) end a run; a lone note is a run with
+ * `i === j` (it gets a hook).
+ */
+function beamRuns(notes: EvL[], level: number, levelsFor: (e: EvL) => number, evs: EvL[]): [number, number][] {
+  const runs: [number, number][] = [];
+  let i = 0;
+  while (i < notes.length) {
+    if (levelsFor(notes[i]) < level) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j + 1 < notes.length && levelsFor(notes[j + 1]) >= level && !restBetween(notes[j], notes[j + 1], evs)) j++;
+    runs.push([i, j]);
+    i = j + 1;
+  }
+  return runs;
 }
 
 /**
@@ -1094,39 +1116,42 @@ function drawBeamGroup(ctx: SysCtx, notes: EvL[], s: number, levelsFor: (e: EvL)
   }
   const line = clearBeamLine(ctx, notes, s, gs, beamLineThroughTips(gs, up, stemLength(maxLv)), up, maxLv);
   const lineY = (x: number) => line.a + line.m * (x - line.x0);
-  const thickness = D.beamThickness as number;
-  const spacing = D.beamSpacing as number;
-  const inward = up ? 1 : -1;
   notes.forEach((n, i) => {
     gs[i].stemTip = lineY(gs[i].stemX);
     drawStem(ctx, n, gs[i], s, false);
   });
-  /**
-   * Beam polygons: one parallelogram per beam level and run of notes that has that level, offset
-   * from the primary beam by `beamSpacing`; the shorter levels may end in a hook.
-   */
+  const firstBeamPrim = ctx.prims[s].length;
+  drawBeamLevels(ctx, notes, gs, s, lineY, up, maxLv, levelsFor);
+  tagFrom(ctx.prims[s], firstBeamPrim, 'beam', notes[0].beam);
+  pushBeamSkyline(ctx, s, gs, lineY, up, maxLv);
+}
+
+/**
+ * Beam polygons of a group: one parallelogram per beam level and run of notes that has that level, offset from the
+ * primary beam by `beamSpacing`; a lone note's level ends in a hook. `lineY` is the primary beam's y at an x.
+ */
+function drawBeamLevels(
+  ctx: SysCtx,
+  notes: EvL[],
+  gs: Geom[],
+  s: number,
+  lineY: (x: number) => number,
+  up: boolean,
+  maxLv: number,
+  levelsFor: (e: EvL) => number,
+): void {
+  const thickness = D.beamThickness as number;
+  const spacing = D.beamSpacing as number;
+  const inward = up ? 1 : -1;
   const poly = (xa: number, xb: number, off: number) => {
     const ya = lineY(xa) + inward * off;
     const yb = lineY(xb) + inward * off;
     return `M${xa.toFixed(3)} ${ya.toFixed(3)}L${xb.toFixed(3)} ${yb.toFixed(3)}L${xb.toFixed(3)} ${(yb + inward * thickness).toFixed(3)}L${xa.toFixed(3)} ${(ya + inward * thickness).toFixed(3)}Z`;
   };
-  const firstBeamPrim = ctx.prims[s].length;
   const hookLength = 1.1;
   for (let level = 1; level <= maxLv; level++) {
     const off = (level - 1) * (thickness + spacing);
-    let i = 0;
-    while (i < notes.length) {
-      if (levelsFor(notes[i]) < level) {
-        i++;
-        continue;
-      }
-      let j = i;
-      while (
-        j + 1 < notes.length &&
-        levelsFor(notes[j + 1]) >= level &&
-        !restBetween(notes[j], notes[j + 1], must(notes[0].beam).evs)
-      )
-        j++;
+    for (const [i, j] of beamRuns(notes, level, levelsFor, must(notes[0].beam).evs)) {
       if (j > i) ctx.prims[s].push({ t: 'path', d: poly(gs[i].stemX - STEM_T / 2, gs[j].stemX + STEM_T / 2, off) });
       else {
         const toRight = hookPointsRight(notes, i);
@@ -1134,12 +1159,22 @@ function drawBeamGroup(ctx: SysCtx, notes: EvL[], s: number, levelsFor: (e: EvL)
         const xb = toRight ? gs[i].stemX + hookLength : gs[i].stemX + STEM_T / 2;
         ctx.prims[s].push({ t: 'path', d: poly(xa, xb, off) });
       }
-      i = j + 1;
     }
   }
-  tagFrom(ctx.prims[s], firstBeamPrim, 'beam', notes[0].beam);
-  // Skyline: the beam's extent per pair of stems, since a slanted beam occupies a trapezoid, not
-  // a box; one box per pair keeps the over-approximation small.
+}
+
+/**
+ * The beam's skyline: its extent per pair of stems, since a slanted beam occupies a trapezoid, not a box; one box per
+ * pair keeps the over-approximation small.
+ */
+function pushBeamSkyline(
+  ctx: SysCtx,
+  s: number,
+  gs: Geom[],
+  lineY: (x: number) => number,
+  up: boolean,
+  maxLv: number,
+): void {
   const inner = beamStackHeight(maxLv);
   for (let i = 0; i + 1 < gs.length; i++) {
     const ya = lineY(gs[i].stemX);
@@ -1455,6 +1490,35 @@ function planTuplet(
   return { bracket, showNum, above, label: String(t.label ?? t.actual), ya, yb, x0, x1, bx0, bx1, cx, cy, box };
 }
 
+/**
+ * A closed circle of radius `rad` around (`cx`, `cy`) as four cubic Béziers, clockwise on screen, or counter-clockwise
+ * when `ccw` is set (a ring is an outer circle and an inner one of the opposite direction).
+ */
+function circlePath(cx: number, cy: number, rad: number, ccw: boolean): string {
+  const K = 0.5523; // This constant approximates a quarter circle with a cubic Bezier curve.
+  const k = rad * K;
+  const pts: [number, number][] = [
+    [cx + rad, cy],
+    [cx, cy + rad],
+    [cx - rad, cy],
+    [cx, cy - rad],
+  ];
+  if (ccw) pts.reverse().unshift(pts.pop() as [number, number]);
+  let d = `M${round3(pts[0][0])} ${round3(pts[0][1])}`;
+  for (let i = 0; i < 4; i++) {
+    const [p, q] = [pts[i], pts[(i + 1) % 4]];
+    const [tx, ty] = [(q[0] - p[0]) / rad, (q[1] - p[1]) / rad];
+    // Control points leave p along the tangent, which is perpendicular to the radius at p.
+    const rp = [(p[0] - cx) / rad, (p[1] - cy) / rad];
+    const rq = [(q[0] - cx) / rad, (q[1] - cy) / rad];
+    const sgn = tx * -rp[1] + ty * rp[0] > 0 ? 1 : -1; // This is the direction of travel.
+    const c1 = [p[0] + sgn * -rp[1] * k, p[1] + sgn * rp[0] * k];
+    const c2 = [q[0] - sgn * -rq[1] * k, q[1] - sgn * rq[0] * k];
+    d += `C${round3(c1[0])} ${round3(c1[1])} ${round3(c2[0])} ${round3(c2[1])} ${round3(q[0])} ${round3(q[1])}`;
+  }
+  return `${d}Z`;
+}
+
 /** The tuplet's bracket (a line with a hook at each end, interrupted for the number) and number (plain italic text rather than the font's tuplet figures, which are bolder than the other numerals in the score), and their skyline boxes. */
 function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
   const { bracket, showNum, above, ya, yb, x0, x1, bx0, bx1, cx, cy, box } = p;
@@ -1478,34 +1542,10 @@ function paintTuplet(ctx: SysCtx, p: TupletPlan, s: number): void {
   }
   if (box) {
     const [ccy, bw] = [cy + (boxTop + boxBottom) / 2, 0.1];
-    const K = 0.5523; // This constant approximates a quarter circle with a cubic Bezier curve.
-    const circle = (rad: number, ccw: boolean) => {
-      const k = rad * K;
-      const pts: [number, number][] = [
-        [cx + rad, ccy],
-        [cx, ccy + rad],
-        [cx - rad, ccy],
-        [cx, ccy - rad],
-      ];
-      if (ccw) pts.reverse().unshift(pts.pop() as [number, number]);
-      let d = `M${round3(pts[0][0])} ${round3(pts[0][1])}`;
-      for (let i = 0; i < 4; i++) {
-        const [p, q] = [pts[i], pts[(i + 1) % 4]];
-        const [tx, ty] = [(q[0] - p[0]) / rad, (q[1] - p[1]) / rad];
-        // Control points leave p along the tangent, which is perpendicular to the radius at p.
-        const rp = [(p[0] - cx) / rad, (p[1] - ccy) / rad];
-        const rq = [(q[0] - cx) / rad, (q[1] - ccy) / rad];
-        const sgn = tx * -rp[1] + ty * rp[0] > 0 ? 1 : -1; // This is the direction of travel.
-        const c1 = [p[0] + sgn * -rp[1] * k, p[1] + sgn * rp[0] * k];
-        const c2 = [q[0] - sgn * -rq[1] * k, q[1] - sgn * rq[0] * k];
-        d += `C${round3(c1[0])} ${round3(c1[1])} ${round3(c2[0])} ${round3(c2[1])} ${round3(q[0])} ${round3(q[1])}`;
-      }
-      return `${d}Z`;
-    };
-    ctx.prims[s].push({ t: 'path', d: circle(boxHalfW, false), fill: '#fff', top: true });
+    ctx.prims[s].push({ t: 'path', d: circlePath(cx, ccy, boxHalfW, false), fill: '#fff', top: true });
     ctx.prims[s].push({
       t: 'path',
-      d: `${circle(boxHalfW + bw / 2, false)}${circle(boxHalfW - bw / 2, true)}`,
+      d: `${circlePath(cx, ccy, boxHalfW + bw / 2, false)}${circlePath(cx, ccy, boxHalfW - bw / 2, true)}`,
       top: true,
     });
   }
