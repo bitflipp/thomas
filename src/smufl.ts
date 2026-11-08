@@ -66,6 +66,8 @@ export const CP: Record<string, number> = {
   articStaccatoBelow: 0xe4a3,
   articMarcatoAbove: 0xe4ac,
   articMarcatoBelow: 0xe4ad,
+  fermataAbove: 0xe4c0,
+  ornamentTrill: 0xe566,
   dynamicPiano: 0xe520,
   dynamicMezzo: 0xe521,
   dynamicForte: 0xe522,

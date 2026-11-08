@@ -6,9 +6,9 @@
 // sorted by time. Every staff gets its own MIDI channel (`channelOf`), so a synth can give the staves
 // different instruments.
 
-import type { Grace, NoteEvent, Score, TimedEvent, TremoloGroup, Voice } from '../model.ts';
+import type { Grace, NoteEvent, Pitch, Score, TimedEvent, TremoloGroup, Voice } from '../model.ts';
 
-import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, pitchMidi, timeAt } from '../model.ts';
+import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, pitchMidi, STEPS, timeAt } from '../model.ts';
 
 export interface Msg {
   sec: number;
@@ -63,6 +63,21 @@ export function measureStarts(score: Score): { measureStart: number[]; total: nu
   return { measureStart, total };
 }
 
+/** How much longer a fermata event lasts. */
+const FERMATA_STRETCH = 2;
+
+/** The absolute tick spans [start, end) of all events with a fermata, in any staff. */
+function fermataSpans(score: Score, measureStart: number[]): [number, number][] {
+  const spans: [number, number][] = [];
+  score.measures.forEach((m, mi) => {
+    for (const st of Object.values(m.staves))
+      for (const v of st.voices)
+        for (const te of flattenVoice(v))
+          if (te.ev.fermata) spans.push([measureStart[mi] + te.start, measureStart[mi] + te.start + te.ticks]);
+  });
+  return spans;
+}
+
 /**
  * Tempo map: a list of segments of constant seconds-per-tick, starting at 120 bpm (quarter) until the
  * first tempo mark. A mark at the same tick as the previous one replaces it.
@@ -78,8 +93,19 @@ function tempoMap(score: Score, measureStart: number[]): Pick<Sequence, 'tickToS
       }
   });
   tempi.sort((a, b) => a.tick - b.tick);
+  const holds = fermataSpans(score, measureStart);
+  // A fermata doubles the time per tick over its event. Every start and end of a hold is a tempo
+  // boundary, and the tempo in force there (without the hold) is carried over.
+  const baseAt = (tick: number) => {
+    let spt = tempi[0].spt;
+    for (const t of tempi) if (t.tick <= tick) spt = t.spt;
+    return spt;
+  };
+  const inHold = (tick: number) => holds.some(([a, b]) => a <= tick && tick < b);
+  const cuts = [...new Set([...tempi.map((t) => t.tick), ...holds.flat()])].sort((a, b) => a - b);
+  const pieces = cuts.map((tick) => ({ tick, spt: baseAt(tick) * (inHold(tick) ? FERMATA_STRETCH : 1) }));
   const segs: { tick: number; sec: number; spt: number }[] = [];
-  for (const t of tempi) {
+  for (const t of pieces) {
     const last = segs[segs.length - 1];
     if (last && last.tick === t.tick) {
       last.spt = t.spt;
@@ -250,6 +276,32 @@ function addGraces(sp: StaffPlayback, graces: Grace[], start: number, ticks: num
   return mainOn;
 }
 
+/** The pitch one letter name above (the alteration is replaced by the caller). */
+function transposeStep(p: Pitch): Pitch {
+  const i = STEPS.indexOf(p.step) + 1;
+  return { step: STEPS[i % 7], octave: p.octave + (i >= 7 ? 1 : 0), alter: p.alter };
+}
+
+/** A trill: the pitch alternates with the note a whole tone above, in 32nds, starting on the main note and ending on it. */
+function addTrill(
+  sink: VoiceNotes,
+  pitch: Pitch,
+  upAcc: number | undefined,
+  vel: number,
+  start: number,
+  end: number,
+): void {
+  const midi = pitchMidi(pitch);
+  const up = upAcc === undefined ? midi + 2 : pitchMidi({ ...transposeStep(pitch), alter: upAcc });
+  const step = PPQ / 8;
+  const count = Math.max(1, Math.floor((end - start) / step));
+  for (let i = 0; i < count; i++) {
+    const on = start + i * step;
+    const off = i === count - 1 ? end : on + step;
+    sink.add(on, off, i % 2 === 0 ? midi : up, vel, false, false, true);
+  }
+}
+
 /**
  * The notes of a chord event. A rolled chord (arpeggio) enters one note after the other from the
  * bottom, all ending together; the delay between notes is at most a 32nd and shrinks for short chords.
@@ -263,6 +315,10 @@ function addChord(sink: VoiceNotes, sp: StaffPlayback, te: TimedEvent & { ev: No
   const step = te.ev.arpeggio && n > 1 ? Math.min(PPQ / 8, (end - mainOn) / (3 * (n - 1))) : 0;
   te.ev.pitches.forEach((np, k) => {
     const on = mainOn + k * step;
+    if (te.ev.trill && k === n - 1) {
+      addTrill(sink, np.pitch, te.ev.trillAcc, vel, on, end);
+      return;
+    }
     sink.add(
       on,
       staccato ? on + (end - on) * STACCATO : end,

@@ -217,6 +217,7 @@ export function drawSystemNotes(ctx: SysCtx): void {
     for (let s = 0; s < nStaves; s++) drawStemsAndBeams(ctx, mi, s);
     for (let s = 0; s < nStaves; s++) {
       drawArticulationsOfStaff(ctx, mi, s);
+      drawOrnamentsOfStaff(ctx, mi, s);
       drawTupletsOfStaff(ctx, mi, s);
     }
   }
@@ -307,6 +308,64 @@ function drawStemsAndBeams(ctx: SysCtx, mi: number, s: number): void {
 function drawArticulationsOfStaff(ctx: SysCtx, mi: number, s: number): void {
   for (const e of ctx.prep.measures[mi][s].evs)
     if (e.ev.kind === 'note' && e.ev.art?.length) drawArticulations(ctx, e, s);
+}
+
+/**
+ * Phase 4b: trill marks and fermatas sit above the event, beyond its heads, stem tip and any
+ * articulations above (a trill nearest, the fermata beyond it), and never inside the staff.
+ */
+function drawOrnamentsOfStaff(ctx: SysCtx, mi: number, s: number): void {
+  for (const e of ctx.prep.measures[mi][s].evs) {
+    const trill = e.ev.kind === 'note' && e.ev.trill;
+    if (!(trill || e.ev.fermata)) continue;
+    let cx: number;
+    let top = -1; // The top edge (y) of whatever is already there; ornaments go above it.
+    if (e.ev.kind === 'note') {
+      const g = must(geomOf.get(e));
+      const dxs = e.heads.map((h) => h.dx);
+      cx = e.x + (Math.min(...dxs) + Math.max(...dxs)) / 2 + g.hw / 2;
+      top = Math.min(top, g.yTop - 1);
+      if (e.stem === 'up') top = Math.min(top, g.stemTip - 0.4);
+      const ext = articExtent.get(e);
+      if (ext?.above) top = Math.min(top, ext.edge - 0.3);
+    } else {
+      const b = sm.bbox(restGlyph(e.te.ev.dur.base, e.ev.kind === 'rest' && e.ev.style === 'measure'));
+      cx = e.x + (b.x0 + b.x1) / 2;
+    }
+    for (const [name, on, kind] of [
+      ['ornamentTrill', trill, 'trill'],
+      ['fermataAbove', e.ev.fermata, 'fermata'],
+    ] as const) {
+      if (!on) continue;
+      const b = sm.bbox(name);
+      const h = b.y1 - b.y0;
+      const w = b.x1 - b.x0;
+      const start = ctx.prims[s].length;
+      ctx.prims[s].push(glyphCentered(name, cx, top - h / 2));
+      pushBox(ctx, s, cx - w / 2, cx + w / 2, top - h, top);
+      if (kind === 'trill' && e.ev.kind === 'note' && e.ev.trillAcc !== undefined) {
+        const acc = e.ev.trillAcc > 0 ? 'accidentalSharp' : e.ev.trillAcc < 0 ? 'accidentalFlat' : 'accidentalNatural';
+        const ab = sm.bbox(acc);
+        const sc = 0.7;
+        const ah = (ab.y1 - ab.y0) * sc;
+        const ay = top - h - 0.1; // The accidental's bottom edge.
+        ctx.prims[s].push({
+          t: 'glyph',
+          name: acc,
+          x: cx - ((ab.x0 + ab.x1) / 2) * sc,
+          y: ay + ab.y0 * sc,
+          sx: sc,
+          sy: sc,
+        });
+        pushBox(ctx, s, cx - ((ab.x1 - ab.x0) * sc) / 2, cx + ((ab.x1 - ab.x0) * sc) / 2, ay - ah, ay);
+        tagFrom(ctx.prims[s], start, kind, e);
+        top -= h + ah + 0.4;
+        continue;
+      }
+      tagFrom(ctx.prims[s], start, kind, e);
+      top -= h + 0.3;
+    }
+  }
 }
 
 /**

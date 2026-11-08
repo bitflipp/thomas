@@ -17,6 +17,7 @@ import type {
   Clef,
   Dur,
   Event,
+  Grace,
   Item,
   LineEnd,
   MarkBody,
@@ -584,6 +585,77 @@ export function toggleArticulation(score: Score, addrs: EvAddr[], art: Articulat
       delete n.art;
       delete n.artSide;
     }
+  });
+}
+
+/** Toggles a fermata on the events at `addrs` (notes and rests): off if all have one, else on for all. */
+export function toggleFermata(score: Score, addrs: EvAddr[]): Score {
+  const on = !addrs.every((a) => flattenEv(score, a)?.fermata);
+  return updateEvents(score, addrs, (e) => {
+    if (on) e.fermata = true;
+    else delete e.fermata;
+  });
+}
+
+/** Toggles a trill on the notes at `addrs`; rests cannot trill. */
+export function toggleTrill(score: Score, addrs: EvAddr[]): Score {
+  const notes = addrs.filter((a) => flattenEv(score, a)?.kind === 'note');
+  if (!notes.length) throw new EditError('Only notes can have a trill');
+  const on = !notes.every((a) => (flattenEv(score, a) as NoteEvent).trill);
+  return updateNotes(score, notes, (n) => {
+    if (on) n.trill = true;
+    else {
+      delete n.trill;
+      delete n.trillAcc;
+    }
+  });
+}
+
+/** Sets the accidental shown above the trill mark of the trilled notes at `addrs` (undefined: none). */
+export function setTrillAcc(score: Score, addrs: EvAddr[], acc: -1 | 0 | 1 | undefined): Score {
+  return updateNotes(score, addrs, (n) => {
+    if (!n.trill) return;
+    if (acc === undefined) delete n.trillAcc;
+    else n.trillAcc = acc;
+  });
+}
+
+// Grace notes belong to the note that follows them and take no time, so these commands never
+// change a voice's length. A grace is addressed by its note and its index in `graces`.
+
+/** Adds a grace note before the note at `a`, after its existing graces (or at `index`). It starts as a single pitch, given or a step above the note's lowest. */
+export function addGrace(score: Score, a: EvAddr, grace: Grace, index?: number): Score {
+  const e = flattenEv(score, a);
+  if (e?.kind !== 'note') throw new EditError('Grace notes belong in front of a note');
+  return updateNotes(score, [a], (n) => {
+    n.graces ??= [];
+    n.graces.splice(index ?? n.graces.length, 0, structuredClone(grace));
+  });
+}
+
+export function removeGrace(score: Score, a: EvAddr, index: number): Score {
+  return updateNotes(score, [a], (n) => {
+    n.graces?.splice(index, 1);
+    if (!n.graces?.length) delete n.graces;
+  });
+}
+
+/** Changes the written value, the slash or the pitches of one grace note. */
+export function updateGrace(score: Score, a: EvAddr, index: number, patch: Partial<Grace>): Score {
+  return updateNotes(score, [a], (n) => {
+    const g = n.graces?.[index];
+    if (!g) return;
+    Object.assign(g, structuredClone(patch));
+    if (!g.slash) delete g.slash;
+    g.pitches.sort((x, y) => comparePitch(x.pitch, y.pitch));
+  });
+}
+
+/** Moves every pitch of a grace note by letter-name steps. */
+export function transposeGrace(score: Score, a: EvAddr, index: number, steps: number): Score {
+  return updateNotes(score, [a], (n) => {
+    const g = n.graces?.[index];
+    if (g) for (const p of g.pitches) p.pitch = transposeSteps(p.pitch, steps);
   });
 }
 

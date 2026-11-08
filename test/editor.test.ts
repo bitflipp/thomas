@@ -390,3 +390,25 @@ test('select similar finds equal marks across the score, and one edit changes th
   );
   assert.deepEqual(texts.sort(), ['mp', 'mp', 'mp']);
 });
+
+test('fermata, trill and grace commands', () => {
+  const a = { mi: 0, staff: 'rh', voice: 1, idx: 0 };
+  let s = ok(C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4));
+  s = ok(C.toggleFermata(s, [a]));
+  assert.match(show(s), /\+fm/);
+  s = ok(C.toggleFermata(s, [a]));
+  assert.doesNotMatch(show(s), /\+fm/);
+  s = ok(C.toggleTrill(s, [a]));
+  assert.match(show(s), /\+tr/);
+  assert.throws(() => C.toggleTrill(s, [{ ...a, idx: 1 }]), C.EditError);
+  const g = { pitches: [{ pitch: { step: 'd' as const, alter: 0, octave: 4 } }], base: 8 as const, slash: true };
+  s = ok(C.addGrace(s, a, g));
+  assert.match(show(s), /\\acc\{/);
+  s = ok(C.updateGrace(s, a, 0, { slash: false, base: 16 }));
+  assert.match(show(s), /\\grace\{ ?d4:16/);
+  s = ok(C.transposeGrace(s, a, 0, 1));
+  assert.match(show(s), /e4:16/);
+  assert.throws(() => C.addGrace(s, { ...a, idx: 1 }, g), C.EditError);
+  s = ok(C.removeGrace(s, a, 0));
+  assert.doesNotMatch(show(s), /grace/);
+});

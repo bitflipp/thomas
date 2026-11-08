@@ -48,6 +48,7 @@ Voice numbers are local to a staff (`s1.1`, `s1.2`, `s2.1`, ...). Every voice of
 | Line | `&` before the first note, `;` after the second (any two notes of one system, also in other voices or staves; `&` and `;` pair by number). Optional number (lines that overlap in time need different ones), `&.` dashed | `&c5:4 ... e3;` `&2.g4 ... c3;2` |
 | Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |
 | Accidental override | `!` force, `?` cautionary (after the pitch) | `c#4!` `e4?` |
+| Trill, fermata | `+tr` (trill mark, notes only; `+tr#`, `+tr=`, `+trb` add a small sharp, natural or flat above it for the upper note) and `+fm` (fermata, notes and rests) after the note, after any articulations | `c5:4->+tr+fm`, `r+fm` |
 | Arpeggio | `\arp` before a chord | `\arp <c3 g3 e4>:8` |
 | Grace notes | `\acc{…}` (slashed) or `\grace{…}` before a note; each grace note has an explicit value (8, 16, 32 …), no dots, no time in the measure | `\acc{d5:8} c5:4`, `\grace{b4:16 c5:16} d5:4` |
 | No beam | `\nobeam` keeps a note out of the automatic beaming | `\nobeam c5:8 d5` |

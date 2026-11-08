@@ -208,7 +208,9 @@ class VoiceWriter {
     if (e.kind === 'note') {
       for (const a of e.art ?? []) arts += a === 'accent' ? '->' : a === 'marcato' ? '-^' : '-.';
       if (e.art?.length && e.artSide) arts += sideStr(e.artSide);
+      if (e.trill) arts += `+tr${e.trillAcc === undefined ? '' : e.trillAcc > 0 ? '#' : e.trillAcc < 0 ? 'b' : '='}`;
     }
+    if (e.fermata) arts += '+fm';
     // Durations are sticky: the base value is written only when it differs from the previous event's.
     // Dots are never sticky (a dotted note would otherwise make everything after it dotted), so they
     // are always written, which also forces the base to be written.
@@ -762,6 +764,7 @@ class VoiceLineParser {
     }
     if (this.pendingEv.graces) sc.fail('grace notes belong in front of a note, not a rest');
     rest.dur = this.readDur();
+    if (sc.take(/\+fm/y)) rest.fermata = true;
     return rest;
   }
 
@@ -784,6 +787,14 @@ class VoiceLineParser {
       const side = this.placement();
       if (side) note.artSide = side;
     }
+    const tr = sc.take(/\+tr([#b=])?/y);
+    if (tr) {
+      note.trill = true;
+      if (tr.endsWith('#')) note.trillAcc = 1;
+      else if (tr.endsWith('b')) note.trillAcc = -1;
+      else if (tr.endsWith('=')) note.trillAcc = 0;
+    }
+    if (sc.take(/\+fm/y)) note.fermata = true;
     if (this.pendingEv.graces) note.graces = this.pendingEv.graces;
     if (this.pendingEv.arpeggio) note.arpeggio = true;
     if (this.pendingEv.noBeam) note.noBeam = true;

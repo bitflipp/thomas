@@ -175,7 +175,7 @@ export const Icon = {
         x="20"
         y="17"
         text-anchor="middle"
-        font-size="14"
+        font-size="16"
         font-weight="700"
         font-style="italic"
         font-family="Georgia, serif"
@@ -244,6 +244,28 @@ export const Ui = {
   accent: () => S(<path d="M5 8l14 4-14 4" />),
   marcato: () => S(<path d="M6 18l6-12 6 12" />),
   staccato: () => S(<circle cx="12" cy="12" r="2.6" />, true),
+  fermata: () =>
+    S(
+      <>
+        <path d="M3 18a9 9 0 0118 0" />
+        <path d="M12 15h.01" stroke-width="4" />
+      </>,
+    ),
+  trill: () =>
+    S(
+      <text
+        x="12"
+        y="16.5"
+        text-anchor="middle"
+        font-family="serif"
+        font-size="16"
+        font-style="italic"
+        font-weight="bold"
+      >
+        tr
+      </text>,
+      true,
+    ),
   tie: () => S(<path d="M4 10c3 8 13 8 16 0" />),
   arpeggio: () => S(<path d="M12 3q3 2 0 4t0 4 0 4 0 4 0 4" />),
 };

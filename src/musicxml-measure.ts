@@ -280,8 +280,10 @@ function readNote(r: Reader, el: XNode): void {
     ev: undefined as unknown as RawNote['ev'],
     ...readTupletNotations(el),
   };
-  if (rest) raw.ev = restEvent(rest, dur);
-  else {
+  if (rest) {
+    raw.ev = restEvent(rest, dur);
+    readNotations(el, raw.ev, false);
+  } else {
     const ev: NoteEvent = { kind: 'note', dur, pitches: [readPitch(el, r.mi)] };
     const graces = r.pendingGraces.get(voice);
     if (graces) {
@@ -359,9 +361,18 @@ function readArticulations(articulations: XNode, ev: NoteEvent): void {
 
 /** Reads slurs, arpeggio, articulations and tremolo from <notations> into `ev`. Only the first note of a chord carries slurs and articulations. Returns a two-note tremolo's role, if any. */
 function readNotations(el: XNode, ev: NoteEvent | RestEvent, isChord: boolean): RawNote['trem'] {
-  if (ev.kind !== 'note') return;
   const notations = child(el, 'notations');
   if (!notations) return;
+  if (!isChord && child(notations, 'fermata')) ev.fermata = true;
+  if (ev.kind !== 'note') return;
+  const ornaments = child(notations, 'ornaments');
+  if (!isChord && child(ornaments, 'trill-mark')) {
+    ev.trill = true;
+    const mark = child(ornaments, 'accidental-mark')?.text.trim();
+    if (mark === 'sharp') ev.trillAcc = 1;
+    else if (mark === 'flat') ev.trillAcc = -1;
+    else if (mark === 'natural') ev.trillAcc = 0;
+  }
   if (!isChord) readSlurs(notations, ev);
   if (child(notations, 'arpeggiate')) ev.arpeggio = true;
   const articulations = child(notations, 'articulations');

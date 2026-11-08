@@ -66,6 +66,7 @@ export interface EventBase {
   slurStop?: number[];
   lineStart?: LineStart[];
   lineStop?: number[];
+  fermata?: boolean; // A fermata sits above the event (a note, chord or rest).
   marks?: MarkBody[]; // These marks (dynamics, hairpin/pedal/ottava starts and stops, clef changes, tempo, text) sit at the start of this event.
 }
 
@@ -75,6 +76,8 @@ export interface NoteEvent extends EventBase {
   art?: Articulation[];
   artSide?: 'above' | 'below'; // This forces the side of the articulations (default: by stem and voice).
   arpeggio?: boolean;
+  trill?: boolean; // A trill mark (tr) sits above the note.
+  trillAcc?: -1 | 0 | 1; // The alteration of the trill's upper note, shown as a small accidental above the mark (flat, natural, sharp); absent: none shown, a whole tone up.
   graces?: Grace[]; // These are the grace notes in front of this note, in playing order.
   noBeam?: boolean; // The note stays unbeamed although the automatic beaming would join it to its neighbours.
 }

@@ -15,6 +15,8 @@ export type Kind =
   | 'ledger'
   | 'rest'
   | 'artic'
+  | 'fermata'
+  | 'trill'
   | 'tie'
   | 'slur'
   | 'link'
