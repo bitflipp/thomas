@@ -1138,6 +1138,14 @@ export function setRepeatStart(score: Score, mi: number, on: boolean): Score {
   });
 }
 
+/** Puts measure `mi` under the volta for these passes, or takes it out of one. */
+export function setEnding(score: Score, mi: number, numbers: number[] | undefined): Score {
+  return edit(score, (d) => {
+    if (numbers?.length) d.measures[mi].ending = [...numbers].sort((a, b) => a - b);
+    else delete d.measures[mi].ending;
+  });
+}
+
 export function setBreak(score: Score, mi: number, b: 'system' | 'page' | undefined): Score {
   return edit(score, (d) => {
     if (b) d.measures[mi].breakBefore = b;

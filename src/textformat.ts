@@ -311,6 +311,7 @@ function write(score: Score, tags?: Tags): string {
     if (m.breakBefore) h.push(`break=${m.breakBefore}`);
     if (m.barline) h.push(`barline=${m.barline}`);
     if (m.repeatStart) h.push('start=repeat');
+    if (m.ending) h.push(`ending=${m.ending.join(',')}`);
     const first = L.length;
     L.push(h.join(' '));
     for (const s of score.staves) {
@@ -867,7 +868,7 @@ function parseVoiceStatement(st: TextState, raw: string, where: string): void {
   if (marks.length) st.timed.set(sm, [...(st.timed.get(sm) ?? []), ...marks]);
 }
 
-/** `m<N> time=3/4 key=2 break=system barline=final start=repeat`: starts a measure. */
+/** `m<N> time=3/4 key=2 break=system barline=final start=repeat ending=1,2`: starts a measure. */
 function parseMeasureStatement(st: TextState, t: string[]): void {
   const o = kv(t.slice(1));
   const measure: Measure = { staves: {} }; // The number in `m<N>` is only a label.
@@ -879,6 +880,7 @@ function parseMeasureStatement(st: TextState, t: string[]): void {
   if (o.break) measure.breakBefore = o.break as 'system' | 'page';
   if (o.barline) measure.barline = o.barline as Measure['barline'];
   if (o.start === 'repeat') measure.repeatStart = true;
+  if (o.ending) measure.ending = o.ending.split(',').map(Number);
   st.score.measures.push(measure);
   st.cur = measure;
 }

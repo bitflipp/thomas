@@ -36,6 +36,8 @@ export interface PartState {
   index: number;
   staffIds: string[];
   divisions: number;
+  /** The volta numbers of an ending that has started and not yet stopped. */
+  ending?: number[];
 }
 
 export interface RawMark {
@@ -75,6 +77,7 @@ export function readPartMeasure(mx: XNode, part: PartState, mi: number, sink: Me
   const r: Reader = { env, part, sink, mi, cursor: 0, pendingGraces: new Map(), homeStaff: new Map() };
   if (part.index === 0 && mx.attrs.implicit === 'yes')
     env.warn(`m${mi + 1}: implicit (pickup) measure not specially handled`);
+  if (part.index === 0 && part.ending) sink.measure.ending = part.ending;
   for (const el of mx.children) {
     switch (el.tag) {
       case 'attributes':
@@ -141,6 +144,17 @@ function readPrint(r: Reader, el: XNode): void {
 
 function readBarline(r: Reader, el: XNode): void {
   if (!isFirstPart(r)) return;
+  const ending = el.children.find((c) => c.tag === 'ending');
+  if (ending) {
+    const numbers = (ending.attrs.number ?? '')
+      .split(/[,\s]+/)
+      .map(Number)
+      .filter((n) => n > 0);
+    if (numbers.length) {
+      r.sink.measure.ending = numbers;
+      r.part.ending = ending.attrs.type === 'start' ? numbers : undefined;
+    }
+  }
   const style = text(el, 'bar-style');
   const repeat = el.children.find((c) => c.tag === 'repeat')?.attrs.direction;
   if (repeat === 'forward') r.sink.measure.repeatStart = true;

@@ -25,6 +25,7 @@ export type Kind =
   | 'hairpin'
   | 'pedal'
   | 'ottava'
+  | 'volta'
   | 'tempo'
   | 'text'
   | 'clef'

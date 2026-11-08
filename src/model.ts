@@ -183,6 +183,12 @@ export interface Measure {
   barline?: 'single' | 'final' | 'double' | 'repeat-end';
   /** A repeat sign at the start of the measure (dots on the right of a thick-thin barline). */
   repeatStart?: true;
+  /**
+   * The volta (first, second ending ...) the measure belongs to: the numbers of the passes it is played
+   * in. Neighbouring measures with the same numbers share one bracket, which is closed at the right
+   * (a hook) when the last of them ends in a repeat sign.
+   */
+  ending?: number[];
   staves: Record<string, StaffMeasure>;
 }
 

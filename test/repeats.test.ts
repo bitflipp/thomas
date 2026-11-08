@@ -51,3 +51,35 @@ test('the editor sets and removes repeat signs', () => {
   s = C.setBarline(s, 1, 'single');
   assert.equal(dots(writeText(s)).length, 4);
 });
+
+const VOLTA = `# music typesetter score
+page 210x297 margin=10 space=1.75
+staff rh clef=G2
+
+m1 time=4/4 key=0 start=repeat
+  rh.1: c5:1
+m2 barline=repeat-end ending=1
+  rh.1: d5:1
+m3 ending=2,3
+  rh.1: e5:1
+m4 barline=final ending=2,3
+  rh.1: f5:1
+`;
+
+test('voltas survive the text round trip and are editable', () => {
+  const score = parseText(VOLTA);
+  assert.deepEqual(score.measures[2].ending, [2, 3]);
+  assert.equal(writeText(score), VOLTA);
+  assert.equal(C.setEnding(score, 2, undefined).measures[2].ending, undefined);
+  assert.deepEqual(C.setEnding(score, 0, [2, 1]).measures[0].ending, [1, 2]);
+});
+
+test('a volta is one bracket per run, with hooks where it opens and where a repeat closes it', () => {
+  const prims = engrave(parseText(VOLTA)).pages[0].prims.filter((p) => p.k === 'volta');
+  const texts = prims.filter((p) => p.t === 'text').map((p) => (p.t === 'text' ? p.s : ''));
+  assert.deepEqual(texts, ['1.', '2., 3.']);
+  const lines = prims.filter((p) => p.t === 'line');
+  // Bracket 1: top + 2 hooks; bracket 2: top + left hook (open at the end).
+  assert.equal(lines.length, 5);
+  assert.deepEqual(findCollisions(engrave(parseText(VOLTA)).pages), []);
+});

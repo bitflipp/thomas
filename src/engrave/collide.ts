@@ -44,6 +44,8 @@ export const ALLOW: readonly [Kind, Kind, Scope][] = [
   ['barline', 'hairpin', 'any'],
   ['barline', 'pedal', 'any'],
   ['barline', 'ottava', 'any'],
+  // A volta bracket starts and ends on barlines.
+  ['barline', 'volta', 'any'],
   // A line between notes is drawn where the user wants it, across whatever lies between the notes.
   ...(['barline', 'stem', 'flag', 'beam', 'ledger', 'tie', 'slur', 'link'] as const).map((k): [Kind, Kind, Scope] => [
     'link',

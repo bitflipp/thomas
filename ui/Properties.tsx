@@ -400,6 +400,19 @@ function MeasureSection({ mi }: { mi: number }) {
             onChange={(v) => run((x) => C.setRepeatStart(x, mi, v === 'on'))}
           />
         </Row>
+        <Row label="Volta">
+          <Pick
+            value={m.ending?.join(',') ?? 'none'}
+            opts={[
+              ['none', 'none'],
+              ['1', '1.'],
+              ['2', '2.'],
+              ['3', '3.'],
+              ['1,2', '1.,2.'],
+            ]}
+            onChange={(v) => run((x) => C.setEnding(x, mi, v === 'none' ? undefined : v.split(',').map(Number)))}
+          />
+        </Row>
         <Row label="Break before">
           <Pick
             value={m.breakBefore ?? 'none'}

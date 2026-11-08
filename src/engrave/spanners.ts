@@ -9,6 +9,7 @@ import type { EvL } from './prep.ts';
 import { beamLevels, posToY } from './prep.ts';
 import { oid, Skyline } from './scene.ts';
 import { DOT_STEP, flagGlyph, STEM_T } from './spacing.ts';
+import { drawVoltas } from './volta.ts';
 
 const sm = loadSmufl();
 
@@ -375,6 +376,7 @@ function sysOfMeasures(systems: SysCtx[]): number[] {
  */
 export function drawStaffMarks(systems: SysCtx[]): void {
   const sysOf = sysOfMeasures(systems);
+  drawVoltas(systems);
   for (let s = 0; s < systems[0].prep.score.staves.length; s++) drawMarks(systems, sysOf, s);
 }
 
