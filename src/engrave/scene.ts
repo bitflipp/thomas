@@ -26,6 +26,7 @@ export type Kind =
   | 'pedal'
   | 'ottava'
   | 'volta'
+  | 'lyric'
   | 'tempo'
   | 'text'
   | 'clef'

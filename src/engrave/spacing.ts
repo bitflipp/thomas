@@ -12,6 +12,7 @@ import type { Score } from '../model.ts';
 import { keyAt, PPQ, timeAt } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
+import { HYPHEN_ROOM, LYRIC_GAP, lyricWidth } from './lyrics.ts';
 import type { EvL, HeadL, Prepared } from './prep.ts';
 import { clefAtStart } from './prep.ts';
 
@@ -174,6 +175,34 @@ function measureColumnExtents(cols: Column[], nStaves: number): void {
 }
 
 /**
+ * Syllables must not run into each other: per staff and verse, a column with a syllable is kept
+ * clear of the previous column's syllable (`minFrom`, with room for a hyphen where the word goes
+ * on), and the first and last syllables of the measure may reach beyond their columns.
+ */
+function separateLyrics(cols: Column[]): void {
+  const prev = new Map<string, { j: number; w: number; joins: boolean }>();
+  const first = new Set<string>();
+  cols.forEach((c, j) => {
+    for (const e of c.evs) {
+      if (e.ev.kind !== 'note') continue;
+      for (const y of e.ev.lyrics ?? []) {
+        const key = `${e.home}|${y.verse}`;
+        const w = lyricWidth(y.text);
+        const hw = headWidth(e.ev.dur.base);
+        const p = prev.get(key);
+        if (p) c.minFrom.push({ j: p.j, d: p.w / 2 + w / 2 + (p.joins ? HYPHEN_ROOM : LYRIC_GAP) });
+        else if (!first.has(key)) {
+          first.add(key);
+          c.L[e.staff] = Math.max(c.L[e.staff], w / 2 - hw / 2);
+        }
+        prev.set(key, { j, w, joins: y.syllabic === 'begin' || y.syllabic === 'middle' });
+        c.R[e.staff] = Math.max(c.R[e.staff], j === cols.length - 1 ? w / 2 + hw / 2 : 0);
+      }
+    }
+  });
+}
+
+/**
  * A cross-staff beam has up-stems on the right of their heads followed by down-stems on the left of
  * theirs; the columns involved are pushed apart (`minFrom`) so the two stems do not merge.
  */
@@ -216,6 +245,7 @@ export function spaceMeasure(prep: Prepared, mi: number): MeasureSpacing {
   const { cols, restOnly } = collectColumns(prep, mi);
   measureColumnExtents(cols, nStaves);
   separateCrossStaffStems(cols);
+  separateLyrics(cols);
   // Ideal distances: from each column to the previous one by elapsed time. `endIdeal` is the
   // distance from the last column to the barline, by the time left in the measure.
   let prevTick = 0;

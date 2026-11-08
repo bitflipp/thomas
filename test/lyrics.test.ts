@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { findCollisions } from '../src/engrave/collide.ts';
+import { engrave } from '../src/engrave/system.ts';
 import type { NoteEvent } from '../src/model.ts';
 import { importMusicXml } from '../src/musicxml.ts';
 import { parseText, writeText } from '../src/textformat.ts';
@@ -40,4 +42,42 @@ test('MusicXML lyrics become syllables per verse', () => {
     { verse: 2, text: 'la', syllabic: 'single', extend: true },
   ]);
   assert.equal(evs[1].lyrics?.[0].syllabic, 'end');
+});
+
+const SCORE = `# music typesetter score
+page 210x297 margin=10 space=1.75
+staff rh clef=G2
+staff lh clef=F4
+
+m1 time=4/4 key=0
+  rh.1: c5:4"Hel-"v2"Wor-" d5:4"-lo"v2"-ld," e5:2"is"_
+  lh.1: c3:1
+m2 barline=final
+  rh.1: c5:8"Lon-" d5:8"-ger" e5:4"than" f5:4"a" g5:4"very"
+  lh.1: c3:1
+`;
+
+test('lyrics are drawn in one row per verse below the staff, without collisions', () => {
+  const out = engrave(parseText(SCORE));
+  const prims = out.pages[0].prims.filter((p) => p.k === 'lyric');
+  const texts = prims.filter((p) => p.t === 'text');
+  assert.equal(texts.length, 10);
+  const ys = (verseTexts: string[]) =>
+    new Set(texts.filter((p) => p.t === 'text' && verseTexts.includes(p.s)).map((p) => (p.t === 'text' ? p.y : 0)));
+  assert.equal(ys(['Hel', 'lo', 'is', 'Lon']).size, 1);
+  assert.equal(ys(['Wor', 'ld,']).size, 1);
+  assert.ok([...ys(['Wor'])][0] > [...ys(['Hel'])][0]);
+  // Hyphens: Hel-lo, Wor-ld, Lon-ger; one extender under "is".
+  assert.equal(prims.filter((p) => p.t === 'line').length, 4);
+  assert.deepEqual(findCollisions(out.pages), []);
+});
+
+test('a long syllable pushes its neighbours apart', () => {
+  const tight = SCORE.replace('"is"', '"is"').replace('"than"', '"than"');
+  const wide = SCORE.replace('"than"', '"thanksgiving"');
+  const x = (src: string, s: string) => {
+    const p = engrave(parseText(src)).pages[0].prims.find((q) => q.k === 'lyric' && q.t === 'text' && q.s === s);
+    return p?.t === 'text' ? p.x : 0;
+  };
+  assert.ok(x(wide, 'a') - x(wide, 'thanksgiving') > x(tight, 'a') - x(tight, 'than'));
 });

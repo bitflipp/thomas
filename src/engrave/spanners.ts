@@ -4,6 +4,7 @@ import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
 import type { SysCtx } from './draw.ts';
 import { articExtent, D, geomOf, staffOffset } from './draw.ts';
+import { drawLyrics } from './lyrics.ts';
 import { drawMarks } from './marks.ts';
 import type { EvL } from './prep.ts';
 import { beamLevels, posToY } from './prep.ts';
@@ -377,6 +378,7 @@ function sysOfMeasures(systems: SysCtx[]): number[] {
 export function drawStaffMarks(systems: SysCtx[]): void {
   const sysOf = sysOfMeasures(systems);
   drawVoltas(systems);
+  drawLyrics(systems, sysOf);
   for (let s = 0; s < systems[0].prep.score.staves.length; s++) drawMarks(systems, sysOf, s);
 }
 
