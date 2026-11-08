@@ -12,7 +12,7 @@ import * as C from '../src/editor/commands.ts';
 import { transposeSteps } from '../src/editor/context.ts';
 import type { Event, MarkBody, MarkPlacement, NoteEvent, Score } from '../src/model.ts';
 import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
-import { chooseDots, flipStem, lineSelection, nudge, slurSelection, tieSelection } from './actions.ts';
+import { chooseDots, flipStem, lineSelection, slurSelection, tieSelection } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
 import { deleteSelection, evRefs, select, selectSimilar, tupletsAround } from './interact.ts';
@@ -717,28 +717,6 @@ function EventSection() {
       </Group>
       {notes.length > 0 && (
         <Group id="pitch" title="Pitch">
-          <div class="btns">
-            <button type="button" title="Semitone up (↑)" onClick={() => nudge(1)}>
-              <Ui.up /> Semitone
-            </button>
-            <button type="button" title="Octave up (Ctrl ↑)" onClick={() => nudge(12)}>
-              <Ui.up /> Octave
-            </button>
-            <button type="button" title="Letter name up (Shift ↑)" onClick={() => nudge(undefined, 1)}>
-              <Ui.up /> Step
-            </button>
-          </div>
-          <div class="btns">
-            <button type="button" title="Semitone down (↓)" onClick={() => nudge(-1)}>
-              <Ui.down /> Semitone
-            </button>
-            <button type="button" title="Octave down (Ctrl ↓)" onClick={() => nudge(-12)}>
-              <Ui.down /> Octave
-            </button>
-            <button type="button" title="Letter name down (Shift ↓)" onClick={() => nudge(undefined, -1)}>
-              <Ui.down /> Step
-            </button>
-          </div>
           <Row label="Accidental">
             <Pick
               value={same(notes.flatMap((n) => n.pitches.map((p) => p.acc)))}
