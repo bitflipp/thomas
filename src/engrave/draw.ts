@@ -759,7 +759,10 @@ function tagGrace(
 ) {
   const prims = d.ctx.prims[d.s];
   tagFrom(prims, from, kind, d.graces[i].g, d.runOf[i] ? [d.runOf[i]] : undefined);
-  for (let q = from; q < prims.length; q++) prims[q].r = d.e.ev;
+  for (let q = from; q < prims.length; q++) {
+    prims[q].r = d.e.ev;
+    prims[q].gr = i;
+  }
 }
 
 /** Heads, accidentals and ledger lines of grace note `i`. */

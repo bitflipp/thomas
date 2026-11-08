@@ -37,6 +37,7 @@ export type Ref =
   | ({ t: 'line'; id: number } & EvAddr) // A line is addressed by the event it starts at.
   | ({ t: 'tuplet'; depth: number } & EvAddr) // A tuplet is addressed by its first event; `depth` is its nesting level (0 is the outermost).
   | ({ t: 'mark' } & MarkAddr)
+  | ({ t: 'grace'; gi: number } & EvAddr) // A grace note is addressed by the note it precedes and its index in `graces`.
   | { t: 'measure'; mi: number };
 
 /** A string identity for a Ref, for sets and map keys (refs are plain objects and compare by identity). */
@@ -54,6 +55,8 @@ export const refKey = (r: Ref): string => {
       return `tup:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.depth}`;
     case 'mark':
       return `mark:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.k}`;
+    case 'grace':
+      return `grace:${r.mi}:${r.staff}:${r.voice}:${r.idx}:${r.gi}`;
     case 'measure':
       return `m:${r.mi}`;
   }

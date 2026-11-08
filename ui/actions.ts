@@ -7,7 +7,7 @@ import type { EvAddr } from '../src/editor/addr.ts';
 import { eventOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import type { BaseDur, Dur } from '../src/model.ts';
-import { evRefs, sameSystem } from './interact.ts';
+import { evRefs, graceRefs, sameSystem } from './interact.ts';
 import { commit, dots, dur, hit, run, say, score, selection } from './state.ts';
 
 /**
@@ -67,6 +67,13 @@ export function setAccidentalSel(alter: number | undefined): void {
 
 /** Transposes the selection by `semis` semitones or `steps` diatonic steps. */
 export function nudge(semis?: number, steps?: number): void {
+  const graces = graceRefs();
+  if (graces.length && !evRefs().length) {
+    // A grace note moves by letter-name steps; a semitone key press is one step, an octave key press seven.
+    const n = steps ?? (Math.abs(semis ?? 0) >= 12 ? Math.sign(semis ?? 0) * 7 : (semis ?? 0));
+    run((s) => graces.reduce((x, r) => C.transposeGrace(x, r, r.gi, n), s));
+    return;
+  }
   const refs = evRefs();
   if (!refs.length) return;
   run((s) => C.transpose(s, refs, { semis, steps }));

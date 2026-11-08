@@ -746,6 +746,25 @@ export function updateGrace(score: Score, a: EvAddr, index: number, patch: Parti
   });
 }
 
+/** Adds a tone a third above the top of grace note `index` of the note at `a` (a chord grace note). */
+export function addGraceTone(score: Score, a: EvAddr, index: number): Score {
+  return updateNotes(score, [a], (n) => {
+    const g = n.graces?.[index];
+    if (!g) return;
+    g.pitches.push({ pitch: transposeSteps(g.pitches[g.pitches.length - 1].pitch, 2) });
+    g.pitches.sort((x, y) => comparePitch(x.pitch, y.pitch));
+  });
+}
+
+/** Removes the top tone of grace note `index` of the note at `a`; a single tone cannot be removed (remove the grace note instead). */
+export function removeGraceTone(score: Score, a: EvAddr, index: number): Score {
+  const g = (eventOf(score, a) as NoteEvent | undefined)?.graces?.[index];
+  if (g && g.pitches.length < 2) throw new EditError('A grace note needs at least one pitch');
+  return updateNotes(score, [a], (n) => {
+    n.graces?.[index]?.pitches.pop();
+  });
+}
+
 /** Moves every pitch of a grace note by letter-name steps. */
 export function transposeGrace(score: Score, a: EvAddr, index: number, steps: number): Score {
   return updateNotes(score, [a], (n) => {

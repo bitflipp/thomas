@@ -19,7 +19,7 @@ import {
   toggleOrnament,
 } from './actions.ts';
 
-import { cancelDrag, deleteSelection, evRefs, measureRefs, selectSimilar, zoomBy } from './interact.ts';
+import { cancelDrag, deleteSelection, evRefs, graceRefs, measureRefs, selectSimilar, zoomBy } from './interact.ts';
 import { rewind, toggle } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
@@ -188,7 +188,7 @@ function onNavigationKey(e: KeyboardEvent): boolean {
       return true;
     case 'ArrowUp':
     case 'ArrowDown': {
-      if (!evRefs().length) return true;
+      if (!(evRefs().length || graceRefs().length)) return true;
       e.preventDefault();
       const d = e.key === 'ArrowUp' ? 1 : -1;
       if (e.shiftKey) nudge(undefined, d);

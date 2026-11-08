@@ -51,6 +51,8 @@ export interface Tag {
   r?: object;
   /** Slur or line id, or tied head index: tells apart several spanners that start at the same event. */
   n?: number;
+  /** Grace note index: tells the primitives of the grace notes of an event from those of the event itself. */
+  gr?: number;
   /** Editor aid, not part of the score's output: a hidden rest drawn faintly so that it can be selected. */
   ghost?: true;
 }

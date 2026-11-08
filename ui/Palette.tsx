@@ -240,6 +240,9 @@ export function Palette() {
         <ToolBtn t="tuplet" title="Tuplet: click a note or rest">
           <Icon.tuplet />
         </ToolBtn>
+        <ToolBtn t="grace" title="Grace note: click on the staff in front of a note">
+          <Label italic>gr</Label>
+        </ToolBtn>
       </div>
       <PaletteArgs />
       <p class="hint">{HINTS[t]}</p>
@@ -264,4 +267,6 @@ const HINTS: Record<Tool, string> = {
   tempo: 'Click a note or rest to hang the tempo on it.',
   clef: 'Click a note or rest: the clef changes from it.',
   tuplet: 'Click a note or rest: it becomes a tuplet of that length.',
+  grace:
+    'Click on the staff at the note the grace note belongs to: it goes in front of it, on the pitch you click (slashed; the value is the chosen one up to a 32nd).',
 };

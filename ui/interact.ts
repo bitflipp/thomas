@@ -16,8 +16,8 @@ import type { OrnamentKind } from '../src/editor/similar.ts';
 import { similarTo } from '../src/editor/similar.ts';
 import { eventAtTick } from '../src/editor/voice.ts';
 import type { MeasureGeom } from '../src/engrave/system.ts';
-import type { Event, MarkBody, Score } from '../src/model.ts';
-import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, timeAt } from '../src/model.ts';
+import type { Event, MarkBody, NoteEvent, Pitch, Score } from '../src/model.ts';
+import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, STEPS, timeAt } from '../src/model.ts';
 import { must } from '../src/util.ts';
 import { measureTick, seek } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
@@ -143,6 +143,10 @@ const lenOf = (sc: Score, mi: number) => measureTicks(timeAt(sc, mi));
 /** The length in ticks of the duration chosen in the palette. */
 const durTicks = () => baseTicks({ base: dur.value, dots: dots.value });
 
+/** The selected grace notes. */
+export const graceRefs = (): Extract<Ref, { t: 'grace' }>[] =>
+  selection.value.filter((r): r is Extract<Ref, { t: 'grace' }> => r.t === 'grace');
+
 /** The selected events. */
 export const evRefs = (): Extract<Ref, { t: 'ev' }>[] =>
   selection.value.filter((r): r is Extract<Ref, { t: 'ev' }> => r.t === 'ev');
@@ -216,6 +220,8 @@ type Drag =
       moved: boolean;
       target: Target;
       startTick: number;
+      /** Set when a grace note of the event is dragged (`ref` is its note). */
+      grace?: number;
     }
   | { k: 'marquee'; start: Where; additive: boolean; moved: boolean; base: Ref[] }
   | {
@@ -338,6 +344,22 @@ function pressWithSelectTool(e: PointerEvent, w: Where, h: HitIndex, target: Tar
     const te = v && flattenVoice(v)[r.idx];
     if (te && te.ev.kind === 'note')
       drag = { k: 'head', ref: r, start: w, cx: e.clientX, cy: e.clientY, moved: false, target, startTick: te.start };
+  } else if (r.t === 'grace') {
+    const ev: Extract<Ref, { t: 'ev' }> = { t: 'ev', mi: r.mi, staff: r.staff, voice: r.voice, idx: r.idx };
+    const v = voiceOf(score.peek(), r);
+    const te = v && flattenVoice(v)[r.idx];
+    if (te)
+      drag = {
+        k: 'head',
+        ref: ev,
+        start: w,
+        cx: e.clientX,
+        cy: e.clientY,
+        moved: false,
+        target,
+        startTick: te.start,
+        grace: r.gi,
+      };
   } else if (r.t === 'mark') drag = { k: 'mark', ref: r, start: w, cx: e.clientX, cy: e.clientY, moved: false };
 }
 
@@ -356,6 +378,7 @@ export function onPointerDown(e: PointerEvent): void {
   else if (SPAN_TOOLS.has(t)) startSpan(e, w, t as SpanTool, target);
   else if (MARK_TOOLS.has(t)) addMarkAt(w);
   else if (t === 'tuplet') makeTupletAt(target);
+  else if (t === 'grace') addGraceAt(w);
   else if (e.altKey && t === 'select') {
     // Alt+click: put the playhead here.
     const g = measureAt(h.layout, w.page, w.x, w.y);
@@ -528,12 +551,32 @@ function finishMarquee(d: Extract<Drag, { k: 'marquee' }>, w: Where, h: HitIndex
   selection.value = d.additive ? [...new Map([...d.base, ...refs].map((r) => [refKey(r), r])).values()] : refs;
 }
 
+/** Drops a dragged grace note on the pitch of the position: a single pitch takes it, a chord moves as a whole by the same steps. */
+function finishGraceDrag(d: Extract<Drag, { k: 'head' }>, gi: number, ev: NoteEvent, w: Where, h: HitIndex): void {
+  const g = measureForHeadDrag(h, w, d.ref, d.ref.staff);
+  const grace = ev.graces?.[gi];
+  if (!(g && grace)) return;
+  const pitch = pitchAtPos(score.peek(), d.ref.staff, d.ref.mi, d.startTick, clampPos(posAtY(g.y, w.y)), acc.value);
+  const stepNo = (p: Pitch) => p.octave * 7 + STEPS.indexOf(p.step);
+  const ref = d.ref;
+  if (grace.pitches.length === 1) run((s) => C.updateGrace(s, ref, gi, { pitches: [{ pitch }] }));
+  else {
+    const steps = stepNo(pitch) - stepNo(grace.pitches[0].pitch);
+    if (steps) run((s) => C.transposeGrace(s, ref, gi, steps));
+  }
+  selection.value = [{ t: 'grace', mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: ref.idx, gi }];
+}
+
 /** Drops a dragged head: onto the other staff it becomes a cross-staff note (pitch kept), else it takes the pitch of the position. */
 function finishHeadDrag(d: Extract<Drag, { k: 'head' }>, w: Where, h: HitIndex): void {
   if (!d.moved) return;
   const sc = score.peek();
   const ev = eventOf(sc, d.ref);
   if (ev?.kind !== 'note') return;
+  if (d.grace !== undefined) {
+    finishGraceDrag(d, d.grace, ev, w, h);
+    return;
+  }
   const currentStaff = ev.staff ?? d.ref.staff;
   const g = measureForHeadDrag(h, w, d.ref, currentStaff);
   if (!g) return;
@@ -632,6 +675,27 @@ function enter(w: Where, alt: boolean): void {
     selectEventAt(loc, sn.tick);
     acc.value = undefined;
   } // An accidental applies to one note.
+}
+
+/** Puts a grace note in front of the note at the pointer, on the pitch of the clicked position, and selects it. */
+function addGraceAt(w: Where): void {
+  const h = hit.peek();
+  if (!h) return;
+  const sc = score.peek();
+  const g = measureAt(h.layout, w.page, w.x, w.y);
+  if (!g) return;
+  const id = staffId(sc, g.staff);
+  const at = eventAtX(sc, g, id, lenOf(sc, g.mi), w.x, voice.value);
+  if (!at) return;
+  const te = flattenVoice(must(voiceOf(sc, at)))[at.idx];
+  const pos = clampPos(posAtY(g.y, w.y));
+  const pitch = pitchAtPos(sc, id, g.mi, te.start, pos, acc.value);
+  const base = dur.value >= 8 && dur.value <= 32 ? (dur.value as 8 | 16 | 32) : 8;
+  const gi = (te.ev.kind === 'note' && te.ev.graces?.length) || 0;
+  if (run((s) => C.addGrace(s, at, { pitches: [{ pitch }], base, slash: true }))) {
+    selection.value = [{ t: 'grace', ...at, gi }];
+    acc.value = undefined;
+  }
 }
 
 /**
@@ -736,6 +800,10 @@ export function deleteSelection(): void {
   try {
     const evs = sel.filter((r) => r.t === 'ev') as Extract<Ref, { t: 'ev' }>[];
     if (evs.length) s = C.deleteEvents(s, evs);
+    const graces = sel
+      .filter((x): x is Extract<Ref, { t: 'grace' }> => x.t === 'grace')
+      .sort((a, b) => a.mi - b.mi || a.idx - b.idx || b.gi - a.gi);
+    for (const r of graces) s = C.removeGrace(s, r, r.gi);
     const marks = sel.filter((x): x is Extract<Ref, { t: 'mark' }> => x.t === 'mark');
     if (marks.length) s = C.removeMarks(s, marks);
     for (const r of sel.filter((x): x is Extract<Ref, { t: 'slur' }> => x.t === 'slur')) s = C.removeSlur(s, r, r.id);

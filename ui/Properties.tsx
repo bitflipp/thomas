@@ -13,7 +13,7 @@ import { transposeSteps } from '../src/editor/context.ts';
 import { neighbourNote, syllableText } from '../src/editor/lyrics.ts';
 import type { OrnamentKind } from '../src/editor/similar.ts';
 import { eventsInMeasures } from '../src/editor/similar.ts';
-import type { Event, MarkBody, MarkPlacement, NoteEvent, Score, Syllable } from '../src/model.ts';
+import type { Event, Grace, MarkBody, MarkPlacement, NoteEvent, Score, Syllable } from '../src/model.ts';
 import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import { chooseDots, flipStem, lineSelection, slurSelection, tieSelection } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
@@ -712,7 +712,52 @@ function LyricBox({ ref0, verse, cur, sc }: { ref0: EvAddr; verse: number; cur: 
   );
 }
 
-/** The grace notes of a single selected note: value, slash, step up/down and removal for each, and a button to add one. */
+/** The controls of one grace note: value, slash, step up and down, a tone more or less (a chord grace note) and remove. */
+function GraceControls({ ref0, g, i }: { ref0: EvAddr; g: Grace; i: number }) {
+  return (
+    <>
+      <Pick
+        value={g.base}
+        opts={[
+          [8, '8'],
+          [16, '16'],
+          [32, '32'],
+        ]}
+        onChange={(v) => run((x) => C.updateGrace(x, ref0, i, { base: v as 8 | 16 | 32 }))}
+      />
+      <Tog
+        on={!!g.slash}
+        title="Slashed (acciaccatura)"
+        onClick={() => run((x) => C.updateGrace(x, ref0, i, { slash: !g.slash }))}
+      >
+        /
+      </Tog>
+      <button type="button" title="Step up" onClick={() => run((x) => C.transposeGrace(x, ref0, i, 1))}>
+        <Ui.up />
+      </button>
+      <button type="button" title="Step down" onClick={() => run((x) => C.transposeGrace(x, ref0, i, -1))}>
+        <Ui.down />
+      </button>
+      <button
+        type="button"
+        title="Add a tone a third above (chord)"
+        onClick={() => run((x) => C.addGraceTone(x, ref0, i))}
+      >
+        +
+      </button>
+      {g.pitches.length > 1 && (
+        <button type="button" title="Remove the top tone" onClick={() => run((x) => C.removeGraceTone(x, ref0, i))}>
+          −
+        </button>
+      )}
+      <button type="button" title="Remove grace note" onClick={() => run((x) => C.removeGrace(x, ref0, i))}>
+        ×
+      </button>
+    </>
+  );
+}
+
+/** The grace notes of the selected note (a single one) and the button that adds one. */
 function GraceRows({ ref0, note }: { ref0: EvAddr; note: NoteEvent }) {
   const graces = note.graces ?? [];
   const add = () => {
@@ -723,31 +768,7 @@ function GraceRows({ ref0, note }: { ref0: EvAddr; note: NoteEvent }) {
     <>
       {graces.map((g, i) => (
         <Row label={`Grace ${i + 1}`}>
-          <Pick
-            value={g.base}
-            opts={[
-              [8, '8'],
-              [16, '16'],
-              [32, '32'],
-            ]}
-            onChange={(v) => run((x) => C.updateGrace(x, ref0, i, { base: v as 8 | 16 | 32 }))}
-          />
-          <Tog
-            on={!!g.slash}
-            title="Slashed (acciaccatura)"
-            onClick={() => run((x) => C.updateGrace(x, ref0, i, { slash: !g.slash }))}
-          >
-            /
-          </Tog>
-          <button type="button" title="Step up" onClick={() => run((x) => C.transposeGrace(x, ref0, i, 1))}>
-            <Ui.up />
-          </button>
-          <button type="button" title="Step down" onClick={() => run((x) => C.transposeGrace(x, ref0, i, -1))}>
-            <Ui.down />
-          </button>
-          <button type="button" title="Remove grace note" onClick={() => run((x) => C.removeGrace(x, ref0, i))}>
-            ×
-          </button>
+          <GraceControls ref0={ref0} g={g} i={i} />
         </Row>
       ))}
       <div class="btns">
@@ -756,6 +777,30 @@ function GraceRows({ ref0, note }: { ref0: EvAddr; note: NoteEvent }) {
         </button>
       </div>
     </>
+  );
+}
+
+/** Properties of a selected grace note (clicked on the score): the same controls as in its note's panel. */
+function GraceSection({ r }: { r: Extract<Ref, { t: 'grace' }> }) {
+  const g = (eventOf(score.value, r) as NoteEvent | undefined)?.graces?.[r.gi];
+  if (!g) return null;
+  const name = g.pitches
+    .map(
+      (p) =>
+        `${p.pitch.step.toUpperCase()}${'#'.repeat(Math.max(0, p.pitch.alter))}${'b'.repeat(Math.max(0, -p.pitch.alter))}${p.pitch.octave}`,
+    )
+    .join(' ');
+  return (
+    <section>
+      <Group title="Grace note">
+        <div class="ctx">
+          m. {r.mi + 1} · {name}
+        </div>
+        <Row label="Grace">
+          <GraceControls ref0={r} g={g} i={r.gi} />
+        </Row>
+      </Group>
+    </section>
   );
 }
 
@@ -1390,6 +1435,7 @@ function selectionLabel(sc: Score, sel: Ref[]): string | null {
     const g = tupletOf(sc, first);
     return g ? `Tuplet ${g.actual}:${g.normal}` : 'Tuplet';
   }
+  if (first.t === 'grace') return 'Grace note';
   return first.t === 'slur' ? 'Slur' : first.t === 'line' ? 'Line' : 'Tie';
 }
 
@@ -1446,6 +1492,7 @@ export function Properties() {
           <>
             {sel.some((r) => r.t === 'ev') && <EventSection />}
             {first?.t === 'mark' && <MarkSection r={first} />}
+            {first?.t === 'grace' && <GraceSection r={first} />}
             {first?.t === 'slur' && <SlurSection />}
             {first?.t === 'line' && <LineSection />}
             {first?.t === 'tuplet' && <TupletSection r={first} />}

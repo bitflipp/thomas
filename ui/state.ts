@@ -259,7 +259,8 @@ export type Tool =
   | 'text'
   | 'tempo'
   | 'clef'
-  | 'tuplet';
+  | 'tuplet'
+  | 'grace';
 
 export const tool = signal<Tool>('select');
 export const dur = signal<BaseDur>(8);

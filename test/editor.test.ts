@@ -521,3 +521,28 @@ test('measure ranges: copy and paste, key and time over a run, notes of a run', 
   );
   assert.equal(validate(t).length, 0);
 });
+
+test('grace notes can be hit on the score, and a chord grace note gets and loses tones', () => {
+  const sc = parseText(
+    'page 210x297 margin=10 space=1.75\nstaff rh clef=G2\nm1 time=4/4 key=0\n  rh.1: \\acc{ d5:8 } c5:4 \\grace{ e5:16 f5:16 } e5:4 d5:2\n',
+  );
+  const res = engrave(sc);
+  const h = buildHitIndex(sc, res);
+  const graces = h.targets.filter((t) => t.ref.t === 'grace');
+  // Each grace note is one target: two grace notes in the second group, one in the first.
+  assert.deepEqual(graces.map((t) => t.ref.t === 'grace' && `${t.ref.idx}:${t.ref.gi}`).sort(), ['0:0', '1:0', '1:1']);
+  for (const t of graces) {
+    const b = t.boxes[0];
+    const got = hitTest(h, t.page, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0.05);
+    assert.equal(got?.ref.t, 'grace');
+    assert.equal(got?.ref.t === 'grace' && got.ref.gi, t.ref.t === 'grace' ? t.ref.gi : -1);
+  }
+  const a = { mi: 0, staff: 'rh', voice: 1, idx: 1 };
+  let s = ok(C.addGraceTone(sc, a, 0));
+  assert.match(writeText(s), /\\grace\{ ?<e5 g5>:16 f5/);
+  assert.deepEqual(parseText(writeText(s)), s);
+  assert.equal(engrave(s).pages.length, 1);
+  s = ok(C.removeGraceTone(s, a, 0));
+  assert.equal(writeText(s), writeText(sc));
+  assert.throws(() => C.removeGraceTone(s, a, 0), /at least one pitch/);
+});

@@ -16,6 +16,7 @@ const ROWS: [string, string][] = [
   ['← →', 'Select previous / next note (Shift extends)'],
   ['T', 'Tie to the next note'],
   ['S', 'Slur from the first to the last selected note'],
+  ['↑ ↓ (grace note selected)', 'Step the grace note up / down'],
   ['F', 'Toggle a fermata on the selection'],
   ['Shift T', 'Toggle a trill on the selected notes'],
   ['X', 'Cycle the stem: up, down, automatic'],

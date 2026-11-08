@@ -182,6 +182,7 @@ export function primRef(index: ScoreIndex, p: Prim): Ref | undefined {
   if (!r) return undefined;
   const ev = index.ev.get(r as never);
   if (ev) {
+    if (p.gr !== undefined) return { t: 'grace', ...ev, gi: p.gr };
     if (p.k === 'tie') return { t: 'tie', ...ev, pi: p.n ?? 0 };
     if (p.k === 'slur') return { t: 'slur', ...ev, id: p.n ?? 1 };
     if (p.k === 'link') return { t: 'line', ...ev, id: p.n ?? 1 };
@@ -463,6 +464,7 @@ function lineNotes(score: Score, ref: Extract<Ref, { t: 'line' }>): EvAddr[] {
 /** The notes a selected slur, tie or tuplet belongs to (its start and end notes; all notes of a tuplet). */
 export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
   if (ref.t === 'mark') return markNotes(score, ref);
+  if (ref.t === 'grace') return [{ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: ref.idx }];
   if (ref.t === 'tuplet') return tupletMembers(score, ref);
   if (ref.t === 'line') return lineNotes(score, ref);
   if (ref.t !== 'slur' && ref.t !== 'tie') return [];
