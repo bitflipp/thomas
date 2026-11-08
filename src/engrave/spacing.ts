@@ -401,6 +401,9 @@ function headExtents(evs: EvL[]): { heads: { h: HeadL; e: EvL }[]; L: number; R:
 
 const ACCIDENTAL_GAP = 0.12;
 
+/** Clearance (staff positions) that two accidentals need between their glyph boxes to share a column. */
+const ACCIDENTAL_STACK_GAP = 1;
+
 /** Whether a head at staff position `pos` needs ledger lines. */
 const hasLedgerLine = (pos: number) => pos <= -2 || pos >= 10;
 
@@ -428,7 +431,8 @@ function stackAccidentals(heads: { h: HeadL; e: EvL }[]): number {
   const stacks: { pos: number; h: number; w: number }[][] = [];
   const colOf = info.map((it) => {
     let k = 0;
-    while (!(stacks[k] ?? []).every((q) => Math.abs(q.pos - it.head.pos) >= (q.h + it.hh) / 2)) k++;
+    while (!(stacks[k] ?? []).every((q) => Math.abs(q.pos - it.head.pos) >= (q.h + it.hh) / 2 + ACCIDENTAL_STACK_GAP))
+      k++;
     stacks[k] ??= [];
     stacks[k].push({ pos: it.head.pos, h: it.hh, w: it.w });
     return k;
