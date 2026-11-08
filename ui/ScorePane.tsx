@@ -376,6 +376,32 @@ export function ScorePane() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  useEffect(() => {
+    // Panning: dragging with the right button scrolls the pane.
+    const el = must(box.current);
+    const down = (e: PointerEvent) => {
+      if (e.button !== 2) return;
+      e.preventDefault();
+      let x = e.clientX;
+      let y = e.clientY;
+      el.classList.add('panning');
+      const move = (m: PointerEvent) => {
+        el.scrollLeft -= m.clientX - x;
+        el.scrollTop -= m.clientY - y;
+        x = m.clientX;
+        y = m.clientY;
+      };
+      const up = () => {
+        el.classList.remove('panning');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    };
+    el.addEventListener('pointerdown', down);
+    return () => el.removeEventListener('pointerdown', down);
+  }, []);
   useLayoutEffect(() => {
     const a = takeZoomAnchor();
     const el = box.current;

@@ -297,6 +297,10 @@ button.mini {
   min-width: 0;
   background: var(--bg);
 }
+.scroll.panning,
+.scroll.panning * {
+  cursor: grabbing !important;
+}
 .page {
   margin: 0 auto var(--sp-4);
   background: #fff;
