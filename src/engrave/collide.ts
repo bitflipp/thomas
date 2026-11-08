@@ -35,8 +35,6 @@ const ALLOW: readonly [Kind, Kind, Scope][] = [
   ['ledger', 'stem', 'any'],
   // A tie may run through the accidental of the note it ends on (or of another voice) rather than bulge around it.
   ['acc', 'tie', 'any'],
-  // A slur may cross an accidental under its arc: it stays readable, and avoiding it would make the arc too steep.
-  ['acc', 'slur', 'any'],
   // Staff furniture: the barline at the start of a system meets the brace; neither belongs
   // to any note, so there is no owner to scope it by.
   ['barline', 'brace', 'any'],

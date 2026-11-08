@@ -19,6 +19,44 @@ const sm = loadSmufl();
 
 type Side = 'above' | 'below';
 
+/**
+ * The form of a slur's cubic: `a0`/`a1` are how far along the span (as a fraction) the control points sit, and `m0`/`m1`
+ * scale how high each one is lifted off the chord. The symmetric default is `{ a0: 0.2, a1: 0.2, m0: 1, m1: 1 }`; a
+ * skewed shape moves the peak towards the end with the larger lift, so a slur can hug a low side and rise over a high one.
+ */
+interface SlurShape {
+  a0: number;
+  a1: number;
+  m0: number;
+  m1: number;
+}
+
+const SYMMETRIC: SlurShape = { a0: 0.2, a1: 0.2, m0: 1, m1: 1 };
+
+/** The rounder shape of ties. */
+const TIE_SHAPE: SlurShape = { a0: 0.3, a1: 0.3, m0: 1, m1: 1 };
+
+/** The four control points (x, y) of the outer edge of a slur of height `h` over the chord (x0,y0)-(x1,y1). */
+function slurControls(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  h: number,
+  above: boolean,
+  sh: SlurShape,
+): [number, number][] {
+  const s = above ? -1 : 1;
+  const L = x1 - x0;
+  const k = h / 0.75;
+  return [
+    [x0, y0],
+    [x0 + L * sh.a0, y0 + (y1 - y0) * 0.3 + s * k * sh.m0],
+    [x1 - L * sh.a1, y0 + (y1 - y0) * 0.7 + s * k * sh.m1],
+    [x1, y1],
+  ];
+}
+
 /** Filled crescent from (x0,y0) to (x1,y1) bulging `h` away from the chord; `thick` at the middle, `tip` at the ends. */
 function crescent(
   x0: number,
@@ -29,51 +67,49 @@ function crescent(
   thick: number,
   above: boolean,
   tip = 0.1,
-  a = 0.3,
+  sh: SlurShape = SYMMETRIC,
 ): string {
   const s = above ? -1 : 1;
-  const L = x1 - x0;
-  const k = h / 0.75;
-  const k2 = Math.max(0, k - thick / 0.75);
-  /**
-   * The control points sit at fraction `a` of the span in x but follow the chord in y (the 0.3/0.7
-   * factors), so a small `a` gives steep ends and a flat top.
-   */
-  const cx = (f: number, kk: number) =>
-    `${(x0 + L * f).toFixed(3)} ${(y0 + (y1 - y0) * (f < 0.5 ? 0.3 : 0.7) + s * kk).toFixed(3)}`;
+  const out = slurControls(x0, y0, x1, y1, h, above, sh);
+  const inn = slurControls(x0, y0, x1, y1, Math.max(0, h - thick), above, sh);
+  const f = (q: [number, number]) => `${q[0].toFixed(3)} ${q[1].toFixed(3)}`;
   // The inner edge ends slightly towards the chord (`tip`) so that the tips of the crescent
   // keep a visible thickness instead of tapering to a hairline.
   const iy0 = y0 - s * tip;
   const iy1 = y1 - s * tip;
-  return `M${x0.toFixed(3)} ${y0.toFixed(3)}C${cx(a, k)} ${cx(1 - a, k)} ${x1.toFixed(3)} ${y1.toFixed(3)}L${x1.toFixed(3)} ${iy1.toFixed(3)}C${cx(1 - a, k2)} ${cx(a, k2)} ${x0.toFixed(3)} ${iy0.toFixed(3)}Z`;
+  return `M${f(out[0])}C${f(out[1])} ${f(out[2])} ${f(out[3])}L${x1.toFixed(3)} ${iy1.toFixed(3)}C${f(inn[2])} ${f(inn[1])} ${x0.toFixed(3)} ${iy0.toFixed(3)}Z`;
 }
 
-/** The y of the outer edge of `crescent(x0, y0, x1, y1, h, ..., a)` at `x` (the curve is a cubic whose control points follow the chord, so it differs from a parabola over a sloped chord). */
-function crescentY(
+/** Points per curve in the tables of `curveTable`. */
+const TABLE_N = 48;
+
+/**
+ * The outer edge of a slur shape sampled at `TABLE_N + 1` parameter values: x, the y of the curve at height 0, and
+ * the y gained per unit of height. The curve's y is linear in `h`, so the least height clearing an obstacle is a
+ * division, not a search.
+ */
+function curveTable(
   x0: number,
   y0: number,
   x1: number,
   y1: number,
-  h: number,
   above: boolean,
-  x: number,
-  a = 0.2,
-): number {
-  const s = above ? -1 : 1;
-  const L = x1 - x0;
-  const k = h / 0.75;
-  const ys = [y0, y0 + (y1 - y0) * 0.3 + s * k, y0 + (y1 - y0) * 0.7 + s * k, y1];
-  const xs = [x0, x0 + L * a, x0 + L * (1 - a), x1];
-  const at = (t: number, v: number[]) =>
-    (1 - t) ** 3 * v[0] + 3 * (1 - t) ** 2 * t * v[1] + 3 * (1 - t) * t * t * v[2] + t ** 3 * v[3];
-  let lo = 0;
-  let hi = 1;
-  for (let i = 0; i < 30; i++) {
-    const mid = (lo + hi) / 2;
-    if (at(mid, xs) < x) lo = mid;
-    else hi = mid;
+  sh: SlurShape,
+): { x: number[]; y: number[]; g: number[] } {
+  const base = slurControls(x0, y0, x1, y1, 0, above, sh);
+  const unit = slurControls(x0, y0, x1, y1, 0.75, above, sh);
+  const x: number[] = [];
+  const y: number[] = [];
+  const g: number[] = [];
+  for (let i = 0; i <= TABLE_N; i++) {
+    const t = i / TABLE_N;
+    const w = [(1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t * t, t ** 3];
+    const at = (c: [number, number][], d: 0 | 1) => c.reduce((sum, q, j) => sum + w[j] * q[d], 0);
+    x.push(at(base, 0));
+    y.push(at(base, 1));
+    g.push((at(unit, 1) - at(base, 1)) / 0.75);
   }
-  return at((lo + hi) / 2, ys);
+  return { x, y, g };
 }
 
 /** The tied head of `e` connects to the same pitch in the next event of the voice, unless a rest stands in between. */
@@ -507,7 +543,7 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
       draw: (hh: number) => {
         ctx.prims[e.staff].push({
           t: 'path',
-          d: crescent(xa, y, xb, y, hh, thick, above),
+          d: crescent(xa, y, xb, y, hh, thick, above, 0.1, TIE_SHAPE),
           k: 'tie',
           o: oid(h),
           r: e.ev,
@@ -593,10 +629,10 @@ interface SlurFrame {
 }
 
 /**
- * The skyline edge over a window of the span: the nearest obstacle on the slur's side. Accidentals do not count: a
- * slur may cross them, which keeps its arc from rising steeply over a sharp or flat next to its notes.
+ * The skyline edge over a window of the span: the nearest obstacle on the slur's side. Accidentals count, so the arc
+ * clears them; `skipAcc` ignores them.
  */
-const slurReach = (f: SlurFrame, a: number, b: number, skipAcc = true) =>
+const slurReach = (f: SlurFrame, a: number, b: number, skipAcc = false) =>
   f.above ? f.sky.top(a, b, 99, false, skipAcc) : f.sky.bottom(a, b, -99, false, skipAcc);
 
 /**
@@ -636,6 +672,58 @@ function sampleObstacles(f: SlurFrame, x0: number, x1: number): { t: number; o: 
     if (Math.abs(o) < 90) samples.push({ t: (x - x0) / L, o });
   }
   return samples;
+}
+
+// The candidate shapes of a slur: the lateral reach of the control points and a skew of their lifts. The grid is small
+// because every shape is tried for every slur.
+const SLUR_SHAPES: SlurShape[] = (() => {
+  const out: SlurShape[] = [];
+  for (const a0 of [0.12, 0.2, 0.3])
+    for (const a1 of [0.12, 0.2, 0.3])
+      for (const skew of [-0.6, -0.3, 0, 0.3, 0.6]) out.push({ a0, a1, m0: 1 + skew, m1: 1 - skew });
+  return out;
+})();
+
+/** What a shape costs beyond its height: the further from the symmetric shape, the more. */
+const shapePenalty = (sh: SlurShape): number =>
+  0.5 * (Math.abs(sh.a0 - SYMMETRIC.a0) + Math.abs(sh.a1 - SYMMETRIC.a1)) + 0.15 * Math.abs(sh.m0 - sh.m1);
+
+/**
+ * The least height at which a slur of shape `sh` clears every sampled obstacle (the slur's own thickness included), or
+ * undefined when none does. The curve's y is linear in the height, so each obstacle gives its own bound directly.
+ */
+function leastHeight(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  st: SlurStyle,
+  samples: { t: number; o: number }[],
+  sh: SlurShape,
+): number | undefined {
+  const { x, y, g } = curveTable(x0, y0, x1, y1, st.above, sh);
+  let hMin = 0.3;
+  let i = 0;
+  for (const { t, o } of samples) {
+    const xs = x0 + t * (x1 - x0);
+    while (i < TABLE_N - 1 && x[i + 1] < xs) i++;
+    const f = (xs - x[i]) / (x[i + 1] - x[i] || 1);
+    const yb = y[i] + (y[i + 1] - y[i]) * f;
+    const gain = (st.above ? -1 : 1) * (g[i] + (g[i + 1] - g[i]) * f);
+    // The outer edge plus the slur's own thickness must clear the obstacle.
+    const need = st.above ? yb + st.thick - (o - SLUR_CLEAR) : o + SLUR_CLEAR + st.thick - yb;
+    if (need <= 0) continue;
+    if (gain < 1e-3) return undefined;
+    hMin = Math.max(hMin, need / gain);
+  }
+  return hMin < 8 ? hMin : undefined;
+}
+
+/** How far the outer edge of a slur of shape `sh` and height `h` rises beyond its higher end (beyond its lower one when below). */
+function peakExtent(x0: number, y0: number, x1: number, y1: number, above: boolean, sh: SlurShape, h: number): number {
+  const { y, g } = curveTable(x0, y0, x1, y1, above, sh);
+  const ys = y.map((v, i) => v + h * g[i]);
+  return above ? Math.min(y0, y1) - Math.min(...ys) : Math.max(...ys) - Math.max(y0, y1);
 }
 
 /** A slur piece laid out but not yet drawn: its natural height, and a function drawing it at a (possibly shared) height. */
@@ -696,18 +784,19 @@ function planSlurPiece(
   const frame: SlurFrame = { above: st.above, sky: slurSkyline(ctx, staff, st.from, b), openL, openR };
   const [y0, y1] = slurEndHeights(frame, x0, y0In, x1, y1In);
   const samples = sampleObstacles(frame, x0, x1);
-  // The end points stay at their notes, so the arc alone clears what is under it: it starts from a preferred height
-  // and grows until the drawn curve (not an approximation) clears every obstacle, the slur's own thickness included.
+  // The end points stay at their notes, so the arc alone clears what is under it. Among the candidate shapes, the one
+  // whose peak ends up lowest wins; a lopsided shape pays a small penalty, so the symmetric one stays unless an obstacle
+  // makes a skewed one clearly flatter.
   const hPref = Math.max(0.7, Math.min(3.0, 0.09 * L + 0.6));
-  const clears = (h: number) =>
-    samples.every(({ t, o }) => {
-      const y = crescentY(x0, y0, x1, y1, h, st.above, x0 + t * L, 0.2);
-      // The outer edge plus the slur's own thickness must clear the obstacle.
-      return st.above ? y + st.thick <= o - SLUR_CLEAR : y - st.thick >= o + SLUR_CLEAR;
-    });
-  let hMin = 0.3;
-  while (hMin < 8 && !clears(hMin)) hMin += 0.1;
-  const h0 = Math.max(Math.min(hPref, Math.max(7, 0.12 * L)), hMin);
+  let best: { sh: SlurShape; hMin: number; h: number; cost: number } | undefined;
+  for (const sh of SLUR_SHAPES) {
+    const hMin = leastHeight(x0, y0, x1, y1, st, samples, sh);
+    if (hMin === undefined) continue;
+    const h = Math.max(hPref, hMin);
+    const cost = peakExtent(x0, y0, x1, y1, st.above, sh, h) + shapePenalty(sh);
+    if (!best || cost < best.cost - 1e-9) best = { sh, hMin, h, cost };
+  }
+  const { sh, hMin, h: h0 } = best ?? { sh: SYMMETRIC, hMin: hPref, h: hPref };
   return {
     h: h0,
     hMin,
@@ -715,7 +804,7 @@ function planSlurPiece(
     draw: (h) => {
       ctx.prims[staff].push({
         t: 'path',
-        d: crescent(x0, y0, x1, y1, h, st.thick, st.above, 0.1, 0.2),
+        d: crescent(x0, y0, x1, y1, h, st.thick, st.above, 0.1, sh),
         k: 'slur',
         o: st.slurId,
         r: st.from.ev,
@@ -725,7 +814,16 @@ function planSlurPiece(
       const yM = Math.max(y0, y1);
       // A slur between staves reaches into the other staff: it is not recorded there, or it would
       // push the staves apart for good.
-      frame.sky.add(x0, x1, st.above ? ym - h : ym, st.above ? yM : yM + h, true);
+      // The skyline follows the curve in slices, so that what is placed above a low side of a lopsided slur may sit lower.
+      const { x, y, g } = curveTable(x0, y0, x1, y1, st.above, sh);
+      const n = Math.max(2, Math.min(TABLE_N, Math.ceil(L / 0.8)));
+      for (let j = 0; j < n; j++) {
+        const lo = Math.floor((j * TABLE_N) / n);
+        const hi = Math.ceil(((j + 1) * TABLE_N) / n);
+        let edge = st.above ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+        for (let i = lo; i <= hi; i++) edge = (st.above ? Math.min : Math.max)(edge, y[i] + h * g[i]);
+        frame.sky.add(x[lo], x[hi], st.above ? edge : ym, st.above ? yM : edge, true);
+      }
     },
   };
 }
