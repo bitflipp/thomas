@@ -656,12 +656,12 @@ function drawLedgerLines(ctx: SysCtx, e: EvL, s: number): void {
   for (let p = -2; p >= posMin; p -= 2)
     ledger(
       p,
-      own.filter((h) => h.pos <= p + 1),
+      own.filter((h) => h.pos <= p),
     );
   for (let p = 10; p <= posMax; p += 2)
     ledger(
       p,
-      own.filter((h) => h.pos >= p - 1),
+      own.filter((h) => h.pos >= p),
     );
 }
 

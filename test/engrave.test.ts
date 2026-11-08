@@ -160,6 +160,18 @@ m1 time=2/4
   assert.equal(two.length, 4);
 });
 
+test('a ledger line does not extend over a chord head that stands in the space before it', () => {
+  const ps = prims(`${HEAD}
+m1 time=2/4
+  rh.1: <e5 g5 a5>:4 r:4
+  lh.1: R:2
+`);
+  const line = ps.find((p) => p.k === 'ledger');
+  const heads = ps.filter((p) => p.t === 'glyph' && /^notehead/.test(p.name));
+  // The line serves a5 only, so it starts right of the g5 head (the second one), which sits in the space under it.
+  assert.ok(line?.t === 'line' && heads[1].t === 'glyph' && line.x1 > heads[1].x + 0.5);
+});
+
 test('unisons with different durations share a head when stems are opposite and the head shape is equal', () => {
   const ps = prims(`${HEAD}
 m1 time=2/4
