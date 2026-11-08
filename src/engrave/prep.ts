@@ -212,7 +212,8 @@ function clefTimeline(score: Score): Prepared['clefAt'] {
 
 /**
  * Ottava timeline per staff, built like the clef timeline: -1 for 8va (written an octave lower than
- * it sounds), +1 for 8vb and 0 where the line stops.
+ * it sounds), +1 for 8vb and 0 where the line stops. A stop at a tick ends the line before the notes there
+ * (the line is drawn up to the previous note), a start at a tick applies to them when `startIncl`.
  */
 function ottavaTimeline(score: Score): (staff: number, mi: number, tick: number, startIncl: boolean) => number {
   const changes: { mi: number; tick: number; shift: number }[][] = score.staves.map(() => []);
@@ -223,8 +224,7 @@ function ottavaTimeline(score: Score): (staff: number, mi: number, tick: number,
   return (s, mi, tick, startIncl) => {
     let shift = 0;
     for (const o of changes[s]) {
-      const before =
-        o.mi < mi || (o.mi === mi && (o.tick < tick || (o.tick === tick && (startIncl ? o.shift !== 0 : true))));
+      const before = o.mi < mi || (o.mi === mi && (o.tick < tick || (o.tick === tick && (o.shift === 0 || startIncl))));
       if (before) shift = o.shift;
       else break;
     }

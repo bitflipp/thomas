@@ -313,3 +313,15 @@ m1 time=4/4 key=0
   assert.ok(!pageToSvg(ghosted.pages[0], ghosted.staffSpace).includes('restQuarter'));
   assert.ok(pageToSvg(ghosted.pages[0], ghosted.staffSpace, { ghosts: true }).includes('restQuarter'));
 });
+
+test('an ottava stop at a note ends the line before it, so the note is written at pitch', () => {
+  const s = parseText(`${HEAD}
+m1 time=2/4 key=0
+  rh.1: c5:8 \\8va e6 g6 \\8off f6
+`);
+  const evs = prepare(s).measures[0][0].evs;
+  assert.deepEqual(
+    evs.map((e) => e.ottavaShift),
+    [0, -1, -1, 0],
+  );
+});

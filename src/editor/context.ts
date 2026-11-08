@@ -24,7 +24,7 @@ export function ottavaAt(score: Score, staff: string, mi: number, tick: number):
     for (const mk of marksOf(score.measures[m].staves[staff])) {
       if (m === mi && mk.tick > tick) continue;
       if (mk.type === 'ottava') sh = mk.dir === 'up' ? -1 : 1;
-      else if (mk.type === 'stop' && mk.of === 'ottava' && (m < mi || mk.tick < tick)) sh = 0;
+      else if (mk.type === 'stop' && mk.of === 'ottava' && (m < mi || mk.tick <= tick)) sh = 0;
     }
   return sh;
 }
