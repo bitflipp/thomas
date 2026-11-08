@@ -27,8 +27,9 @@ function staffGap(ctx: SysCtx, s: number): number {
     }
   // Then clear of both staves' lines, whether or not anything overlaps in x: content hanging
   // below the upper staff or above the lower one needs room of its own, and 3.7 is the minimum.
-  for (const a of ctx.sky[s - 1].boxes) if (!a.spanner) need = Math.max(need, a.y1 - STAFF_HEIGHT + 0.7);
-  for (const b of ctx.sky[s].boxes) if (!b.spanner) need = Math.max(need, -b.y0 + 0.7);
+  // A tie or slur may not reach into the other staff's lines either, but needs less room than other content.
+  for (const a of ctx.sky[s - 1].boxes) need = Math.max(need, a.y1 - STAFF_HEIGHT + (a.spanner ? 0.4 : 0.7));
+  for (const b of ctx.sky[s].boxes) need = Math.max(need, -b.y0 + (b.spanner ? 0.4 : 0.7));
   return Math.max(3.7, need);
 }
 
