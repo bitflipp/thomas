@@ -586,7 +586,10 @@ interface SlurFrame {
   openR: boolean;
 }
 
-/** The skyline edge over a window of the span: the nearest obstacle on the slur's side. Accidentals do not count: a slur may cross them, which keeps its arc from rising steeply over a sharp or flat next to its notes. */
+/**
+ * The skyline edge over a window of the span: the nearest obstacle on the slur's side. Accidentals do not count: a
+ * slur may cross them, which keeps its arc from rising steeply over a sharp or flat next to its notes.
+ */
 const slurReach = (f: SlurFrame, a: number, b: number) =>
   f.above ? f.sky.top(a, b, 99, false, true) : f.sky.bottom(a, b, -99, false, true);
 
@@ -691,7 +694,8 @@ function planSlurPiece(
   const clears = (h: number) =>
     samples.every(({ t, o }) => {
       const y = crescentY(x0, y0, x1, y1, h, st.above, x0 + t * L, 0.2);
-      return st.above ? y + st.thick <= o - SLUR_CLEAR : y - st.thick >= o + SLUR_CLEAR; // The outer edge plus the slur's own thickness must clear the obstacle.
+      // The outer edge plus the slur's own thickness must clear the obstacle.
+      return st.above ? y + st.thick <= o - SLUR_CLEAR : y - st.thick >= o + SLUR_CLEAR;
     });
   let hMin = 0.3;
   while (hMin < 8 && !clears(hMin)) hMin += 0.1;

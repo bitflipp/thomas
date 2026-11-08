@@ -95,7 +95,7 @@ export function zoomBy(f: number, at?: { x: number; y: number }): void {
 }
 
 /** Set by `zoomBy`, consumed by the score pane after its next render. */
-export let zoomAnchor: { x: number; y: number; r: number } | null = null;
+let zoomAnchor: { x: number; y: number; r: number } | null = null;
 
 /** Returns the pending zoom anchor and clears it. */
 export const takeZoomAnchor = () => {

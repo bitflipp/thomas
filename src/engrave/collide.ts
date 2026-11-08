@@ -18,7 +18,7 @@ import { textWidth } from './textmetrics.ts';
 export type Scope = 'own' | 'any';
 
 /** Pairs of element kinds that may overlap. `own`: only when both belong to the same object / group. */
-export const ALLOW: readonly [Kind, Kind, Scope][] = [
+const ALLOW: readonly [Kind, Kind, Scope][] = [
   // Parts of one note: heads, stems, dots, flags and beams are drawn to touch each other,
   // so only collisions with *other* objects are meaningful. Scope `own` ensures that.
   ['head', 'stem', 'own'],
