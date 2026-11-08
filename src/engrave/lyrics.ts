@@ -10,6 +10,7 @@ import { geomOf } from './draw.ts';
 import type { EvL } from './prep.ts';
 import { oid, tagFrom } from './scene.ts';
 import { STAFF_HEIGHT } from './staffgap.ts';
+import { textWidth } from './textmetrics.ts';
 
 /** Text size of a syllable, in staff spaces. */
 export const LYRIC_SIZE = 1.7;
@@ -22,16 +23,9 @@ export const HYPHEN_ROOM = 1.1;
 /** The distance from one verse's baseline to the next. */
 const VERSE_STEP = 2.3;
 
-const NARROW = new Set("ijlft.,;:!'-rI");
-
-const WIDE = new Set('mwMW');
-
-/** An estimate of the width of a syllable in staff spaces (the renderer has no font metrics). */
+/** The width of a syllable in staff spaces. */
 export function lyricWidth(text: string): number {
-  let w = 0;
-  for (const ch of text)
-    w += ch === ' ' ? 0.3 : NARROW.has(ch) ? 0.32 : WIDE.has(ch) ? 0.85 : /[A-Z]/.test(ch) ? 0.68 : 0.5;
-  return w * LYRIC_SIZE;
+  return textWidth(text, LYRIC_SIZE);
 }
 
 /** A syllable placed on a staff: its note, its position in the system and its extent. */

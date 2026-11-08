@@ -13,6 +13,7 @@ import { loadSmufl } from '../smufl.ts';
 
 import { must } from '../util.ts';
 import type { Kind, Page, Prim } from './scene.ts';
+import { textWidth } from './textmetrics.ts';
 
 export type Scope = 'own' | 'any';
 
@@ -265,7 +266,7 @@ function shapeOf(p: Prim): Shape | null {
       return finish(p, rings);
     }
     case 'text': {
-      const w = p.s.length * p.size * 0.5;
+      const w = textWidth(p.s, p.size);
       const x0 = p.anchor === 'middle' ? p.x - w / 2 : p.anchor === 'end' ? p.x - w : p.x;
       return finish(p, [rect(x0, p.y - p.size * 0.75, x0 + w, p.y + p.size * 0.25)], true);
     }
