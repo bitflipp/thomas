@@ -95,3 +95,6 @@ const browserApi: NativeApi = {
 
 /** The bridge to the main process in the desktop app, else the browser implementation. */
 export const native: NativeApi = (window as unknown as { native?: NativeApi }).native ?? browserApi;
+
+/** Whether paths are real file paths that survive a restart (the desktop app), not browser handles. */
+export const hasRealPaths = (window as unknown as { native?: NativeApi }).native !== undefined;

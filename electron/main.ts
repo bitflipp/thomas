@@ -2,7 +2,7 @@
 // native file work (open/save dialogs, PDF export) that the page asks for through the preload bridge.
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 
 const SCORE_FILTERS = [
@@ -14,6 +14,9 @@ const SCORE_FILTERS = [
 let win: BrowserWindow | null = null;
 
 let unsaved = false;
+
+// The folder of the last file opened or saved, where the next dialog starts.
+let lastDir: string | undefined;
 
 /** Creates the main window and loads the built UI. */
 function createWindow() {
@@ -56,20 +59,29 @@ function createWindow() {
 function handlers() {
   ipcMain.handle('open', async () => {
     if (!win) return null;
-    const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: SCORE_FILTERS });
+    const r = await dialog.showOpenDialog(win, {
+      defaultPath: lastDir,
+      properties: ['openFile'],
+      filters: SCORE_FILTERS,
+    });
     const path = r.filePaths[0];
     if (r.canceled || !path) return null;
+    lastDir = dirname(path);
     return { path, name: basename(path), data: await readFile(path, 'utf8') };
   });
   ipcMain.handle('save', async (_e, data: string, name: string, path: string | null) => {
     if (!win) return null;
     let target = path;
     if (!target) {
-      const r = await dialog.showSaveDialog(win, { defaultPath: name, filters: SCORE_FILTERS });
+      const r = await dialog.showSaveDialog(win, {
+        defaultPath: lastDir ? join(lastDir, name) : name,
+        filters: SCORE_FILTERS,
+      });
       if (r.canceled || !r.filePath) return null;
       target = r.filePath;
     }
     await writeFile(target, data, 'utf8');
+    lastDir = dirname(target);
     return { path: target, name: basename(target) };
   });
   // The page has set up an `@page` size and rendered every page, so the PDF takes its size from the CSS.

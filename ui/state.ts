@@ -291,6 +291,44 @@ export function restore(): string | null {
   }
 }
 
+const FILE_KEY = 'thomas.file';
+
+/** Reads the stored file identity of the last session (null when there is none or storage is unavailable). */
+function readStoredFile(): { path: string; name: string } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(FILE_KEY) ?? 'null');
+    return v && typeof v.path === 'string' && typeof v.name === 'string' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+// Read before the effect below runs, which would otherwise overwrite it with the empty initial state.
+const storedFile = readStoredFile();
+
+/** The path and name of the file the autosaved score belongs to, if it was saved or opened from one. */
+export function restoreFile(): { path: string; name: string } | null {
+  return storedFile;
+}
+
+effect(() => {
+  const path = filePath.value;
+  const name = fileName.value;
+  try {
+    if (path) localStorage.setItem(FILE_KEY, JSON.stringify({ path, name }));
+    else localStorage.removeItem(FILE_KEY);
+  } catch {
+    /* storage may be unavailable */
+  }
+});
+
+// The window title shows the file's path (the name in a browser) and an unsaved mark; a score without a file
+// shows just the application name.
+effect(() => {
+  const file = filePath.value;
+  document.title = `${dirty.value ? '• ' : ''}${file ? `${file} – ` : ''}Thomas`;
+});
+
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 effect(() => {
