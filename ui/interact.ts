@@ -167,7 +167,7 @@ export function select(refs: Ref[], additive = false): void {
 }
 
 /** Index of the event that starts at `tick` in the voice, after an edit. */
-function selectEventAt(loc: { mi: number; staff: string; voice: number }, tick: number): void {
+export function selectEventAt(loc: { mi: number; staff: string; voice: number }, tick: number): void {
   const v = voiceOf(score.peek(), loc);
   const te = v && flattenVoice(v).find((t) => t.start === tick);
   if (te) selection.value = [{ t: 'ev', ...loc, idx: te.index }];

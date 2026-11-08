@@ -114,6 +114,14 @@ async function connect(): Promise<MIDIOutput | null> {
 const outPort = (): MIDIOutput | undefined =>
   access && midiOut.peek() ? access.outputs.get(must(midiOut.peek())) : undefined;
 
+/** Sounds MIDI key `midi` for a moment on the selected output (feedback while entering notes); silent when no output was opened yet. */
+export function preview(midi: number): void {
+  const out = outPort();
+  if (!out || playing.peek()) return;
+  out.send([0x90, midi, 80]);
+  setTimeout(() => out.send([0x80, midi, 0]), 300);
+}
+
 /** The score time in seconds that is being heard now. */
 const nowSec = (): number => sec0 + (performance.now() - wall0) / 1000;
 

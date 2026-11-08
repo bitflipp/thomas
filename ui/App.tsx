@@ -11,6 +11,7 @@ import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
 import { zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
+import { chooseInput, midiIn, midiInPorts } from './midiin.ts';
 import { native } from './native.ts';
 import { Palette } from './Palette.tsx';
 import { Properties } from './Properties.tsx';
@@ -174,6 +175,22 @@ function Toolbar() {
           value={midiOut.value ?? ''}
           opts={midiPorts.value.map((p) => ({ value: p.id, label: p.name }))}
           onChange={chooseOutput}
+        />
+      )}
+      <button
+        type="button"
+        aria-pressed={midiIn.value !== null}
+        title="Enter notes from a MIDI keyboard: select where to start, then play"
+        onClick={() => chooseInput(midiIn.value === null ? undefined : null)}
+      >
+        MIDI in
+      </button>
+      {midiIn.value !== null && midiInPorts.value.length > 1 && (
+        <Dropdown
+          title="MIDI input"
+          value={midiIn.value}
+          opts={midiInPorts.value.map((p) => ({ value: p.id, label: p.name }))}
+          onChange={(id) => chooseInput(id)}
         />
       )}
       <span class="sep" />
