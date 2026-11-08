@@ -17,7 +17,9 @@ node src/cli.ts import gewitter.musicxml examples/gewitter.txt     # MusicXML ->
 node src/cli.ts check <file>                      # validate measure lengths
 python3 tools/crop.py out/gewitter-2.svg x y w h out.png [px]      # render a region (staff spaces) to PNG
 npm run ui                                        # editor UI (Vite dev server, ui/); npm run ui:build -> out/ui
-npm run app                                       # build and start the desktop app (Electron)
+just run                                           # build the UI and serve it at http://127.0.0.1:6789 with Python (no Electron); `just` lists the recipes
+npm run app                                       # build and start the desktop app (Electron); `just run-electron`
+just install-desktop                              # build the app and install a GNOME launcher + icon under ~/.local/share (points at this checkout)
 npm run app:dev                                   # desktop app on the running `npm run ui` dev server (hot reload)
 npm run icon                                      # regenerate build/icon.svg + icon.png (tools/make-icon.ts)
 npm run app:dist                                  # installers via electron-builder -> out/dist
@@ -76,8 +78,8 @@ Pipeline: text/MusicXML → `Score` model → `prepare` → per-measure spacing 
 
 ## Desktop app (`electron/`)
 
-- The editor is an Electron app; `ui/` only runs inside it. `electron/main.ts` (window, MIDI permission, open/save dialogs, PDF via `printToPDF` with `preferCSSPageSize`, unsaved-changes prompt on close) and `electron/preload.ts` (exposes `window.native`; typed in `ui/native.ts`) are bundled by `tools/build-app.ts` (esbuild, into `out/app`; the main script is ESM, the preload CJS). The built UI is loaded from `out/ui` (Vite `base: './'`); with `THOMAS_DEV_URL` set, from the dev server instead.
-- File handling is native only: `openFile`/`saveFile` in `ui/App.tsx`, the path is `filePath` in `state.ts`. Autosave to `localStorage` stays as crash recovery.
+- The editor runs in a plain browser (`just run`, the built UI from `out/ui` served by any static server) and in an Electron wrapper for the desktop. `ui/native.ts` is the one place that knows the difference: `window.native` (the preload bridge) in Electron, else the File System Access API or a file input and a download for open/save, `window.print()` for PDF, `beforeunload` for the unsaved flag. Keep new native features behind that interface with a browser fallback. `electron/main.ts` (window, MIDI permission, open/save dialogs, PDF via `printToPDF` with `preferCSSPageSize`, unsaved-changes prompt on close) and `electron/preload.ts` (exposes `window.native`; typed in `ui/native.ts`) are bundled by `tools/build-app.ts` (esbuild, into `out/app`; the main script is ESM, the preload CJS). The built UI is loaded from `out/ui` (Vite `base: './'`); with `THOMAS_DEV_URL` set, from the dev server instead.
+- File handling goes through `native` (see above): `openFile`/`saveFile` in `ui/App.tsx`, the path is `filePath` in `state.ts` (in a browser the file's name stands in for a path). Autosave to `localStorage` stays as crash recovery.
 - Scripted checks: `_electron.launch` from `playwright-core` with `--no-sandbox`.
 
 ## Conventions worth knowing
