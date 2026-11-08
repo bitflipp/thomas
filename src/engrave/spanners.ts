@@ -393,6 +393,12 @@ export function drawStaffMarks(systems: SysCtx[]): void {
 // its arc. One value keeps the distances even; the slur's own thickness comes on top where it matters.
 const SLUR_CLEAR = 0.45;
 
+// How far from an open (system-break) end obstacles are ignored, in staff spaces.
+const OPEN_BLIND = 2.5;
+
+// How far from an attached end obstacles are ignored: the note itself, its stem and flag stand there.
+const ATTACHED_BLIND = 1.3;
+
 // Half the height of a notehead, one staff space high.
 const HEAD_HALF = 0.5;
 
@@ -590,25 +596,26 @@ interface SlurFrame {
  * The skyline edge over a window of the span: the nearest obstacle on the slur's side. Accidentals do not count: a
  * slur may cross them, which keeps its arc from rising steeply over a sharp or flat next to its notes.
  */
-const slurReach = (f: SlurFrame, a: number, b: number) =>
-  f.above ? f.sky.top(a, b, 99, false, true) : f.sky.bottom(a, b, -99, false, true);
+const slurReach = (f: SlurFrame, a: number, b: number, skipAcc = true) =>
+  f.above ? f.sky.top(a, b, 99, false, skipAcc) : f.sky.bottom(a, b, -99, false, skipAcc);
 
 /**
  * Where the two ends start. An attached end stays exactly where `headPoint` put it, so that every slur begins and ends
  * at the same clearance from its note. An open (system-break) end has no note to attach to: it starts clear of whatever
- * stands within `edge` spaces of the system edge, but at most 3 spaces off the original y.
+ * stands within `edge` spaces of the system edge (accidentals included, since the arc leaves the end at its y and would
+ * cross one), but at most 8 spaces off the original y.
  */
 function slurEndHeights(f: SlurFrame, x0: number, y0: number, x1: number, y1: number): [number, number] {
   const { above, openL, openR } = f;
   const edge = 12;
   const openY = (y: number, o: number): number =>
-    above ? Math.max(y - 3, Math.min(y, o - 0.9)) : Math.min(y + 3, Math.max(y, o + 0.9));
+    above ? Math.max(y - 8, Math.min(y, o - 0.9)) : Math.min(y + 8, Math.max(y, o + 0.9));
   if (openL) {
-    const o = slurReach(f, x0, x0 + edge);
+    const o = slurReach(f, x0, x0 + edge, false);
     if (Math.abs(o) < 90) y0 = openY(y0, o);
   }
   if (openR) {
-    const o = slurReach(f, x1 - edge, x1);
+    const o = slurReach(f, x1 - edge, x1, false);
     if (Math.abs(o) < 90) y1 = openY(y1, o);
   }
   return [y0, y1];
@@ -623,7 +630,8 @@ function sampleObstacles(f: SlurFrame, x0: number, x1: number): { t: number; o: 
   const window = 0.7;
   const samples: { t: number; o: number }[] = [];
   for (let x = x0 + 0.3; x <= x1 - 0.3; x += 0.25) {
-    if ((!f.openL && x < x0 + 0.45) || (!f.openR && x > x1 - 0.45)) continue; // Attached ends are skipped because the note itself is there.
+    if ((!f.openL && x < x0 + ATTACHED_BLIND) || (!f.openR && x > x1 - ATTACHED_BLIND)) continue; // Attached ends are skipped because the note itself is there.
+    if ((f.openL && x < x0 + OPEN_BLIND) || (f.openR && x > x1 - OPEN_BLIND)) continue; // An open end has not left its y yet, so no height could clear what stands there.
     const o = slurReach(f, x - window / 2, x + window / 2);
     if (Math.abs(o) < 90) samples.push({ t: (x - x0) / L, o });
   }
