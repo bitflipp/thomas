@@ -389,32 +389,42 @@ export function drawStaffMarks(systems: SysCtx[]): void {
   for (let s = 0; s < systems[0].prep.score.staves.length; s++) drawMarks(systems, sysOf, s);
 }
 
+// The clear gap between a slur and whatever it passes: a notehead, a stem tip, an articulation, or an obstacle under
+// its arc. One value keeps the distances even; the slur's own thickness comes on top where it matters.
+const SLUR_CLEAR = 0.45;
+
+// The extra gap at a stem tip that carries a flag or a beam.
+const SLUR_TIP_EXTRA = 0.4;
+
+// Half the height of a notehead, one staff space high.
+const HEAD_HALF = 0.5;
+
 /** The point where a slur on `side` attaches to `e`: at the stem tip when the stem is on that side, else beyond the outermost head; beyond any articulations on that side. */
-function headPoint(
-  e: EvL,
-  side: 'above' | 'below',
-  margin: number,
-): { x: number; y: number; stemSide: boolean; homed: boolean } {
+function headPoint(e: EvL, side: 'above' | 'below'): { x: number; y: number; stemSide: boolean; homed: boolean } {
   const g = must(geomOf.get(e));
   const above = side === 'above';
   const stemSide = e.stem === (above ? 'up' : 'down');
   // Articulations on the same side as the slur: start just beyond them, since a slur that
   // began at the head would run through the articulation.
   const ax = articExtent.get(e);
-  const artEdge = ax && ax.above === above ? ax.edge + (above ? -0.5 : 0.5) : undefined;
+  const artEdge = ax && ax.above === above ? ax.edge + (above ? -SLUR_CLEAR : SLUR_CLEAR) : undefined;
+  // A flag or a beam is attached to the stem tip, so the clear gap is measured beyond a further allowance for it.
+  const attached = e.te.ev.dur.base >= 8 || !!e.beam || !!e.tremPair;
+  const tipGap = SLUR_CLEAR + (attached ? SLUR_TIP_EXTRA : 0);
   if (stemSide)
     return {
       x: g.stemX,
-      y: artEdge ?? (above ? g.stemTip - margin * 0.8 : g.stemTip + margin * 0.8),
+      y: artEdge ?? (above ? g.stemTip - tipGap : g.stemTip + tipGap),
       stemSide,
       homed: !!g.homed,
     };
+  const headGap = HEAD_HALF + SLUR_CLEAR; // This is measured from the centre of the outermost head.
   const ref = above
     ? e.heads.reduce((a, h) => (h.pos > a.pos ? h : a))
     : e.heads.reduce((a, h) => (h.pos < a.pos ? h : a));
   return {
     x: e.x + ref.dx + g.hw / 2,
-    y: artEdge ?? posToY(ref.pos) + (above ? -margin : margin),
+    y: artEdge ?? posToY(ref.pos) + (above ? -headGap : headGap),
     stemSide,
     homed: false,
   };
@@ -594,14 +604,14 @@ const slurReach = (f: SlurFrame, a: number, b: number) => (f.above ? f.sky.top(a
 function slurEndHeights(f: SlurFrame, x0: number, y0: number, x1: number, y1: number): [number, number] {
   const { above, sky, openL, openR } = f;
   const edge = 7;
-  const near = 2.2;
+  const near = 1.4;
   const maxUp = 0.8;
   const openY = (y: number, o: number): number =>
     above ? Math.max(y - 3, Math.min(y, o - 0.9)) : Math.min(y + 3, Math.max(y, o + 0.9));
   const attach = (y: number, xa: number, xb: number): number => {
     const o = above ? sky.top(xa, xb, 99, true) : sky.bottom(xa, xb, -99, true);
     if (Math.abs(o) > 90) return y;
-    return above ? Math.max(y - maxUp, Math.min(y, o - 0.45)) : Math.min(y + maxUp, Math.max(y, o + 0.45));
+    return above ? Math.max(y - maxUp, Math.min(y, o - SLUR_CLEAR)) : Math.min(y + maxUp, Math.max(y, o + SLUR_CLEAR));
   };
   if (openL) {
     const o = slurReach(f, x0, x0 + edge);
@@ -649,7 +659,7 @@ function cheapestEndLift(
     let h = hPref;
     for (const { t, o } of samples) {
       const chord = ya + (yb - ya) * t;
-      const gap = f.above ? chord - (o - 0.4) : o + 0.4 - chord; // A positive value means the chord is beyond the obstacle edge, so the arc must bulge.
+      const gap = f.above ? chord - (o - SLUR_CLEAR) : o + SLUR_CLEAR - chord; // A positive value means the chord is beyond the obstacle edge, so the arc must bulge.
       if (gap > 0) h = Math.max(h, gap / (4 * t * (1 - t) * 0.95));
     }
     return h;
@@ -737,7 +747,7 @@ function planSlurPiece(
   const clears = (h: number) =>
     samples.every(({ t, o }) => {
       const y = crescentY(x0, y0, x1, y1, h, st.above, x0 + t * L, 0.2);
-      return st.above ? y + st.thick <= o - 0.15 : y - st.thick >= o + 0.15; // The outer edge plus the slur's own thickness must clear the obstacle.
+      return st.above ? y + st.thick <= o - SLUR_CLEAR : y - st.thick >= o + SLUR_CLEAR; // The outer edge plus the slur's own thickness must clear the obstacle.
     });
   let hMin = 0.3;
   while (hMin < 8 && !clears(hMin)) hMin += 0.1;
@@ -781,8 +791,8 @@ function drawSlur(
   if (a.ev.kind !== 'note' || b.ev.kind !== 'note') return;
   const side = slurSide(a, b, explicit, voice);
   const above = side === 'above';
-  const pa = headPoint(a, side, 0.65);
-  const pb = headPoint(b, side, 0.65);
+  const pa = headPoint(a, side);
+  const pb = headPoint(b, side);
   // A tie starting on the same side as the slur: start the slur beyond the tie, so the slur
   // does not begin inside the tie's arc.
   if (tieSideOf(a) === side && !pa.stemSide) pa.y += above ? -0.7 : 0.7;
