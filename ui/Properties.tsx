@@ -3,7 +3,7 @@
 // each change is one undo step and refusals appear as toasts.
 
 import { signal } from '@preact/signals';
-import { useState } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { BeamMode } from '../src/beams.ts';
 import { beamModes, beatTicks, canJoin } from '../src/beams.ts';
 import type { EvAddr, Ref } from '../src/editor/addr.ts';
@@ -11,7 +11,7 @@ import { eventOf, markOf, refKey, tupletOf, voiceOf } from '../src/editor/addr.t
 import * as C from '../src/editor/commands.ts';
 import { transposeSteps } from '../src/editor/context.ts';
 import { neighbourNote, syllableText } from '../src/editor/lyrics.ts';
-import type { Event, MarkBody, MarkPlacement, NoteEvent, Score } from '../src/model.ts';
+import type { Event, MarkBody, MarkPlacement, NoteEvent, Score, Syllable } from '../src/model.ts';
 import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import { chooseDots, flipStem, lineSelection, slurSelection, tieSelection } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
@@ -531,27 +531,12 @@ const lyricVerse = signal(1);
 
 let refocusLyric = false;
 
-/**
- * The syllable of a single selected note, for one verse. Typing is a stream: Space ends the word and
- * moves to the next note, `-` ends the syllable inside a word and moves on, `_` adds an extender and
- * moves on, Backspace in an empty box goes back one note, Enter keeps the note, Escape leaves the box.
- */
+/** The verse picker and the lyric box of a single selected note. */
 function LyricRows({ ref0, note, sc }: { ref0: EvAddr; note: NoteEvent; sc: Score }) {
   const verse = lyricVerse.value;
   const maxVerse = Math.max(1, ...(note.lyrics ?? []).map((y) => y.verse));
   const verses = Array.from({ length: Math.min(maxVerse + 1, 8) }, (_, i) => i + 1);
   const cur = note.lyrics?.find((y) => y.verse === verse);
-  const goto = (to: EvAddr | undefined) => {
-    if (!to) return;
-    refocusLyric = true;
-    select([{ t: 'ev', ...to }]);
-  };
-  const commit = (el: HTMLInputElement, joinNext: boolean, extend: boolean) => {
-    el.dataset.done = '1';
-    const text = el.value.trim();
-    if (text !== (cur ? syllableText(cur) : '') || joinNext || extend)
-      run((x) => C.setSyllable(x, ref0, verse, text ? { text, joinNext, extend } : undefined));
-  };
   return (
     <>
       <Row label="Verse">
@@ -562,49 +547,86 @@ function LyricRows({ ref0, note, sc }: { ref0: EvAddr; note: NoteEvent; sc: Scor
         />
       </Row>
       <Row label="Lyric">
-        <input
-          type="text"
+        <LyricBox
           key={`${refKey({ t: 'ev', ...ref0 })}|${verse}|${cur ? syllableText(cur) : ''}`}
-          defaultValue={cur ? syllableText(cur) : ''}
-          placeholder="Space: next, -: hyphen"
-          ref={(el) => {
-            if (el && refocusLyric) {
-              refocusLyric = false;
-              el.focus();
-              el.select();
-            }
-          }}
-          onBlur={(e) => {
-            const el = e.target as HTMLInputElement;
-            if (!el.dataset.done) commit(el, false, !!cur?.extend);
-          }}
-          onKeyDown={(e) => {
-            const el = e.target as HTMLInputElement;
-            const forward = (join: boolean, extend: boolean) => {
-              e.preventDefault();
-              if (!el.value.trim()) return goto(neighbourNote(sc, ref0, 1));
-              commit(el, join, extend);
-              goto(neighbourNote(score.peek(), ref0, 1));
-            };
-            if (e.key === ' ') forward(false, false);
-            else if (e.key === '-' && el.value.trim()) forward(true, false);
-            else if (e.key === '_' && el.value.trim()) forward(false, true);
-            else if (e.key === 'Enter') {
-              e.preventDefault();
-              commit(el, false, !!cur?.extend);
-              el.blur();
-            } else if (e.key === 'Backspace' && !el.value) {
-              e.preventDefault();
-              goto(neighbourNote(sc, ref0, -1));
-            } else if (e.key === 'Escape') {
-              e.preventDefault();
-              el.dataset.done = '1';
-              el.blur();
-            }
-          }}
+          ref0={ref0}
+          verse={verse}
+          cur={cur}
+          sc={sc}
         />
       </Row>
     </>
+  );
+}
+
+/**
+ * The syllable of one note and verse. Typing is a stream: Space ends the word and moves to the next
+ * note, `-` ends the syllable inside a word and moves on, `_` adds an extender and moves on, Backspace
+ * in an empty box goes back one note, Enter keeps the note, Escape leaves the box. What was typed is kept
+ * when the box loses focus and when it goes away (another note was selected), which is not a blur.
+ * A box belongs to one note, verse and stored text (its parent keys it by them), so its props are fixed.
+ */
+function LyricBox({ ref0, verse, cur, sc }: { ref0: EvAddr; verse: number; cur: Syllable | undefined; sc: Score }) {
+  const el = useRef<HTMLInputElement>(null);
+  const done = useRef(false);
+  const typed = useRef(cur ? syllableText(cur) : ''); // This is the text in the box (the element is already gone when the box is removed).
+  const shown = cur ? syllableText(cur) : '';
+  const commit = (joinNext: boolean, extend: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    const text = typed.current.trim();
+    if (text !== shown || joinNext || extend)
+      run((x) => C.setSyllable(x, ref0, verse, text ? { text, joinNext, extend } : undefined));
+  };
+  const keep = useRef<() => void>(undefined);
+  keep.current = () => commit(false, !!cur?.extend);
+  useLayoutEffect(() => {
+    if (refocusLyric) {
+      refocusLyric = false;
+      el.current?.focus();
+      el.current?.select();
+    }
+    return () => queueMicrotask(() => keep.current?.());
+  }, []);
+  const go = (to: EvAddr | undefined) => {
+    if (!to) return;
+    refocusLyric = true;
+    select([{ t: 'ev', ...to }]);
+  };
+  return (
+    <input
+      ref={el}
+      type="text"
+      defaultValue={shown}
+      onInput={(e) => {
+        typed.current = (e.target as HTMLInputElement).value;
+      }}
+      placeholder="Space: next, -: hyphen"
+      onBlur={() => commit(false, !!cur?.extend)}
+      onKeyDown={(e) => {
+        const text = (e.target as HTMLInputElement).value.trim();
+        const forward = (join: boolean, extend: boolean) => {
+          e.preventDefault();
+          if (text) commit(join, extend);
+          go(neighbourNote(score.peek(), ref0, 1));
+        };
+        if (e.key === ' ') forward(false, false);
+        else if (e.key === '-' && text) forward(true, false);
+        else if (e.key === '_' && text) forward(false, true);
+        else if (e.key === 'Enter') {
+          e.preventDefault();
+          commit(false, !!cur?.extend);
+          el.current?.blur();
+        } else if (e.key === 'Backspace' && !text && !(e.target as HTMLInputElement).value) {
+          e.preventDefault();
+          go(neighbourNote(sc, ref0, -1));
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          done.current = true;
+          el.current?.blur();
+        }
+      }}
+    />
   );
 }
 
