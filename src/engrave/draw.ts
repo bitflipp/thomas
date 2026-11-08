@@ -694,15 +694,23 @@ function drawArpeggio(ctx: SysCtx, e: EvL, s: number, yTop: number, yBot: number
   const step = sm.adv('wiggleArpeggiatoUp');
   const top = yTop - 0.4;
   const bot = yBot + 0.4;
-  const n = Math.max(1, Math.ceil((bot - top) / step));
   const w = seg.y1 - seg.y0;
-  // The SMuFL glyph is a short horizontal wiggle: rotate it 90 degrees and stack as many
-  // copies as needed upwards from the bottom note.
+  // The SMuFL glyph is a short horizontal wiggle: rotate it 90 degrees and stack copies. The glyph
+  // is `len` long and the next one starts `step` further (they overlap), so n copies cover
+  // (n - 1) * step + len. Take the count that comes closest to the wanted span, stretch the
+  // step a little to absorb the rest (staying within the range where the joins still look
+  // continuous) and centre what remains, so that the length does not depend on the phase.
+  const len = seg.x1 - seg.x0;
+  const span = bot - top;
+  const n = Math.max(1, Math.round((span - len) / step) + 1);
+  const gap = n > 1 ? Math.min(step * 1.1, Math.max(step * 0.9, (span - len) / (n - 1))) : step;
+  const drawn = (n - 1) * gap + len;
+  const base = (top + bot) / 2 + drawn / 2;
   const start = prims.length;
   for (let k = 0; k < n; k++)
-    prims.push({ t: 'glyph', name: 'wiggleArpeggiatoUp', x: right, y: bot - k * step + seg.x0, rot: -90 });
+    prims.push({ t: 'glyph', name: 'wiggleArpeggiatoUp', x: right, y: base - k * gap + seg.x0, rot: -90 });
   tagFrom(prims, start, 'arpeggio', e);
-  pushBox(ctx, s, right - w, right, top - 0.2, bot + 0.2);
+  pushBox(ctx, s, right - w, right, Math.min(top, base - drawn) - 0.2, Math.max(bot, base) + 0.2);
 }
 
 /** Heads, accidentals, ledger lines, dots and arpeggio of a note; records its geometry (`geomOf`) for the later phases. */
