@@ -500,6 +500,13 @@ function MeasureSection({ mi, to }: { mi: number; to: number }) {
           >
             Select notes
           </button>
+          <button
+            type="button"
+            title="Replace the contents of these measures by rests; signatures, barlines and repeats stay"
+            onClick={() => run((x) => C.clearMeasures(x, mi, to))}
+          >
+            Clear
+          </button>
           <button type="button" class="danger" onClick={() => deleteSelection()}>
             Delete
           </button>

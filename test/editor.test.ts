@@ -550,3 +550,18 @@ test('grace notes can be hit on the score, and a chord grace note gets and loses
   assert.equal(writeText(s), writeText(sc));
   assert.throws(() => C.removeGraceTone(s, a, 0), /at least one pitch/);
 });
+
+test('clearMeasures: contents become one whole-measure rest, signatures and repeats stay', () => {
+  const sc = parseText(
+    'page 210x297 margin=10 space=1.75\nstaff rh clef=G2\nm1 time=4/4 key=0\n  rh.1: \\< c5:4 d5:4 \\! e5:4 f5:4\n' +
+      'm2 time=4/4 start=repeat\n  rh.1: g5:2 a5:2\n  rh.2: c4:1\nm3 time=4/4\n  rh.1: b5:1\n',
+  );
+  const out = ok(C.clearMeasures(sc, 0, 1));
+  assert.equal(out.measures.length, 3);
+  assert.equal(out.measures[1].repeatStart, true);
+  assert.equal(out.measures[1].staves.rh.voices.length, 1);
+  assert.match(writeText(out), /m3 time=4\/4\n {2}rh\.1: b5:1/);
+  assert.doesNotMatch(writeText(out), /c5|g5|c4/);
+  assert.equal(validate(out).length, 0);
+  assert.throws(() => C.clearMeasures(sc, 2, 3), /No such measures/);
+});

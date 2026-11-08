@@ -1224,6 +1224,18 @@ export function copyMeasures(score: Score, from: number, to: number): MeasureCli
   };
 }
 
+/**
+ * Empties measures `from` to `to` (inclusive): every staff gets one voice holding a whole-measure rest. Time and key
+ * signature, barline, repeat signs, volta and breaks stay; hairpins whose other end was cleared are dropped by `tidy`.
+ */
+export function clearMeasures(score: Score, from: number, to: number): Score {
+  if (from < 0 || to >= score.measures.length || from > to) throw new EditError('No such measures');
+  return edit(score, (d) => {
+    for (let mi = from; mi <= to; mi++)
+      d.measures[mi].staves = emptyMeasure(score, mi).staves as Draft<Score['measures'][number]>['staves'];
+  });
+}
+
 /** Every mark body of a staff measure, in the events and in the voice ends. */
 function marksInMeasure(sm: StaffMeasure): MarkBody[] {
   const out: MarkBody[] = [];
