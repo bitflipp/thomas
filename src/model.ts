@@ -70,6 +70,15 @@ export interface EventBase {
   marks?: MarkBody[]; // These marks (dynamics, hairpin/pedal/ottava starts and stops, clef changes, tempo, text) sit at the start of this event.
 }
 
+/** One syllable of a lyric verse under a note. */
+export interface Syllable {
+  verse: number; // This is the verse number, from 1.
+  text: string;
+  /** Whether the syllable is a whole word or joins its neighbours with a hyphen (`begin`: more follows, `end`: the last of a word). */
+  syllabic: 'single' | 'begin' | 'middle' | 'end';
+  extend?: boolean; // An extender line follows the syllable (a melisma over the next notes).
+}
+
 export interface NoteEvent extends EventBase {
   kind: 'note';
   pitches: NotePitch[]; // The pitches are ordered from low to high.
@@ -78,6 +87,7 @@ export interface NoteEvent extends EventBase {
   arpeggio?: boolean;
   trill?: boolean; // A trill mark (tr) sits above the note.
   trillAcc?: -1 | 0 | 1; // The alteration of the trill's upper note, shown as a small accidental above the mark (flat, natural, sharp); absent: none shown, a whole tone up.
+  lyrics?: Syllable[]; // These are the syllables sung on this note, one per verse, in ascending verse order.
   graces?: Grace[]; // These are the grace notes in front of this note, in playing order.
   noBeam?: boolean; // The note stays unbeamed although the automatic beaming would join it to its neighbours.
 }

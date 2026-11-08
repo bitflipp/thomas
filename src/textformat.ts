@@ -25,6 +25,7 @@ import type {
   RestEvent,
   Score,
   StaffMeasure,
+  Syllable,
   TimedMark,
   TremoloGroup,
   TupletGroup,
@@ -79,6 +80,13 @@ function clefStr(c: Clef): string {
 
 function durStr(d: Dur): string {
   return `${d.base}${'.'.repeat(d.dots)}`;
+}
+
+/** `"Ly-"`, `"-ri-"`, `"-ble"`: hyphens join to the previous or next syllable; `v2` before it names the verse and `_` after it an extender. */
+function syllableStr(y: Syllable): string {
+  const lead = y.syllabic === 'middle' || y.syllabic === 'end' ? '-' : '';
+  const trail = y.syllabic === 'middle' || y.syllabic === 'begin' ? '-' : '';
+  return `${y.verse > 1 ? `v${y.verse}` : ''}${quote(lead + y.text + trail)}${y.extend ? '_' : ''}`;
 }
 
 function quote(s: string): string {
@@ -211,6 +219,7 @@ class VoiceWriter {
       if (e.trill) arts += `+tr${e.trillAcc === undefined ? '' : e.trillAcc > 0 ? '#' : e.trillAcc < 0 ? 'b' : '='}`;
     }
     if (e.fermata) arts += '+fm';
+    if (e.kind === 'note') for (const y of e.lyrics ?? []) arts += syllableStr(y);
     // Durations are sticky: the base value is written only when it differs from the previous event's.
     // Dots are never sticky (a dotted note would otherwise make everything after it dotted), so they
     // are always written, which also forces the base to be written.
@@ -797,6 +806,13 @@ class VoiceLineParser {
       else if (tr.endsWith('=')) note.trillAcc = 0;
     }
     if (sc.take(/\+fm/y)) note.fermata = true;
+    for (;;) {
+      const m = sc.take(/(?:v(\d+))?("(?:[^"\\]|\\.)*")(_)?/y);
+      if (!m) break;
+      const [, verse, str, extend] = must(/^(?:v(\d+))?("(?:[^"\\]|\\.)*")(_)?$/.exec(m));
+      note.lyrics ??= [];
+      note.lyrics.push(parseSyllable(verse ? Number(verse) : 1, JSON.parse(str), extend === '_'));
+    }
     if (this.pendingEv.graces) note.graces = this.pendingEv.graces;
     if (this.pendingEv.arpeggio) note.arpeggio = true;
     if (this.pendingEv.noBeam) note.noBeam = true;
@@ -822,6 +838,20 @@ class VoiceLineParser {
 
 function parseVoiceLine(line: string, where: string, home: string, markLine = false): VoiceLine {
   return new VoiceLineParser(line, where, home, markLine).parse();
+}
+
+/** The inverse of `syllableStr` for the quoted part: leading and trailing hyphens give the syllabic. */
+function parseSyllable(verse: number, s: string, extend: boolean): Syllable {
+  const lead = s.length > 1 && s.startsWith('-');
+  const rest = lead ? s.slice(1) : s;
+  const trail = rest.length > 1 && rest.endsWith('-');
+  const syllable: Syllable = {
+    verse,
+    text: trail ? rest.slice(0, -1) : rest,
+    syllabic: lead ? (trail ? 'middle' : 'end') : trail ? 'begin' : 'single',
+  };
+  if (extend) syllable.extend = true;
+  return syllable;
 }
 
 function readString(sc: Scanner): string {

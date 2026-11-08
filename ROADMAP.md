@@ -15,15 +15,7 @@ Repeat signs (`Measure.repeatStart`, `barline=repeat-end`) and voltas (`Measure.
 - **Open:** repeat counts (`x3`), segno, coda and D.C./D.S. text jumps; `dashed`/`heavy-light` MusicXML barline styles; a start repeat at a system start is drawn after the clef and signatures, not before them.
 - **Playback (decided against for now):** repeats and voltas are ignored, the piece plays once front to back. An unrolled play order with a tick map back to the score would be the way, if it is ever needed.
 
-## 3. Chord symbols
-- **Model:** `Mark` variant `{ type: 'chord', root, alter, quality, extensions, bass? }`, stored structurally (not as a string) so it can be transposed, with a free-text fallback for unparsed symbols.
-- **Text format:** `\chord Cmaj7/E`, parsed by a small chord-name grammar; the writer prints the canonical spelling.
-- **MusicXML:** `<harmony>` (root, kind, bass, degrees) as a timed mark via `anchorMarks`.
-- **Engraver:** a text item in `marks.ts` placed above the staff and kept clear by the skyline, with the usual accidentals (`♯ ♭`) and superscript extensions; spacing may need a minimum column width so neighbouring symbols do not collide.
-- **Editor:** a palette tool and a Properties section (root, accidental, quality, bass); transposition commands move chord symbols along with the notes.
-- **Playback:** none at first; optional later (play the chord on a separate channel).
-
-## 4. Lyrics
+## 3. Lyrics
 The largest item: it affects horizontal spacing.
 - **Model:** `NoteEvent.lyrics?: Syllable[]` per verse (`text`, `syllabic: single | begin | middle | end`, `extend?: boolean` for melismas).
 - **Text format:** an attached token after the note (for example `c5:4"Ly-"`) or a separate lyric line per voice, aligned by note; decide in a design pass.

@@ -13,6 +13,7 @@ import type {
   RestEvent,
   StaffDef,
   Step,
+  Syllable,
   TimedMark,
 } from './model.ts';
 
@@ -308,6 +309,7 @@ function readNote(r: Reader, el: XNode): void {
       r.pendingGraces.delete(voice);
     }
     raw.trem = readNotations(el, ev, false);
+    readLyrics(el, ev);
     raw.ev = ev;
   }
   const timeModification = child(el, 'time-modification');
@@ -340,6 +342,20 @@ function readPitch(el: XNode, mi: number): NotePitch {
   const acc = child(el, 'accidental');
   if (acc?.attrs.cautionary === 'yes') np.acc = 'force';
   return np;
+}
+
+/** The `<lyric>` elements of a note: one syllable per verse number. */
+function readLyrics(el: XNode, ev: NoteEvent): void {
+  for (const l of children(el, 'lyric')) {
+    const t = text(l, 'text');
+    if (!t) continue;
+    const syllabic = (text(l, 'syllabic') ?? 'single') as Syllable['syllabic'];
+    const y: Syllable = { verse: Number(l.attrs.number ?? 1) || 1, text: t, syllabic };
+    if (child(l, 'extend')) y.extend = true;
+    ev.lyrics ??= [];
+    ev.lyrics.push(y);
+  }
+  ev.lyrics?.sort((a, b) => a.verse - b.verse);
 }
 
 function readSlurs(notations: XNode, ev: NoteEvent): void {
