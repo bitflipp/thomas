@@ -3,7 +3,7 @@
 A score is a plain UTF-8 text file. It is line oriented, one measure per block, so that diffs are readable
 and a GUI can address one *measure × staff × voice* as one cell. The internal model (`src/model.ts`,
 JSON-serialisable) is the source of truth. The text format is a lossless serialisation of it
-(`thomas import` followed by `thomas render` gives the same result as rendering the MusicXML directly,
+(`node src/cli.ts import` followed by `render` gives the same result as rendering the MusicXML directly,
 and `write(parse(text))` equals `text`).
 
 ```
@@ -27,12 +27,12 @@ m5 break=system barline=final                 # break=system|page (before this m
 
 `space` is the global engraving scale (MuseScore calls it "page size"): everything is laid out in staff spaces, so changing it
 rescales the music and re-flows measures, systems and pages, while the page size, margins and the point sizes of title and footer
-stay fixed. `thomas render --space <mm>` overrides it without editing the file.
+stay fixed. `render --space <mm>` overrides it without editing the file.
 
 Header attributes of a measure: `time=B/T`, `key=N`, `break=system|page`, `barline=single|double|final`.
 The number in `m<N>` is only a label (the measure's number is its position). Lines indented by two spaces belong to the preceding measure: `<staff>.<voice>: <items>`.
 Voice numbers are local to a staff (`s1.1`, `s1.2`, `s2.1`, ...). Every voice of a measure must fill the measure exactly
-(use `s` spacers to skip time). `thomas check` validates this.
+(use `s` spacers to skip time). `check` validates this.
 
 ## Events
 

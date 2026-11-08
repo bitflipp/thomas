@@ -94,10 +94,10 @@ These are the things that decide the quality of the result.
 ## 4. Representation, architecture, decisions
 
 - The implemented text format is specified in [FORMAT.md](FORMAT.md) (the draft that stood here was replaced by it).
-- Architecture and usage are in [README.md](README.md).
+- Architecture and commands are in [CLAUDE.md](CLAUDE.md).
 - Decisions taken: TypeScript on Node (no build step), SVG and PDF output, general-purpose (not tied to this piece),
   all positions recomputed (`default-x`/`default-y` are dropped), voice numbers normalised per staff,
-  MuseScore's automatic system/page breaks are dropped on import (`--keep-breaks` keeps them).
+  MuseScore's automatic system/page breaks are dropped on import (`--keep-breaks` keeps them) and so are its explicit stem directions (`--keep-stems` keeps them).
 
 ## 5. Status of the features in section 2
 
@@ -107,4 +107,4 @@ All features listed in section 2 are implemented and rendered for `gewitter.musi
 - Mid-piece key signature changes: the signature is drawn at system starts, but not as a change mid-system.
 - Whole-measure rests are always drawn as a whole rest (no multi-measure rests).
 - Ledger lines for rests displaced far outside the staff.
-- **Cross-staff notes** (tango.musicxml): notes of one voice written on the other staff of the piano, usually arpeggio figures whose beam runs between the staves. Imported as `\staff <id>` switches within the voice.
+- **Cross-staff notes** (`examples/tango.txt`): notes of one voice written on the other staff of the piano, usually arpeggio figures whose beam runs between the staves. Imported as `\staff <id>` switches within the voice.
