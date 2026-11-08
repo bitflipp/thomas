@@ -1,12 +1,5 @@
 # Thomas task runner. `just` alone lists recipes.
 
-# Web MIDI needs a secure context, which localhost is. Open the URL in Chrome or Edge yourself;
-# Ctrl-C stops the server.
-
-# The editor in a browser: builds the UI, serves it over localhost with Python.
-run port="6789": build-ui
-    python3 -m http.server {{ port }} --bind 127.0.0.1 -d "{{ justfile_directory() }}/out/ui"
-
 # Builds the UI into out/ui (needs `npm install` once).
 build-ui:
     npm run ui:build

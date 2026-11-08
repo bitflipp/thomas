@@ -5,9 +5,6 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 
-// The Vite dev server to load instead of the built UI (set by `npm run app:dev`).
-const DEV_URL = process.env.THOMAS_DEV_URL;
-
 const SCORE_FILTERS = [
   { name: 'Scores', extensions: ['txt', 'musicxml', 'xml'] },
   { name: 'All files', extensions: ['*'] },
@@ -18,7 +15,7 @@ let win: BrowserWindow | null = null;
 
 let unsaved = false;
 
-/** Creates the main window and loads the UI (the Vite dev server in development, else the built files). */
+/** Creates the main window and loads the built UI. */
 function createWindow() {
   win = new BrowserWindow({
     width: 1500,
@@ -52,8 +49,7 @@ function createWindow() {
   w.on('closed', () => {
     win = null;
   });
-  if (DEV_URL) w.loadURL(DEV_URL);
-  else w.loadFile(join(import.meta.dirname, '..', 'ui', 'index.html'));
+  w.loadFile(join(import.meta.dirname, '..', 'ui', 'index.html'));
 }
 
 /** Registers the calls the page can make. */

@@ -17,7 +17,6 @@
     "format": "biome format --write .",
     "app:build": "node tools/build-app.ts",
     "app": "node tools/build-app.ts && electron .",
-    "app:dev": "node tools/build-app.ts main && THOMAS_DEV_URL=http://127.0.0.1:5173 electron .",
     "app:dist": "node tools/build-app.ts && electron-builder",
     "icon": "node tools/make-icon.ts"
   },
