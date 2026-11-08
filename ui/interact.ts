@@ -12,6 +12,7 @@ import * as C from '../src/editor/commands.ts';
 import { pitchAtPos } from '../src/editor/context.ts';
 import type { Box, HitIndex, Target } from '../src/editor/hit.ts';
 import { eventAtX, hitTest, marquee, measureAt, measureAtStaff, posAtY, snapTick } from '../src/editor/hit.ts';
+import type { OrnamentKind } from '../src/editor/similar.ts';
 import { similarTo } from '../src/editor/similar.ts';
 import { eventAtTick } from '../src/editor/voice.ts';
 import type { MeasureGeom } from '../src/engrave/system.ts';
@@ -684,10 +685,10 @@ export function tupletsAround(): { label: string; ref: Ref }[] {
 // these too, so that every action has one implementation.
 
 /** Select everything in the score that is like the (first) selected element: any dynamic, same hairpin kind, same duration ... */
-export function selectSimilar(): void {
+export function selectSimilar(by?: OrnamentKind): void {
   const first = selection.peek()[0];
   if (!first) return;
-  const all = similarTo(score.peek(), first);
+  const all = similarTo(score.peek(), first, by);
   if (!all.length) {
     say('Nothing similar to select', true);
     return;

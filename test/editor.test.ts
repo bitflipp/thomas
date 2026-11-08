@@ -414,3 +414,23 @@ test('fermata, trill and grace commands', () => {
   s = ok(C.removeGrace(s, a, 0));
   assert.doesNotMatch(show(s), /grace/);
 });
+
+test('similarTo can select by ornament: fermatas, trills and graces', async () => {
+  const { similarTo } = await import('../src/editor/similar.ts');
+  const sc = parseText(
+    'page 210x297 margin=10 space=1.75\nstaff rh clef=G2\nm1 time=4/4 key=0\n  rh.1: c5:4+tr+fm d5:4 \\acc{b4:8} e5:4+fm f5:4\n',
+  );
+  const ref = { t: 'ev', mi: 0, staff: 'rh', voice: 1, idx: 1 } as const;
+  assert.deepEqual(
+    similarTo(sc, ref, 'fermata').map((r) => (r as { idx: number }).idx),
+    [0, 2],
+  );
+  assert.deepEqual(
+    similarTo(sc, ref, 'trill').map((r) => (r as { idx: number }).idx),
+    [0],
+  );
+  assert.deepEqual(
+    similarTo(sc, ref, 'grace').map((r) => (r as { idx: number }).idx),
+    [2],
+  );
+});

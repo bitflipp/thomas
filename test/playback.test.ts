@@ -65,3 +65,24 @@ test('a rolled chord enters from the bottom and ends together', () => {
   assert.ok(ons[0].sec < ons[1].sec && ons[1].sec < ons[2].sec);
   assert.ok(offs.every((m) => Math.abs(m.sec - 1) < 1e-9));
 });
+
+test('dynamics set the velocity and a hairpin ramps to the next dynamic', () => {
+  const s = buildSequence(
+    parseText(
+      `${HEAD}m1 time=4/4 key=0\n  rh.1: \\p c4:4 \\< d4:4 e4:4 \\! f4:4\nm2 time=4/4\n  rh.1: \\f c4:4 d4:4 e4:4 f4:4\n`,
+    ),
+  );
+  const v = on(s).map((m) => m.bytes[2]);
+  assert.equal(v[0], 52);
+  assert.ok(v[1] === 52 && v[2] > 52 && v[2] < 96);
+  assert.deepEqual(v.slice(4), [96, 96, 96, 96]);
+});
+
+test('a trill without accidental follows the key signature', () => {
+  const ups = (key: number) =>
+    on(buildSequence(parseText(`${HEAD}m1 time=4/4 key=${key}\n  rh.1: e4:2+tr r:2\n`)))
+      .slice(0, 2)
+      .map((m) => m.bytes[1]);
+  assert.deepEqual(ups(0), [64, 65]);
+  assert.deepEqual(ups(1), [64, 66]);
+});

@@ -16,6 +16,8 @@ const ROWS: [string, string][] = [
   ['← →', 'Select previous / next note (Shift extends)'],
   ['T', 'Tie to the next note'],
   ['S', 'Slur from the first to the last selected note'],
+  ['F', 'Toggle a fermata on the selection'],
+  ['Shift T', 'Toggle a trill on the selected notes'],
   ['X', 'Cycle the stem: up, down, automatic'],
   ['Delete', 'Notes become rests; marks, slurs, tuplets are removed'],
   ['Space', 'Play / stop (resumes where it stopped)'],

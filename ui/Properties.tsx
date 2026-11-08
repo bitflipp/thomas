@@ -11,6 +11,7 @@ import { eventOf, markOf, refKey, tupletOf, voiceOf } from '../src/editor/addr.t
 import * as C from '../src/editor/commands.ts';
 import { transposeSteps } from '../src/editor/context.ts';
 import { neighbourNote, syllableText } from '../src/editor/lyrics.ts';
+import type { OrnamentKind } from '../src/editor/similar.ts';
 import type { Event, MarkBody, MarkPlacement, NoteEvent, Score, Syllable } from '../src/model.ts';
 import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import { chooseDots, flipStem, lineSelection, slurSelection, tieSelection } from './actions.ts';
@@ -485,9 +486,29 @@ function MeasureSection({ mi }: { mi: number }) {
 /** A titled group of controls. */
 function SimilarButton() {
   return (
-    <button type="button" title="Select similar (Ctrl+Shift+A)" onClick={selectSimilar}>
+    <button type="button" title="Select similar (Ctrl+Shift+A)" onClick={() => selectSimilar()}>
       Sel. similar
     </button>
+  );
+}
+
+/** Buttons that select every fermata, trill or grace-note event of the score, for the ornaments the selection has. */
+function OrnamentSimilar({ evs }: { evs: Event[] }) {
+  const kinds: [OrnamentKind, string, (e: Event) => boolean][] = [
+    ['fermata', 'Fermatas', (e) => !!e.fermata],
+    ['trill', 'Trills', (e) => e.kind === 'note' && !!e.trill],
+    ['grace', 'Graces', (e) => e.kind === 'note' && !!e.graces?.length],
+  ];
+  const shown = kinds.filter(([, , has]) => evs.some(has));
+  if (!shown.length) return null;
+  return (
+    <div class="seg fill">
+      {shown.map(([by, label]) => (
+        <button key={by} type="button" title={`Select every event with this ${by}`} onClick={() => selectSimilar(by)}>
+          All {label.toLowerCase()}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -795,6 +816,7 @@ function EventNotation({ ctx }: { ctx: EvSel }) {
           </Tog>
         </div>
       )}
+      <OrnamentSimilar evs={evs} />
       {notes.some((n) => n.art?.length) && (
         <Row label="Articulation">
           <Pick

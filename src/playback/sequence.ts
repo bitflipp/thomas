@@ -2,13 +2,13 @@
 //
 // Three passes: a tempo map turns score ticks into seconds; each staff's notes are collected as
 // sounding intervals (ties merged, ornaments such as graces, tremolo and arpeggio expanded, dynamics
-// turned into velocity); finally the intervals become note-on/off messages, plus CC64 for the pedal,
+// and hairpins turned into velocity); finally the intervals become note-on/off messages, plus CC64 for the pedal,
 // sorted by time. Every staff gets its own MIDI channel (`channelOf`), so a synth can give the staves
 // different instruments.
 
+import { keyAlter } from '../engrave/prep.ts';
 import type { Grace, NoteEvent, Pitch, Score, TimedEvent, TremoloGroup, Voice } from '../model.ts';
-
-import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, pitchMidi, STEPS, timeAt } from '../model.ts';
+import { baseTicks, flattenVoice, keyAt, marksOf, measureTicks, PPQ, pitchMidi, STEPS, timeAt } from '../model.ts';
 
 export interface Msg {
   sec: number;
@@ -27,8 +27,32 @@ export interface Sequence {
   secToTick(sec: number): number;
 }
 
-/** Every note plays at this velocity: playback is for proofreading, so dynamics are not rendered. */
+/** The velocity before the first dynamic mark of a staff (mezzo forte). */
 const VELOCITY = 80;
+
+/** The velocity a dynamic text stands for; a text that is not listed leaves the velocity as it is. */
+const DYNAMIC_VELOCITY: Record<string, number> = {
+  pppp: 16,
+  ppp: 28,
+  pp: 40,
+  p: 52,
+  mp: 66,
+  mf: 80,
+  f: 96,
+  ff: 112,
+  fff: 122,
+  ffff: 127,
+  sf: 104,
+  sfz: 104,
+  fz: 104,
+  rf: 100,
+  rfz: 100,
+  fp: 52,
+  sfp: 52,
+};
+
+/** How far a hairpin that no dynamic follows goes up or down. */
+const HAIRPIN_SPAN = 20;
 
 const STACCATO = 0.5;
 
@@ -128,8 +152,8 @@ function tempoMap(score: Score, measureStart: number[]): Pick<Sequence, 'tickToS
 }
 
 /**
- * Returns the velocity of a note at a tick (constant, dynamics are ignored) and adds the staff's pedal
- * changes.
+ * Returns the velocity of a note at a tick and adds the staff's pedal changes. A dynamic sets the velocity from
+ * its text; a hairpin ramps linearly to the next dynamic after its end (or by `HAIRPIN_SPAN` if there is none).
  */
 function readDynamicsAndPedal(
   score: Score,
@@ -140,6 +164,9 @@ function readDynamicsAndPedal(
   pedal: PedalEvent[],
 ): (tick: number) => number {
   let down = false;
+  const dyn: { tick: number; vel: number }[] = [];
+  const open = new Map<number, { tick: number; dir: 1 | -1 }>();
+  const ramps: { from: number; to: number; dir: 1 | -1 }[] = [];
   score.measures.forEach((m, mi) => {
     for (const mk of marksOf(m.staves[staffId])) {
       const t = measureStart[mi] + mk.tick;
@@ -150,11 +177,34 @@ function readDynamicsAndPedal(
       } else if (mk.type === 'stop' && mk.of === 'pedal' && down) {
         pedal.push({ tick: t, ch, down: false });
         down = false;
+      } else if (mk.type === 'dynamic') {
+        const vel = DYNAMIC_VELOCITY[mk.text];
+        if (vel !== undefined) dyn.push({ tick: t, vel });
+      } else if (mk.type === 'hairpin') {
+        open.set(mk.id, { tick: t, dir: mk.kind === 'cresc' ? 1 : -1 });
+      } else if (mk.type === 'stop' && mk.of === 'hairpin') {
+        const o = open.get(mk.id);
+        open.delete(mk.id);
+        if (o) ramps.push({ from: o.tick, to: t, dir: o.dir });
       }
     }
   });
   if (down) pedal.push({ tick: total, ch, down: false });
-  return () => VELOCITY;
+  dyn.sort((a, b) => a.tick - b.tick);
+  const level = (tick: number) => {
+    let v = VELOCITY;
+    for (const d of dyn) if (d.tick <= tick) v = d.vel;
+    return v;
+  };
+  const clamp = (v: number) => Math.max(1, Math.min(127, Math.round(v)));
+  return (tick) => {
+    const r = ramps.find((x) => x.from <= tick && tick < x.to);
+    if (!r) return level(tick);
+    const a = level(r.from);
+    const next = dyn.find((d) => d.tick >= r.to);
+    const b = next ? next.vel : clamp(a + r.dir * HAIRPIN_SPAN);
+    return clamp(a + ((b - a) * (tick - r.from)) / (r.to - r.from));
+  };
 }
 
 /** Collects the sounding notes of one voice, merging ties. */
@@ -199,6 +249,8 @@ interface StaffPlayback {
   ch: number;
   notes: Note[];
   velAt: (tick: number) => number;
+  /** The key signature (fifths) of the measure being read; the upper note of a trill without accidental follows it. */
+  key: number;
 }
 
 /**
@@ -282,17 +334,19 @@ function transposeStep(p: Pitch): Pitch {
   return { step: STEPS[i % 7], octave: p.octave + (i >= 7 ? 1 : 0), alter: p.alter };
 }
 
-/** A trill: the pitch alternates with the note a whole tone above, in 32nds, starting on the main note and ending on it. */
+/** A trill: the pitch alternates with the diatonic upper neighbour (by the key, or `upAcc`), in 32nds, starting on the main note and ending on it. */
 function addTrill(
   sink: VoiceNotes,
   pitch: Pitch,
   upAcc: number | undefined,
+  key: number,
   vel: number,
   start: number,
   end: number,
 ): void {
   const midi = pitchMidi(pitch);
-  const up = upAcc === undefined ? midi + 2 : pitchMidi({ ...transposeStep(pitch), alter: upAcc });
+  const above = transposeStep(pitch);
+  const up = pitchMidi({ ...above, alter: upAcc ?? keyAlter(key, above.step) });
   const step = PPQ / 8;
   const count = Math.max(1, Math.floor((end - start) / step));
   for (let i = 0; i < count; i++) {
@@ -316,7 +370,7 @@ function addChord(sink: VoiceNotes, sp: StaffPlayback, te: TimedEvent & { ev: No
   te.ev.pitches.forEach((np, k) => {
     const on = mainOn + k * step;
     if (te.ev.trill && k === n - 1) {
-      addTrill(sink, np.pitch, te.ev.trillAcc, vel, on, end);
+      addTrill(sink, np.pitch, te.ev.trillAcc, sp.key, vel, on, end);
       return;
     }
     sink.add(
@@ -376,9 +430,10 @@ export function buildSequence(score: Score): Sequence {
   score.staves.forEach((staff, si) => {
     const ch = channelOf(si);
     const velAt = readDynamicsAndPedal(score, staff.id, ch, measureStart, total, pedal);
-    const sp: StaffPlayback = { ch, notes, velAt };
+    const sp: StaffPlayback = { ch, notes, velAt, key: 0 };
     const openTies = new Map<number, Map<number, Note>>(); // The map is keyed by voice id.
     score.measures.forEach((m, mi) => {
+      sp.key = keyAt(score, mi);
       for (const v of m.staves[staff.id]?.voices ?? []) {
         const open = openTies.get(v.id) ?? new Map<number, Note>();
         openTies.set(v.id, open);

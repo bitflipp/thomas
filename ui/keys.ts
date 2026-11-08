@@ -6,7 +6,18 @@ import { eventOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import type { Event } from '../src/model.ts';
 import { flattenVoice } from '../src/model.ts';
-import { chooseDots, chooseDuration, flipStem, nudge, slurSelection, stepSelection, tieSelection } from './actions.ts';
+
+import {
+  chooseDots,
+  chooseDuration,
+  flipStem,
+  nudge,
+  slurSelection,
+  stepSelection,
+  tieSelection,
+  toggleOrnament,
+} from './actions.ts';
+
 import { cancelDrag, deleteSelection, evRefs, selectSimilar, zoomBy } from './interact.ts';
 import { rewind, toggle } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
@@ -185,8 +196,10 @@ function onToolKey(e: KeyboardEvent): void {
   }
   const letter = e.key.toLowerCase();
   if (TOOL_KEYS[letter]) tool.value = TOOL_KEYS[letter];
-  else if (letter === 't') tieSelection();
+  else if (letter === 't' && !e.shiftKey) tieSelection();
   else if (letter === 's') slurSelection();
+  else if (letter === 'f') toggleOrnament('fermata');
+  else if (letter === 't' && e.shiftKey) toggleOrnament('trill');
   else if (letter === 'x') flipStem();
   else if (letter === 'q') voice.value = Math.max(1, voice.value - 1);
   else if (letter === 'w') voice.value = Math.min(MAX_VOICE, voice.value + 1);

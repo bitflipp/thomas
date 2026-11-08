@@ -119,6 +119,12 @@ export function tieSelection(): void {
   if (refs.length) run((s) => C.toggleTie(s, refs));
 }
 
+/** Toggles a fermata or a trill on the selected events (a trill only on notes). */
+export function toggleOrnament(which: 'fermata' | 'trill'): void {
+  const refs = evRefs();
+  if (refs.length) run((s) => (which === 'fermata' ? C.toggleFermata(s, refs) : C.toggleTrill(s, refs)));
+}
+
 /** Moves the selection to the previous or next event in the voice; `extend` adds it instead. */
 export function stepSelection(dir: -1 | 1, extend = false): void {
   const sc = score.peek();

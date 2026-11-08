@@ -1,7 +1,7 @@
 // "Select similar": every element of the score that is like a given one (all `p` dynamics, all cresc. hairpins,
 // all quarter rests ...), as refs ready to become the selection.
 
-import type { MarkBody, Score } from '../model.ts';
+import type { Event, MarkBody, Score } from '../model.ts';
 
 import { flattenVoice, marksOf } from '../model.ts';
 import type { Ref } from './addr.ts';
@@ -10,9 +10,28 @@ import { eventOf } from './addr.ts';
 /** Elements are "similar" when the Properties panel edits them together: marks of one type, all notes (or all rests), all slurs ... */
 const markKey = (m: MarkBody): string => m.type;
 
-/** Refs to everything in `score` that is like `ref` (including `ref` itself): everything the Properties panel would bulk-edit along with it; empty for measures. */
-export function similarTo(score: Score, ref: Ref): Ref[] {
+/** An ornament that `similarTo` can select by: the events that carry a fermata, a trill or grace notes. */
+export type OrnamentKind = 'fermata' | 'trill' | 'grace';
+
+/** Whether an event carries the ornament. */
+const hasOrnament = (ev: Event, by: OrnamentKind): boolean =>
+  by === 'fermata' ? !!ev.fermata : ev.kind === 'note' && (by === 'trill' ? !!ev.trill : !!ev.graces?.length);
+
+/**
+ * Refs to everything in `score` that is like `ref` (including `ref` itself): everything the Properties panel would bulk-edit along with it; empty for measures.
+ * With `by`, the events that carry that ornament instead, whatever `ref` is.
+ */
+export function similarTo(score: Score, ref: Ref, by?: OrnamentKind): Ref[] {
   const out: Ref[] = [];
+  if (by) {
+    score.measures.forEach((m, mi) => {
+      for (const [staff, sm] of Object.entries(m.staves))
+        for (const vv of sm.voices)
+          for (const te of flattenVoice(vv))
+            if (hasOrnament(te.ev, by)) out.push({ t: 'ev', mi, staff, voice: vv.id, idx: te.index });
+    });
+    return out;
+  }
   if (ref.t === 'mark') {
     const at = marksOf(score.measures[ref.mi]?.staves[ref.staff]).find(
       (m) => m.voice === ref.voice && m.idx === ref.idx && m.k === ref.k,

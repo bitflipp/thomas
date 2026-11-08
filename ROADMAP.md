@@ -23,11 +23,11 @@ Repeat signs (`Measure.repeatStart`, `barline=repeat-end`) and voltas (`Measure.
 
 ## Smaller follow-ups
 - **Grace notes in the editor:** click to select or drag a grace head (hit targets via the existing `r`/`n` tags), a palette tool to place one on the staff, chord graces.
-- **Trills:** key-aware upper note (use the key signature and `alterIn` instead of a whole tone), a wavy line for long trills across several notes, a trill-start/stop mark. Mordent, turn and other ornaments follow the same pattern as `trill`.
+- **Trills:** (key-aware upper note in playback is done; accidentals earlier in the measure are not considered), a wavy line for long trills across several notes, a trill-start/stop mark. Mordent, turn and other ornaments follow the same pattern as `trill`.
 - **Fermata:** a stronger or shorter variant (square, triangle), fermata on barlines, placement below the staff.
-- **Playback:** dynamics (currently constant velocity per the notes in CLAUDE.md; check `velAt` first), a built-in synth, repeat/fermata aware tempo handling.
+- **Playback:** dynamics are done (`velAt`; `sf`/`fp` are not shaped within a note); no built-in synth (decided against), repeat/fermata aware tempo handling.
 - **Editor:** MIDI keyboard input, range selection of measures, copy and paste of marks and graces.
-- **Text format:** keyboard shortcuts for the new elements, and a "select similar" kind for graces, trills and fermatas.
+- **Shortcuts and select similar (done):** `F` toggles a fermata, `Shift+T` a trill; Properties has "All fermatas/trills/graces" buttons (`similarTo(..., by)`). Graces have no key yet.
 
 ## Gaps in the finished features
 - No round-trip test of the reference piece covers repeats, voltas or lyrics (they have their own tests in `test/repeats.test.ts` and `test/lyrics.test.ts`), and `test/incremental.test.ts` does not generate edits on them: voltas and lyrics are drawn with the marks, which are always redrawn, so they should be safe, but nothing checks it.
