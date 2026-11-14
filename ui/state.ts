@@ -6,7 +6,9 @@
 
 import { batch, computed, effect, signal } from '@preact/signals';
 
+import { findParallels } from '../src/analysis/parallels.ts';
 import type { Ref } from '../src/editor/addr.ts';
+import { eventOf, refKey } from '../src/editor/addr.ts';
 import { EditError } from '../src/editor/commands.ts';
 import type { HitIndex } from '../src/editor/hit.ts';
 import { buildHitIndex } from '../src/editor/hit.ts';
@@ -181,6 +183,27 @@ export const space = signal<number | null>(null);
 export const printing = signal(false);
 
 export const voiceColors = signal(true);
+
+/** Whether the parallel fifths and octaves check is on: its notes are drawn in the warning colour and the Parallels tab lists them. */
+export const showParallels = signal(false);
+
+/** The groups of consecutive fifths and octaves of the score (none while the check is off). */
+export const parallels = computed(() => (showParallels.value ? findParallels(score.value) : []));
+
+/** The notes in `parallels` as `refKey`s: the heads, and the events all of whose heads are in a violation (which are drawn whole). */
+export const parallelNotes = computed(() => {
+  const heads = new Set<string>();
+  const wholeEvents = new Set<string>();
+  for (const g of parallels.value) for (const n of g.notes) heads.add(refKey({ t: 'ev', ...n.ev, pi: n.pi }));
+  const sc = score.value;
+  for (const g of parallels.value)
+    for (const n of g.notes) {
+      const e = eventOf(sc, n.ev);
+      if (e?.kind === 'note' && e.pitches.every((_, pi) => heads.has(refKey({ t: 'ev', ...n.ev, pi }))))
+        wholeEvents.add(refKey({ t: 'ev', ...n.ev }));
+    }
+  return { heads, wholeEvents };
+});
 
 /** Ink colour of each voice when voice colours are on (voice 1 stays black). */
 export const VOICE_COLORS: Record<number, string> = { 2: '#1a8f4a', 3: '#d9780a', 4: '#8e44ad' };

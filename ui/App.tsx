@@ -14,6 +14,7 @@ import { installKeys } from './keys.ts';
 import { chooseInput, midiIn, midiInPorts } from './midiin.ts';
 import { native } from './native.ts';
 import { Palette } from './Palette.tsx';
+import { ParallelsControl, parallelsOpen } from './Parallels.tsx';
 import { Properties } from './Properties.tsx';
 import { chooseOutput, midiOut, midiPorts, playing, toggle } from './player.ts';
 import { ScorePane } from './ScorePane.tsx';
@@ -35,6 +36,7 @@ import {
   say,
   score,
   shownZoom,
+  showParallels,
   showProperties,
   showText,
   timing,
@@ -95,6 +97,7 @@ function useGlobalHandlers(): void {
     const close = (e: Event) => {
       const t = e.target as HTMLElement;
       if (!t.closest?.('.viewmenu')) viewOpen.value = false;
+      if (!t.closest?.('.parallelmenu')) parallelsOpen.value = false;
     };
     addEventListener('pointerdown', close, true);
     const unsaved = dirty.subscribe((d) => native.setUnsaved(d));
@@ -236,9 +239,18 @@ function Toolbar() {
               />{' '}
               Voice colours
             </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={showParallels.value}
+                onChange={(e) => (showParallels.value = (e.target as HTMLInputElement).checked)}
+              />{' '}
+              Mark parallel fifths and octaves
+            </label>
           </div>
         )}
       </div>
+      {showParallels.value && <ParallelsControl />}
       <span class="grow" />
       <span class={`status${engraveError.value ? ' err' : ''}`}>
         {engraveError.value ||

@@ -27,6 +27,7 @@ const ROWS: [string, string][] = [
   ['Delete', 'Notes become rests; marks, slurs, tuplets are removed'],
   ['Space', 'Play / stop (resumes where it stopped)'],
   ['Home', 'Playhead back to the start'],
+  ['F8 / Shift F8', 'Next / previous parallel fifth or octave (turns the check on)'],
   ['Alt + click (select)', 'Put the playhead there'],
   ['Ctrl Z / Ctrl Shift Z', 'Undo / redo'],
   [

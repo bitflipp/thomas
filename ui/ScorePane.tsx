@@ -38,6 +38,7 @@ import {
   engraved,
   fit,
   hit,
+  parallelNotes,
   printing,
   score,
   selection,
@@ -51,6 +52,7 @@ import {
 const MM_PX = 96 / 25.4;
 const SEL = '#2f6fed';
 const GHOST = '#c4c4c4'; // A hidden rest is drawn faintly in the editor only.
+const WARN = '#d6361f'; // A note in a parallel fifth or octave (the check is on).
 const HOVER = '#6b9af0'; // This is the selection colour, but lighter.
 
 type GhostOf<K extends Ghost['kind']> = Extract<Ghost, { kind: K }>;
@@ -194,6 +196,7 @@ function PageView({
     return () => io.disconnect();
   }, []);
   const p = res.pages[i];
+  const warn = parallelNotes.value;
   const svg = useMemo(() => {
     if (!near) return '';
     const colorFor = (q: Prim): string | undefined => {
@@ -206,6 +209,15 @@ function PageView({
           if (r.pi !== undefined && keys.has(refKey(r))) return SEL;
         } else if (keys.has(refKey(r))) return SEL;
       }
+      if (warn.heads.size && r.t === 'ev' && q.k !== 'beam' && !q.ghost) {
+        const k = refKey(r);
+        if (r.pi === undefined && warn.wholeEvents.has(k)) {
+          // The stem and flags of a note whose head is selected are selected too, not warned.
+          for (const sk of keys) if (sk.startsWith(`${k}:`)) return SEL;
+          return WARN;
+        }
+        if (r.pi !== undefined && warn.heads.has(k)) return WARN;
+      }
       if (q.ghost) return GHOST;
       if (voiceColors.value && (r.t === 'ev' || r.t === 'tie' || r.t === 'slur' || r.t === 'line' || r.t === 'tuplet'))
         return VOICE_COLORS[r.voice];
@@ -215,7 +227,7 @@ function PageView({
       /^<\?xml[^>]*>\s*/,
       '',
     );
-  }, [res, h, sig, near, voiceColors.value, printing.value]);
+  }, [res, h, sig, near, voiceColors.value, printing.value, warn]);
   // The hovered element is recoloured in place, like a selected one but lighter. Generating
   // new SVG on every pointer move would be far too slow, so only the matching primitives change.
   const wrap = useRef<HTMLDivElement | null>(null);

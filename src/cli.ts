@@ -5,10 +5,11 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
+import { findParallels } from './analysis/parallels.ts';
 import { describe, findCollisions } from './engrave/collide.ts';
 import { engrave } from './engrave/system.ts';
 import type { Score } from './model.ts';
-import { validate } from './model.ts';
+import { PPQ, validate } from './model.ts';
 import { importMusicXml } from './musicxml.ts';
 import { pageToSvg } from './render.ts';
 import { parseText, writeText } from './textformat.ts';
@@ -36,7 +37,8 @@ const USAGE = `usage:
                                                   convert MusicXML to the text format
   thomas render  <in.txt|in.musicxml> <out-base> [--pdf] [--no-breaks] [--numbers|--no-numbers] [--space <mm>]
                                                   write <out-base>-<page>.svg (and <out-base>.pdf)
-  thomas check   <in.txt|in.musicxml> [--collisions [--mark <out-base>]]
+  thomas check   <in.txt|in.musicxml> [--parallels] [--collisions [--mark <out-base>]]
+                                                  --parallels lists consecutive fifths and octaves (src/analysis/parallels.ts)
                                                   validate; with --collisions also engrave and list overlapping
                                                   elements (see src/engrave/collide.ts); --mark writes <out-base>-<page>.svg
                                                   with every collision boxed in red
@@ -77,6 +79,15 @@ try {
   } else if (cmd === 'check') {
     const s = withSpace(loadScore(must(args.find((a) => !a.startsWith('--')))));
     console.log(`ok: ${s.measures.length} measures, ${s.staves.length} staves`);
+    if (args.includes('--parallels')) {
+      const gs = findParallels(s);
+      for (const g of gs) {
+        const beat = Math.round((g.tick / PPQ + 1) * 100) / 100;
+        const voices = [...new Set(g.notes.map((n) => `${n.ev.staff}.${n.ev.voice}`))].join(' + ');
+        console.log(`${g.number}. m${g.mi + 1} beat ${beat}: ${g.kinds.join(' + ')} (${voices})`);
+      }
+      console.log(`${gs.length} group${gs.length === 1 ? '' : 's'} of consecutive fifths or octaves`);
+    }
     if (args.includes('--collisions')) {
       const res = engrave(s, { respectBreaks: true, measureNumbers: s.page.measureNumbers ?? 'system' });
       const cs = findCollisions(res.pages);

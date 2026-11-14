@@ -28,7 +28,7 @@
   --fs-xs: 11px;
   /* Widths: a standard button, and the side panes. */
   --w-btn: calc(var(--h) * 3);
-  --w-pane: 324px;
+  --w-pane: 372px;
   --radius: 4px;
   --radius-lg: 8px;
   --shadow-sm: 0 1px 6px rgba(0, 0, 0, 0.3);
@@ -406,6 +406,56 @@ button.mini {
 .properties .ctx .chip {
   margin-left: var(--sp-1);
   color: var(--fg);
+}
+.parallelmenu {
+  position: relative;
+}
+.parallels .num {
+  color: #d6361f;
+  font-weight: 600;
+}
+.parallelmenu .summary {
+  display: inline-grid;
+  max-width: 70ch;
+  white-space: nowrap;
+  text-align: left;
+  vertical-align: bottom;
+}
+.parallelmenu .summary > span {
+  grid-area: 1 / 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.parallelmenu .summary > .sizer {
+  visibility: hidden;
+}
+.popover.parallels {
+  left: auto;
+  right: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.parallels ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.parallels button {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+}
+.parallels button.on {
+  border-color: var(--accent);
+}
+.parallels .num {
+  font-variant-numeric: tabular-nums;
 }
 .sec {
   padding: var(--sp-2) 0;

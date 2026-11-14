@@ -131,6 +131,19 @@ export function locate(cx: number, cy: number): Where | undefined {
   return { page: best, x: ((cx - r.left) / r.width) * p.width, y: ((cy - r.top) / r.height) * p.height };
 }
 
+/** Scrolls the score pane so that the object `ref` is in view, a third of the way down (nothing happens when it is not drawn). */
+export function reveal(ref: Ref): void {
+  const key = refKey(ref);
+  const res = engraved.peek();
+  const t = hit.peek()?.targets.find((x) => refKey(x.ref) === key);
+  const pg = t && pageEls[t.page];
+  const box = pg?.closest('.scroll');
+  if (!(t && res && pg && box)) return;
+  const k = pg.clientWidth / res.pages[t.page].width;
+  const y = pg.getBoundingClientRect().top - box.getBoundingClientRect().top + t.bbox.y0 * k;
+  box.scrollTo({ top: Math.max(0, box.scrollTop + y - box.clientHeight / 3), behavior: 'smooth' });
+}
+
 // Small helpers shared by the pointer handling and the commands: staff ids, measure lengths, the
 // duration currently chosen in the palette and the selection.
 
