@@ -432,16 +432,18 @@ button.mini {
 .popover.parallels {
   left: auto;
   right: 0;
-  max-height: 60vh;
-  overflow-y: auto;
+  padding: var(--sp-2);
 }
+/* The list scrolls after ten rows. It reaches to the popover's right border, so that a scrollbar sits there and its own padding keeps the rows as far from the edge as on the other sides. */
 .parallels ol {
   list-style: none;
-  margin: 0;
-  padding: 0;
+  margin: 0 calc(-1 * var(--sp-2)) 0 0;
+  padding: 0 var(--sp-2) 0 0;
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
+  max-height: min(60vh, calc(10 * var(--h) + 9 * var(--sp-1)));
+  overflow-y: auto;
 }
 .parallels button {
   display: flex;
@@ -456,6 +458,8 @@ button.mini {
 }
 .parallels .num {
   font-variant-numeric: tabular-nums;
+  min-width: 2ch;
+  text-align: right;
 }
 .sec {
   padding: var(--sp-2) 0;
