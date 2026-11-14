@@ -7,6 +7,8 @@ import { clefBottomStep, keyAlter } from '../engrave/prep.ts';
 import type { Clef, Pitch, Score, Step } from '../model.ts';
 import { flattenVoice, keyAt, marksOf, pitchStep, STEPS } from '../model.ts';
 import { must } from '../util.ts';
+import type { EvAddr } from './addr.ts';
+import { voiceOf } from './addr.ts';
 
 /** The clef in force at `tick` of measure `mi`: the staff's initial clef, then every clef change before that point. */
 export function clefAt(score: Score, staff: string, mi: number, tick: number): Clef {
@@ -34,15 +36,26 @@ function stepAtPos(pos: number, clef: Clef): number {
   return clefBottomStep(clef) + pos;
 }
 
-/** The alteration a plain (unmarked) note on this step has here: the key signature, then accidentals earlier in the measure. */
-function alterIn(score: Score, staff: string, mi: number, tick: number, step: Step, octave: number): number {
+/**
+ * The alteration a plain (unmarked) note on this step has here: the key signature, then accidentals earlier in the
+ * measure. With `before` only notes that start before `tick` count, not those at `tick` itself.
+ */
+function alterIn(
+  score: Score,
+  staff: string,
+  mi: number,
+  tick: number,
+  step: Step,
+  octave: number,
+  before = false,
+): number {
   let alter = keyAlter(keyAt(score, mi), step);
   const sm = score.measures[mi].staves[staff];
   if (!sm) return alter;
   const seen: { start: number; voice: number; alter: number }[] = [];
   for (const v of sm.voices)
     for (const te of flattenVoice(v)) {
-      if (te.start > tick || te.ev.kind !== 'note') continue;
+      if (te.start > tick || (before && te.start === tick) || te.ev.kind !== 'note') continue;
       for (const np of te.ev.pitches)
         if (np.pitch.step === step && np.pitch.octave === octave)
           seen.push({ start: te.start, voice: v.id, alter: np.pitch.alter });
@@ -50,6 +63,17 @@ function alterIn(score: Score, staff: string, mi: number, tick: number, step: St
   seen.sort((a, b) => a.start - b.start || a.voice - b.voice);
   if (seen.length) alter = seen[seen.length - 1].alter;
   return alter;
+}
+
+/**
+ * The alteration in force for `pitch` just before the event at `a` (key signature and earlier accidentals in the
+ * measure), i.e. what the note would sound as without an accidental of its own.
+ */
+export function alterBefore(score: Score, a: EvAddr, pitch: Pitch): number {
+  const v = voiceOf(score, a);
+  const te = v && flattenVoice(v)[a.idx];
+  if (!te) return keyAlter(keyAt(score, a.mi), pitch.step);
+  return alterIn(score, a.staff, a.mi, te.start, pitch.step, pitch.octave, true);
 }
 
 /** Pitch (sounding) for a click at staff position `pos`; `acc` forces an alteration (undefined: whatever is in force). */

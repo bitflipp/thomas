@@ -6,10 +6,11 @@
 import type { EvAddr, Ref } from '../src/editor/addr.ts';
 import { eventOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
+import { alterBefore } from '../src/editor/context.ts';
 import { drawnTieSide } from '../src/editor/hit.ts';
 import type { BaseDur, Dur } from '../src/model.ts';
 import { evRefs, graceRefs, sameSystem } from './interact.ts';
-import { commit, dots, dur, hit, run, say, score, selection } from './state.ts';
+import { acc, commit, dots, dur, hit, run, say, score, selection } from './state.ts';
 
 /**
  * Orders event addresses from the end of the score backwards, so that edits applied in this order keep earlier
@@ -46,6 +47,56 @@ export function chooseDots(n: number): void {
     const e = eventOf(score.peek(), refs[0]);
     setDurationSel({ base: e?.dur.base ?? dur.peek(), dots: n });
   }
+}
+
+/**
+ * The pitches of the selected notes that an accidental applies to (one head of a chord when a head is selected),
+ * each with the alteration in force before it (key signature and earlier accidentals in the measure).
+ */
+function selectedPitches(): { alter: number; before: number }[] {
+  const sc = score.value;
+  const refs = evRefs();
+  const head = refs.find((r) => r.pi !== undefined)?.pi;
+  return refs.flatMap((r) => {
+    const e = eventOf(sc, r);
+    if (e?.kind !== 'note') return [];
+    return e.pitches
+      .filter((_, i) => head === undefined || i === head)
+      .map((p) => ({ alter: p.pitch.alter, before: alterBefore(sc, r, p.pitch) }));
+  });
+}
+
+/**
+ * The accidental applied to a pitch: its alteration unless it is a natural with nothing to cancel (no key signature
+ * or earlier accidental on that step), so a note altered by the key or an earlier accidental counts.
+ */
+const appliedAlter = (p: { alter: number; before: number }): number | undefined =>
+  p.alter !== 0 || p.before !== 0 ? p.alter : undefined;
+
+/**
+ * The accidental applied to the selected notes for the palette: `undefined` when nothing is selected or none is
+ * applied, `mixed` when they differ. Reading it subscribes to the selection and the score.
+ */
+export function selectedAlter(): number | 'mixed' | undefined {
+  const alters = new Set(selectedPitches().map(appliedAlter));
+  if (alters.size > 1) return 'mixed';
+  return [...alters][0];
+}
+
+/**
+ * Picks an accidental in the palette. With notes selected it alters them; clicking the accidental they already have
+ * takes it off (a natural that cancels something goes back to what is in force before the note, anything else
+ * becomes natural). The input tool is left alone then; without notes selected it toggles the input tool's accidental.
+ */
+export function chooseAccidental(a: number): void {
+  const ps = selectedPitches();
+  if (!ps.length) {
+    acc.value = acc.value === a ? undefined : a;
+    return;
+  }
+  if (selectedAlter() !== a) setAccidentalSel(a);
+  else if (a !== 0) setAccidentalSel(0);
+  else if (new Set(ps.map((p) => p.before)).size === 1) setAccidentalSel(ps[0].before);
 }
 
 /**

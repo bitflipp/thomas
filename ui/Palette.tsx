@@ -1,9 +1,10 @@
 // The tool palette of the editor: tools, durations, accidentals, dynamics and other marks that the
 // user picks before clicking on the score. It only sets the signals of state.ts; interact.ts reads them.
 
-import { chooseDots, chooseDuration, setAccidentalSel } from './actions.ts';
+import { chooseAccidental, chooseDots, chooseDuration, selectedAlter } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { CPS, Glyph, Icon, Label } from './icons.tsx';
+import { evRefs } from './interact.ts';
 import { AccidentalButtons, DurationButtons } from './pickers.tsx';
 import type { Tool } from './state.ts';
 
@@ -175,13 +176,7 @@ export function Palette() {
       </div>
       <h4>Accidental</h4>
       <div class="grid">
-        <AccidentalButtons
-          value={acc.value}
-          onPick={(a) => {
-            acc.value = acc.value === a ? undefined : a;
-            setAccidentalSel(acc.value);
-          }}
-        />
+        <AccidentalButtons value={evRefs().length ? selectedAlter() : acc.value} onPick={chooseAccidental} />
       </div>
       <h4>Voice</h4>
       <div class="grid">
