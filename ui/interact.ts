@@ -765,7 +765,7 @@ export function tupletsAround(): { label: string; ref: Ref }[] {
     const grp = flat[r.idx].tuplets[depth];
     const idx = flat.findIndex((te) => te.tuplets[depth] === grp);
     out.push({
-      label: nest > 1 ? `Tuplet ${depth + 1}` : 'Tuplet',
+      label: nest > 1 ? `Sel. tuplet ${depth + 1}` : 'Sel. tuplet',
       ref: { t: 'tuplet', mi: r.mi, staff: r.staff, voice: r.voice, idx, depth },
     });
   }

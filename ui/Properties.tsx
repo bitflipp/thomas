@@ -1113,16 +1113,16 @@ function EventActions({ ctx }: { ctx: EvSel }) {
               Trem {b}
             </button>
           ))}
-        {tremolo && (
-          <button type="button" title="Remove the tremolo" onClick={() => run((x) => C.ungroup(x, tremolo))}>
-            No tremolo
-          </button>
-        )}
         {tupletsAround().map((t) => (
           <button type="button" title="Select this tuplet" onClick={() => select([t.ref])}>
             {t.label}
           </button>
         ))}
+        {tremolo && (
+          <button type="button" title="Remove the tremolo" onClick={() => run((x) => C.ungroup(x, tremolo))}>
+            Rem. tremolo
+          </button>
+        )}
         <button type="button" title="Flip stem (X)" onClick={flipStem}>
           Flip stem
         </button>
