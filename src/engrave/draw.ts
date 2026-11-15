@@ -149,6 +149,7 @@ interface LedgerSeg {
   x1: number;
   hx0: number;
   hx1: number;
+  merged?: boolean; // Whether the line was joined with a neighbour's (it then serves several heads).
 }
 
 let ledgerSegs: LedgerSeg[] = [];
@@ -185,6 +186,7 @@ function trimLedgers(ctx: SysCtx): void {
       // The second segment is marked dead (NaN) and removed afterwards.
       if (b.x0 < a.x1 + GAP / 2) {
         a.x1 = Math.max(a.x1, b.x1);
+        a.merged = true;
         b.x0 = b.x1 = Number.NaN;
       } else a = b;
     }
@@ -194,6 +196,12 @@ function trimLedgers(ctx: SysCtx): void {
     if (Number.isNaN(l.x0)) {
       dead.add(l.prim);
       continue;
+    }
+    // A line trimmed on one side only would leave its head off-centre: take the same off the other side.
+    if (!l.merged) {
+      const ext = Math.min(l.hx0 - l.x0, l.x1 - l.hx1);
+      l.x0 = l.hx0 - ext;
+      l.x1 = l.hx1 + ext;
     }
     const p = l.prim as { x1: number; x2: number };
     p.x1 = l.x0;
