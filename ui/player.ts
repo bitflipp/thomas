@@ -292,5 +292,15 @@ export const playhead = computed<Playhead | null>(() => {
   };
 });
 
+/** The measure the playhead is in (null while it is not drawn). */
+export const playMeasure = computed<number | null>(() => {
+  const tick = playTick.value;
+  if (!playing.value && tick === 0) return null;
+  const { measureStart: starts } = startsOf(score.value);
+  let mi = starts.length - 1;
+  while (mi > 0 && starts[mi] > tick) mi--;
+  return mi;
+});
+
 /** Absolute tick at which measure `mi` starts. */
 export const measureTick = (mi: number): number => startsOf(score.peek()).measureStart[mi] ?? 0;

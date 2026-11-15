@@ -13,6 +13,7 @@ import { zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
 import { chooseInput, midiIn, midiInPorts } from './midiin.ts';
 import { native } from './native.ts';
+import { Overview } from './Overview.tsx';
 import { Palette } from './Palette.tsx';
 import { ParallelsControl, parallelsOpen } from './Parallels.tsx';
 import { Properties } from './Properties.tsx';
@@ -296,7 +297,10 @@ export function App() {
       <Toolbar />
       <div class="main">
         <Palette />
-        <ScorePane />
+        <div class="scorecol">
+          <ScorePane />
+          <Overview />
+        </div>
         {showProperties.value && <Properties />}
         {showText.value && (
           <Suspense fallback={null}>

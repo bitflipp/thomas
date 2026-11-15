@@ -20,6 +20,7 @@ import {
 } from './actions.ts';
 
 import { cancelDrag, deleteSelection, evRefs, graceRefs, measureRefs, selectSimilar, zoomBy } from './interact.ts';
+import { focusGoto } from './Overview.tsx';
 import { stepParallels } from './Parallels.tsx';
 import { rewind, toggle } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
@@ -158,6 +159,9 @@ function onViewShortcut(e: KeyboardEvent): boolean {
       break;
     case 'i':
       toggleSignal(showProperties);
+      break;
+    case 'g':
+      focusGoto();
       break;
     default:
       return false;

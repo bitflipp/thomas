@@ -23,6 +23,8 @@ export interface SvgOptions {
   index?: boolean;
   /** Keep the editor-only ghost primitives (hidden rests); they are left out by default. */
   ghosts?: boolean;
+  /** Show only this region (staff spaces) of the page instead of all of it. */
+  crop?: { x: number; y: number; w: number; h: number };
 }
 
 /** Renders `page` (sizes in staff spaces) at `staffSpaceMm` millimetres per staff space. Lines are emitted after fills so that they stay on top. */
@@ -68,12 +70,11 @@ export function pageToSvg(page: Page, staffSpaceMm: number, opts: SvgOptions = {
     }
   });
   const defs = [...used].map((n) => `<path id="g-${n}" d="${sm.path(n)}"/>`).join('');
-  const wmm = page.width * staffSpaceMm;
-  const hmm = page.height * staffSpaceMm;
+  const { x, y, w, h } = opts.crop ?? { x: 0, y: 0, w: page.width, h: page.height };
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${round3(wmm)}mm" height="${round3(hmm)}mm" viewBox="0 0 ${round3(page.width)} ${round3(page.height)}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${round3(w * staffSpaceMm)}mm" height="${round3(h * staffSpaceMm)}mm" viewBox="${round3(x)} ${round3(y)} ${round3(w)} ${round3(h)}">
 <defs>${defs}</defs>
-<rect width="100%" height="100%" fill="#fff"/>
+<rect x="${round3(x)}" y="${round3(y)}" width="${round3(w)}" height="${round3(h)}" fill="#fff"/>
 <g fill="#000" stroke="#000" stroke-linecap="butt" font-family="${FONT}">
 <g stroke="none">
 ${body.filter((b) => !(b.startsWith('<line') || b.includes(' data-top="1"'))).join('\n')}

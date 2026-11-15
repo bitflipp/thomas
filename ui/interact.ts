@@ -141,7 +141,20 @@ export function reveal(ref: Ref): void {
   if (!(t && res && pg && box)) return;
   const k = pg.clientWidth / res.pages[t.page].width;
   const y = pg.getBoundingClientRect().top - box.getBoundingClientRect().top + t.bbox.y0 * k;
-  box.scrollTo({ top: Math.max(0, box.scrollTop + y - box.clientHeight / 3), behavior: 'smooth' });
+  box.scrollTo({ top: Math.max(0, box.scrollTop + y - box.clientHeight / 3), behavior: 'instant' });
+}
+
+/** Scrolls the score pane so that measure `mi` is in view (its system a third of the way down), at once. */
+export function revealMeasure(mi: number): void {
+  const res = engraved.peek();
+  const g = res?.layout.measures.find((m) => m.mi === mi && m.staff === 0);
+  const sys = g && res?.layout.systems.find((s) => s.sys === g.sys);
+  const pg = g && pageEls[g.page];
+  const box = pg?.closest('.scroll');
+  if (!(res && g && sys && pg && box)) return;
+  const k = pg.clientWidth / res.pages[g.page].width;
+  const y = pg.getBoundingClientRect().top - box.getBoundingClientRect().top + sys.staffY[0] * k;
+  box.scrollTo({ top: Math.max(0, box.scrollTop + y - box.clientHeight / 3), behavior: 'instant' });
 }
 
 // Small helpers shared by the pointer handling and the commands: staff ids, measure lengths, the
