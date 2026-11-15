@@ -187,8 +187,18 @@ export const voiceColors = signal(true);
 /** Whether the parallel fifths and octaves check is on: its notes are drawn in the warning colour and the Parallels tab lists them. */
 export const showParallels = signal(false);
 
-/** The groups of consecutive fifths and octaves of the score (none while the check is off). */
-export const parallels = computed(() => (showParallels.value ? findParallels(score.value) : []));
+/** Which intervals the parallels check looks for. */
+export type ParallelKindChoice = 'both' | 'fifths' | 'octaves';
+
+/** The intervals the check looks for: both, or only fifths or only octaves. */
+export const parallelKinds = signal<ParallelKindChoice>('both');
+
+/** The groups of consecutive fifths and octaves of the score, as chosen by `parallelKinds` (none while the check is off). */
+export const parallels = computed(() => {
+  if (!showParallels.value) return [];
+  const k = parallelKinds.value;
+  return findParallels(score.value, k === 'both' ? ['fifths', 'octaves'] : [k]);
+});
 
 /** The notes in `parallels` as `refKey`s: the heads, and the events all of whose heads are in a violation (which are drawn whole). */
 export const parallelNotes = computed(() => {

@@ -32,6 +32,7 @@ import {
   load,
   loadText,
   NEW_SCORE_TEXT,
+  parallelKinds,
   printing,
   redo,
   say,
@@ -240,14 +241,26 @@ function Toolbar() {
               />{' '}
               Voice colours
             </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={showParallels.value}
-                onChange={(e) => (showParallels.value = (e.target as HTMLInputElement).checked)}
-              />{' '}
-              Mark parallel fifths and octaves
-            </label>
+            <div class="parkinds">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={showParallels.value}
+                  onChange={(e) => (showParallels.value = (e.target as HTMLInputElement).checked)}
+                />{' '}
+                Mark parallels
+              </label>
+              <Dropdown<typeof parallelKinds.value>
+                value={parallelKinds.value}
+                opts={[
+                  { value: 'both', label: 'Fifths and octaves' },
+                  { value: 'fifths', label: 'Fifths' },
+                  { value: 'octaves', label: 'Octaves' },
+                ]}
+                onChange={(v) => (parallelKinds.value = v)}
+                title="Which parallel intervals to mark"
+              />
+            </div>
           </div>
         )}
       </div>
