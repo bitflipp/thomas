@@ -324,9 +324,9 @@ function FingeringSvg({ page, h }: { page: number; h: HitIndex }) {
   }
   const out: preact.JSX.Element[] = [];
   for (const [ek, heads] of chords) {
-    heads.sort((a, b) => a.bbox.y0 - b.bbox.y0);
+    heads.sort((a, b) => (a.core ?? a.bbox).y0 - (b.core ?? b.bbox).y0);
     const stem = stems.get(ek);
-    const top = heads[0].bbox;
+    const top = heads[0].core ?? heads[0].bbox;
     const x = (top.x0 + top.x1) / 2;
     // The lowest square rests above the top head, or above the end of an upward stem.
     const base = (stem && stem.y0 < top.y0 - 0.5 ? stem.y0 : top.y0) - 0.35;

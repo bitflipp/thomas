@@ -31,6 +31,8 @@ export interface Target {
   /** Curves (slurs, ties): sampled points along the curve instead of boxes, so the empty inside of a slur is not a hit. */
   pts?: { x: number; y: number }[];
   bbox: Box;
+  /** For the target of a head of a chord: the box of the notehead itself, without its accidental and dots (which `bbox` includes). */
+  core?: Box;
   /** Lower wins when several targets are under the pointer: a head beats the stem and a slur over it. */
   prio: number;
 }
@@ -230,6 +232,7 @@ function addToTarget(byKey: Map<string, Target>, page: number, p: Prim, ref: Ref
     t.pts ??= [];
     t.pts.push(...curvePts(p));
   } else t.boxes.push(bb);
+  if (head && p.k === 'head') t.core = t.core ? union(t.core, bb) : bb;
   t.bbox = union(t.bbox, bb);
   if (p.k === 'rest') t.prio = 0;
 }
