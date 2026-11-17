@@ -5,20 +5,23 @@
 // each step's keys between the left and the right hand picks the cheapest path. A division is possible when each
 // hand has at most five keys within the player's span (`maxSpan`), and a move between two steps is possible when
 // the hand can get there in the time between the attacks. The staves only act as a prior (a note taken by the
-// other hand costs a little), so music with crossings or both hands on one staff is judged by what the hands
-// could do, not by how it is written. Where no division is possible the findings are errors; where the best
-// path still stretches or hurries, they are warnings. Nothing here draws anything: the editor lists and
+// other hand costs a little, and a note can be pinned to a hand), so music with crossings or both hands on one
+// staff is judged by what the hands could do, not by how it is written. Where no division is possible the findings are errors; where the best
+// path still stretches or hurries, or its fingering (`fingering.ts`, worked out per hand afterwards) is awkward,
+// they are warnings. Nothing here draws anything: the editor lists and
 // colors the notes of the findings (`ui/`), and `thomas check --playability` prints them.
 //
 // What counts as held: a finger holds a note for its written length (ties merged), except where the pedal
 // can carry it (`PedalMode`) or the note is staccato. Not modeled yet: grace notes, trills (the second
-// finger), the finger-level costs of a fingering, arpeggiated chords (their notes are left out), repeated
-// strikes of a key that is still held, and non-keyboard staves outside the first brace.
+// finger), arpeggiated chords (their notes are left out), repeated strikes of a key that is still held, and
+// non-keyboard staves outside the first brace.
 
 import type { EvAddr } from '../editor/addr.ts';
 import type { Score } from '../model.ts';
 import { flattenVoice, marksOf, pitchMidi } from '../model.ts';
 import { measureStarts, tempoMap } from '../playback/sequence.ts';
+import type { FStep } from './fingering.ts';
+import { fingerHand } from './fingering.ts';
 
 /** Whether the sustain pedal is assumed to carry held notes: where the score marks it (`explicit`), everywhere (`assumed`), or nowhere (`never`). */
 export type PedalMode = 'explicit' | 'assumed' | 'never';
@@ -31,8 +34,8 @@ export interface PlayOptions {
 
 export const DEFAULT_PLAY: PlayOptions = { maxSpan: 14, pedal: 'assumed' };
 
-/** What a finding is about: a note off the keyboard, too many keys, a span too wide, a leap too fast, or held notes that keep the hands from the next ones. */
-export type PlayKind = 'range' | 'count' | 'span' | 'leap' | 'hold';
+/** What a finding is about: a note off the keyboard, too many keys, a span too wide, a leap too fast, held notes that keep the hands from the next ones, or an awkward fingering. */
+export type PlayKind = 'range' | 'count' | 'span' | 'leap' | 'hold' | 'fingering';
 
 /** A head of a note. */
 export interface PlayNote {
@@ -54,6 +57,17 @@ export interface PlayFinding {
   /** The measure and the tick in it where the finding starts. */
   mi: number;
   tick: number;
+}
+
+/** A note and the hand that plays it, as the check inferred it. */
+export interface HandNote extends PlayNote {
+  hand: 'L' | 'R';
+}
+
+/** What the check found: the findings, and which hand plays which note. */
+export interface Analysis {
+  findings: PlayFinding[];
+  hands: HandNote[];
 }
 
 /** The lowest key of a piano (A0). */
@@ -99,6 +113,8 @@ interface PNote {
   midi: number;
   /** The hand the staff suggests: 1 right, -1 left, 0 none. */
   prior: number;
+  /** The hand the score pins the note to: 1 right, -1 left, 0 none. */
+  pin: number;
   ev: EvAddr;
   pi: number;
 }
@@ -108,6 +124,8 @@ interface Key {
   midi: number;
   notes: PNote[];
   prior: number;
+  /** The hand a note on it is pinned to: 1 right, -1 left, 0 none. */
+  pin: number;
   /** Whether a note on it is struck at this step. */
   attack: boolean;
   /** The index of the same key in the previous step when it is held over, else -1. */
@@ -151,6 +169,11 @@ export function spanName(semitones: number): string {
   const generic = [1, 2, 2, 3, 3, 4, 5, 5, 6, 6, 7, 7][semitones % 12] + 7 * Math.floor(semitones / 12);
   if (generic === 8) return 'octave';
   return `${generic}${generic === 2 ? 'nd' : generic === 3 ? 'rd' : 'th'}`;
+}
+
+/** The name of a key with a sharp, such as "C#4" (middle C is C4). */
+function midiName(midi: number): string {
+  return `${['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][midi % 12]}${Math.floor(midi / 12) - 1}`;
 }
 
 /** The absolute ticks where the sustain pedal goes down and comes up, as intervals. */
@@ -229,6 +252,7 @@ function collectNotes(score: Score, measureStart: number[], pedal: PedalMode): P
               hold: e.art?.includes('staccato') ? start : hold,
               midi,
               prior: priorOf(attack),
+              pin: np.hand === 'r' ? 1 : np.hand === 'l' ? -1 : 0,
               ev: { mi, staff, voice: v.id, idx: te.index },
               pi,
             };
@@ -271,6 +295,7 @@ function buildSteps(notes: PNote[], tickToSec: (tick: number) => number): Step[]
         midi,
         notes: ns,
         prior: Math.sign(ns.reduce((s, n) => s + n.prior, 0)),
+        pin: ns.map((n) => n.pin).find((p) => p !== 0) ?? 0,
         attack: ns.some((n) => n.start === t),
         from: prev?.keys.findIndex((k) => k.midi === midi && ns.some((n) => n.start < t)) ?? -1,
       }));
@@ -328,14 +353,19 @@ function statesOf(step: Step, maxSpan: number): State[] {
   const full = (1 << n) - 1;
   let wantR = 0;
   let wantL = 0;
+  let pinR = 0;
+  let pinL = 0;
   let attacks = 0;
   keys.forEach((k, i) => {
     if (k.prior > 0) wantR |= 1 << i;
     if (k.prior < 0) wantL |= 1 << i;
     if (k.attack) attacks |= 1 << i;
+    if (k.pin > 0) pinR |= 1 << i;
+    if (k.pin < 0) pinL |= 1 << i;
   });
   const out: State[] = [];
   for (let mask = 0; mask <= full; mask++) {
+    if ((mask & pinR) !== pinR || mask & pinL) continue;
     const sets: [number, number] = [full & ~mask, mask];
     const count: [number, number] = [popcount(sets[0]), popcount(sets[1])];
     if (count[0] > FINGERS || count[1] > FINGERS) continue;
@@ -421,11 +451,22 @@ function staticFailure(steps: Step[], k: number, maxSpan: number): Failure {
       keys,
     };
   const need = neededSpan(keys);
+  // Dropping a single key would do: those keys are named, with the other way out, rolling the chord.
+  const without = keys.filter(
+    (_, i) =>
+      keys.length <= MAX_KEYS + 1 && statesOf({ ...steps[k], keys: keys.filter((_, j) => j !== i) }, maxSpan).length,
+  );
+  const fix = without.length
+    ? ` It works without ${without
+        .slice(0, 3)
+        .map((key) => midiName(key.midi))
+        .join(' or ')}, or if the chord is rolled.`
+    : ' It works only if the chord is rolled.';
   return {
     step: k,
     kind: 'span',
     title: `Needs a span of a ${spanName(need.span)}`,
-    message: `No way to divide these notes between two hands: one hand would span a ${spanName(need.span)} (${need.span} semitones), the setting allows a ${spanName(maxSpan)}`,
+    message: `No way to divide these notes between two hands: one hand would span a ${spanName(need.span)} (${need.span} semitones), the setting allows a ${spanName(maxSpan)}.${fix}`,
     keys: need.worse,
   };
 }
@@ -576,8 +617,8 @@ function merge(raws: Raw[]): Raw[] {
   return out;
 }
 
-/** Solves a prepared score for the setting and lists the findings in score order. */
-export function solve(prep: Prepared, maxSpan: number): PlayFinding[] {
+/** Solves a prepared score for the setting: the findings in score order, and the hand of every note. Without `fingering` the fingers are not worked out (the span a piece needs does not depend on them). */
+export function solve(prep: Prepared, maxSpan: number, fingering = true): Analysis {
   const { steps, measureStart } = prep;
   const where = (tick: number) => placeOf(measureStart, tick);
   const raws: Raw[] = [];
@@ -636,13 +677,86 @@ export function solve(prep: Prepared, maxSpan: number): PlayFinding[] {
         ...where(steps[k].tick),
       });
   });
-  return merge(raws)
-    .map(({ step: _step, ...f }) => f)
-    .sort((a, b) => a.mi - b.mi || a.tick - b.tick);
+  const hands: HandNote[] = [];
+  sol.chosen.forEach((st, k) => {
+    if (!st) return;
+    steps[k].keys.forEach((key, i) => {
+      if (!key.attack) return;
+      for (const n of key.notes)
+        if (n.start === steps[k].tick) hands.push({ ev: n.ev, pi: n.pi, hand: (st.mask >> i) & 1 ? 'R' : 'L' });
+    });
+  });
+  if (fingering) for (const h of [0, 1] as const) raws.push(...fingeringFindings(prep, sol, h, maxSpan, where));
+  return {
+    findings: merge(raws)
+      .map(({ step: _step, ...f }) => f)
+      .sort((a, b) => a.mi - b.mi || a.tick - b.tick),
+    hands,
+  };
+}
+
+/** The awkward fingerings of one hand along the chosen path, as findings that name the fingering the search found cheapest. */
+function fingeringFindings(
+  prep: Prepared,
+  sol: Solution,
+  h: 0 | 1,
+  maxSpan: number,
+  where: (tick: number) => { mi: number; tick: number },
+): Raw[] {
+  const { steps } = prep;
+  const fsteps: FStep[] = [];
+  /** The step of the score and the indexes of the hand's keys in it, for each step of the hand. */
+  const at: { k: number; keys: number[] }[] = [];
+  for (let k = 0; k < steps.length; k++) {
+    const st = sol.chosen[k];
+    if (!st) continue;
+    const idx = steps[k].keys.map((_, i) => i).filter((i) => (((st.mask >> i) & 1) as 0 | 1) === h);
+    if (!idx.length) continue;
+    const prev = at[at.length - 1];
+    const adjacent = !!prev && prev.k === k - 1 && sol.linked[k];
+    fsteps.push({
+      sec: steps[k].sec,
+      fresh: !adjacent,
+      keys: idx.map((i) => ({
+        midi: steps[k].keys[i].midi,
+        attack: steps[k].keys[i].attack,
+        held: adjacent ? prev.keys.indexOf(steps[k].keys[i].from) : -1,
+      })),
+    });
+    at.push({ k, keys: idx });
+  }
+  const hand = h === 0 ? 'L' : 'R';
+  const result = fingerHand(fsteps, hand, maxSpan);
+  return result.issues.map((issue): Raw => {
+    const { k, keys } = at[issue.step];
+    const around = result.fingers
+      .slice(Math.max(0, issue.step - 2), issue.step + 3)
+      .filter((f) => f.length)
+      .map((f) => f.join('-'))
+      .join(' ');
+    const who = h === 0 ? 'left hand' : 'right hand';
+    return {
+      severity: 'warn',
+      kind: 'fingering',
+      hand,
+      title: Number.isFinite(issue.cost) ? `Awkward fingering: ${issue.why}` : 'No comfortable fingering',
+      message: Number.isFinite(issue.cost)
+        ? `The cheapest fingering for the ${who} still has ${issue.why} here (fingers ${around}).`
+        : `No fingering of this chord keeps every pair of fingers within comfortable reach for the ${who}.`,
+      notes: headsOf(keys.map((i) => steps[k].keys[i]).filter((key) => key.attack)),
+      step: k,
+      ...where(steps[k].tick),
+    };
+  });
 }
 
 /** The findings of a score for the options (the default span and pedal where left out). */
 export function findPlayability(score: Score, options: Partial<PlayOptions> = {}): PlayFinding[] {
+  return analyzePlayability(score, options).findings;
+}
+
+/** The findings and the hand of every note of a score for the options. */
+export function analyzePlayability(score: Score, options: Partial<PlayOptions> = {}): Analysis {
   const o = { ...DEFAULT_PLAY, ...options };
   return solve(prepare(score, o.pedal), o.maxSpan);
 }
@@ -651,7 +765,7 @@ export function findPlayability(score: Score, options: Partial<PlayOptions> = {}
 export function requiredSpan(score: Score, pedal: PedalMode = DEFAULT_PLAY.pedal): number | null {
   const prep = prepare(score, pedal);
   const bad = (span: number) =>
-    solve(prep, span).some((f) => f.severity === 'error' && (f.kind === 'span' || f.kind === 'hold'));
+    solve(prep, span, false).findings.some((f) => f.severity === 'error' && (f.kind === 'span' || f.kind === 'hold'));
   const WIDEST = 36;
   if (bad(WIDEST)) return null;
   if (!bad(0)) return 0;

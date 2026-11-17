@@ -4,8 +4,8 @@
 // Requests are numbered by the caller, which ignores answers that are not the latest (the score changed
 // meanwhile). The worker is created on first use.
 
-import type { PedalMode, PlayFinding, PlayOptions } from '../src/analysis/playability.ts';
-import { findPlayability, requiredSpan } from '../src/analysis/playability.ts';
+import type { Analysis, PedalMode, PlayOptions } from '../src/analysis/playability.ts';
+import { analyzePlayability, requiredSpan } from '../src/analysis/playability.ts';
 import type { Score } from '../src/model.ts';
 
 /** What the page asks the worker for. */
@@ -15,7 +15,7 @@ export type Request =
 
 /** What the worker answers. */
 export type Response =
-  | { id: number; type: 'findings'; findings: PlayFinding[] }
+  | { id: number; type: 'findings'; analysis: Analysis }
   | { id: number; type: 'span'; span: number | null };
 
 let worker: Worker | null | undefined;
@@ -49,7 +49,7 @@ function ask(make: (id: number) => Request): Promise<Response> {
   if (!w)
     return Promise.resolve(
       req.type === 'findings'
-        ? { id, type: 'findings', findings: findPlayability(req.score, req.options) }
+        ? { id, type: 'findings', analysis: analyzePlayability(req.score, req.options) }
         : { id, type: 'span', span: requiredSpan(req.score, req.pedal) },
     );
   return new Promise((resolve) => {
@@ -58,10 +58,10 @@ function ask(make: (id: number) => Request): Promise<Response> {
   });
 }
 
-/** The playability findings of the score. */
-export async function playabilityFindings(score: Score, options: PlayOptions): Promise<PlayFinding[]> {
+/** The playability findings of the score and the hand of every note. */
+export async function analyze(score: Score, options: PlayOptions): Promise<Analysis> {
   const r = await ask((id) => ({ id, type: 'findings', score, options }));
-  return r.type === 'findings' ? r.findings : [];
+  return r.type === 'findings' ? r.analysis : { findings: [], hands: [] };
 }
 
 /** The span the score needs, in semitones, or null when no span helps. */

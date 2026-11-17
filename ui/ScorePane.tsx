@@ -53,8 +53,6 @@ import {
 const MM_PX = 96 / 25.4;
 const SEL = '#2f6fed';
 const GHOST = '#c4c4c4'; // A hidden rest is drawn faintly in the editor only.
-const WARN = '#d6361f'; // A note in an error of a layer that is on.
-const CAUTION = '#e08a00'; // A note in a warning of a layer that is on.
 const HOVER = '#6b9af0'; // This is the selection color, but lighter.
 
 type GhostOf<K extends Ghost['kind']> = Extract<Ghost, { kind: K }>;
@@ -217,10 +215,10 @@ function PageView({
         if (r.pi === undefined && whole) {
           // The stem and flags of a note whose head is selected are selected too, not warned.
           for (const sk of keys) if (sk.startsWith(`${k}:`)) return SEL;
-          return whole === 'error' ? WARN : CAUTION;
+          return whole;
         }
         const head = r.pi !== undefined ? warn.heads.get(k) : undefined;
-        if (head) return head === 'error' ? WARN : CAUTION;
+        if (head) return head;
       }
       if (q.ghost) return GHOST;
       if (voiceColors.value && (r.t === 'ev' || r.t === 'tie' || r.t === 'slur' || r.t === 'line' || r.t === 'tuplet'))

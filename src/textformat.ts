@@ -15,6 +15,7 @@ import type {
   Dur,
   Event,
   Grace,
+  Hand,
   Item,
   MarkBody,
   MarkPlacement,
@@ -229,7 +230,12 @@ class VoiceWriter {
         core: e.style === 'hidden' ? 's' : e.style === 'measure' ? 'R' : e.display ? `r@${pitchStr(e.display)}` : 'r',
         tie: '',
       };
-    const ps = e.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : ''));
+    const ps = e.pitches.map(
+      (p) =>
+        pitchStr(p.pitch) +
+        (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : '') +
+        (p.hand ? `*${p.hand}` : ''),
+    );
     if (e.pitches.length === 1) return { core: ps[0], tie: tieStr(e.pitches[0]) };
     return { core: `<${ps.map((x, i) => x + tieStr(e.pitches[i])).join(' ')}>`, tie: '' };
   }
@@ -763,6 +769,8 @@ class VoiceLineParser {
       sc.i++;
       np.acc = 'cautionary';
     }
+    const hand = sc.take(/\*[lr]/y);
+    if (hand) np.hand = hand[1] as Hand;
     if (sc.peek() === '~') {
       sc.i++;
       np.tie = true;

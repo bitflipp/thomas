@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { PlayFinding } from '../src/analysis/playability.ts';
-import { findPlayability, requiredSpan, spanName } from '../src/analysis/playability.ts';
-import { parseText } from '../src/textformat.ts';
+import { analyzePlayability, findPlayability, requiredSpan, spanName } from '../src/analysis/playability.ts';
+import { parseText, writeText } from '../src/textformat.ts';
 
 /** A two-staff score from the lines of the voices of one 4/4 measure each (`rh.1: ...`, `lh.1: ...`), at 120 bpm. */
 const score = (...measures: string[][]) =>
@@ -17,8 +17,8 @@ ${measures.map((lines, i) => `m${i + 1}${i === 0 ? ' time=4/4' : ''}\n${lines.ma
 `,
   );
 
-/** The findings as "severity/kind" strings. */
-const kinds = (fs: PlayFinding[]) => fs.map((f) => `${f.severity}/${f.kind}`);
+/** The findings as "severity/kind" strings, without the fingering ones (those have their own tests). */
+const kinds = (fs: PlayFinding[]) => fs.filter((f) => f.kind !== 'fingering').map((f) => `${f.severity}/${f.kind}`);
 
 test('an ordinary two-hand passage has no findings', () => {
   const fs = findPlayability(score(['rh.1: <e4 g4 c5>:2 <d4 g4 b4>:2', 'lh.1: c3:2 g2:2']));
@@ -98,4 +98,49 @@ test('a piece of single notes needs no span', () => {
 test('required span: what the widest unavoidable hand needs', () => {
   assert.equal(requiredSpan(score(['rh.1: <c2 c4 c6>:1', 'lh.1: R:1'])), 24);
   assert.equal(requiredSpan(score(['rh.1: <c4 e4 g4>:1', 'lh.1: c3:1'])), 7);
+});
+
+test('a hand pin is written as *l or *r and read back', () => {
+  const text = `# music typesetter score
+page 210x297 margin=10 space=1.75
+staff rh clef=G2
+staff lh clef=F4
+brace rh lh
+
+m1 time=4/4
+  rh.1: <c3*l g3*r>:2 c4*r:4 d4
+  lh.1: R:1
+`;
+  assert.equal(writeText(parseText(text)), text);
+});
+
+test('an error names the single notes whose omission would help, and rolling', () => {
+  const fs = findPlayability(score(['rh.1: <c2 c4 c6>:1', 'lh.1: R:1']));
+  assert.match(fs[0].message, /works without C2 or C4 or C6, or if the chord is rolled/);
+});
+
+test('a pin keeps a note with its hand, and the pinned notes decide what is playable', () => {
+  const both = score(['rh.1: <c2*r c6*r>:1', 'lh.1: R:1']);
+  assert.deepEqual(kinds(findPlayability(both)), ['error/span']);
+  const hands = analyzePlayability(score(['rh.1: <c3*l g5>:1', 'lh.1: R:1'])).hands;
+  assert.deepEqual(
+    hands.map((h) => h.hand),
+    ['L', 'R'],
+  );
+});
+
+test('runs that fit the hand are fingered without complaint', () => {
+  const up = 'c4:16 d4 e4 f4 g4 a4 b4 c5 d5 e5 f5 g5 a5 b5 c6 d6';
+  assert.deepEqual(findPlayability(score([`rh.1: ${up}`, 'lh.1: R:1'])), []);
+  const chromatic = 'c4:16 c#4 d4 d#4 e4 f4 f#4 g4 g#4 a4 a#4 b4 c5 c#5 d5 d#5';
+  assert.deepEqual(findPlayability(score([`rh.1: ${chromatic}`, 'lh.1: R:1'])), []);
+  const down = 'c4:16 b3 a3 g3 f3 e3 d3 c3 b2 a2 g2 f2 e2 d2 c2 b1';
+  assert.deepEqual(findPlayability(score(['rh.1: R:1', `lh.1: ${down}`])), []);
+});
+
+test('a chord that forces a big stretch between two fingers is an awkward fingering', () => {
+  const fs = findPlayability(score(['rh.1: <c2 d2 e2 f2 d3 c5 d5 e5 f5 g5>:1', 'lh.1: R:1']), { maxSpan: 14 });
+  const f = fs.find((x) => x.kind === 'fingering');
+  assert.equal(f?.severity, 'warn');
+  assert.match(f?.title ?? '', /stretch between fingers/);
 });

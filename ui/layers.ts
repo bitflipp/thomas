@@ -1,8 +1,8 @@
-// Layers: analyses that look at the score and point at places in it (consecutive fifths, and later playability).
+// Layers: analyses that look at the score and point at places in it (consecutive fifths, playability, the hands).
 //
 // A layer is switched on in the toolbar's Layers menu and then contributes `Finding`s: places in the score with a
-// short label and the notes involved. Everything that shows findings is written against this one shape: the
-// notes are drawn in the warning color by the score pane (`layerNotes`), the stepper in `Findings.tsx` walks
+// short label and the notes involved (a layer can also just color notes, like the hands). Everything that shows
+// findings is written against this one shape: the notes are drawn in the color of their severity by the score pane (`layerNotes`), the stepper in `Findings.tsx` walks
 // through all findings of the layers that are on, and the Overview strip marks their measures. Display options
 // that do not analyze anything (voice colors, ...) stay in the View menu.
 //
@@ -14,12 +14,12 @@ import { computed, effect, signal } from '@preact/signals';
 
 import type { ParallelGroup } from '../src/analysis/parallels.ts';
 import { findParallels } from '../src/analysis/parallels.ts';
-import type { PedalMode, PlayFinding } from '../src/analysis/playability.ts';
+import type { Analysis, PedalMode } from '../src/analysis/playability.ts';
 import { DEFAULT_PLAY } from '../src/analysis/playability.ts';
 import type { Ref } from '../src/editor/addr.ts';
 import { eventOf, refKey } from '../src/editor/addr.ts';
 import { PPQ } from '../src/model.ts';
-import { playabilityFindings as solvePlayability, spanNeeded as solveSpan } from './analysis.ts';
+import { analyze, spanNeeded as solveSpan } from './analysis.ts';
 import { score } from './state.ts';
 
 /** One place a layer points at. */
@@ -51,6 +51,8 @@ export interface Layer {
   on: ReadonlySignal<boolean> & { value: boolean };
   /** The findings, in score order; empty while the layer is off. */
   findings: ReadonlySignal<Finding[]>;
+  /** Whether the layer only colors notes and has no findings to step through. */
+  paintOnly?: true;
 }
 
 // The parallels layer: consecutive fifths and octaves, with the choice of which of the two to look for.
@@ -101,6 +103,8 @@ export const pedalMode = signal<PedalMode>(DEFAULT_PLAY.pedal);
 
 const playabilityOn = signal(false);
 
+const handsOn = signal(false);
+
 /** The voices column of a playability finding: the hand, where known. */
 const handName = (h: 'L' | 'R' | undefined): string => (h === 'L' ? 'left hand' : h === 'R' ? 'right hand' : '');
 
@@ -111,7 +115,7 @@ export const layersOpen = signal(false);
 const SETTLE_MS = 120;
 
 /** What the worker last found for the current score and settings. */
-const playResult = signal<PlayFinding[]>([]);
+const playResult = signal<Analysis>({ findings: [], hands: [] });
 
 /** The widest span the piece needs, in semitones; null when no span helps, undefined while it is being worked out or not asked for. */
 export const spanNeeded = signal<number | null | undefined>(undefined);
@@ -121,16 +125,16 @@ export const spanNeeded = signal<number | null | undefined>(undefined);
 let playRequest = 0;
 
 effect(() => {
-  if (!playabilityOn.value) {
+  if (!(playabilityOn.value || handsOn.value)) {
     playRequest++;
-    playResult.value = [];
+    playResult.value = { findings: [], hands: [] };
     return;
   }
   const sc = score.value;
   const options = { maxSpan: handSpan.value, pedal: pedalMode.value };
   const id = ++playRequest;
   const timer = setTimeout(async () => {
-    const found = await solvePlayability(sc, options);
+    const found = await analyze(sc, options);
     if (id === playRequest) playResult.value = found;
   }, SETTLE_MS);
   return () => clearTimeout(timer);
@@ -155,7 +159,7 @@ effect(() => {
 
 /** The playability findings of the score as findings. */
 const playabilityFindings = computed<Finding[]>(() =>
-  playResult.value.map((f) => ({
+  (playabilityOn.value ? playResult.value.findings : []).map((f) => ({
     layer: 'playability',
     label: f.title,
     detail: f.message,
@@ -183,6 +187,14 @@ export const layers: Layer[] = [
     on: playabilityOn,
     findings: playabilityFindings,
   },
+  {
+    id: 'hands',
+    label: 'Hands',
+    title: 'Which hand plays which note, as the playability check infers it (pin a note to a hand in Properties)',
+    on: handsOn,
+    findings: computed<Finding[]>(() => []),
+    paintOnly: true,
+  },
 ];
 
 /** The findings of all layers that are on, in score order. */
@@ -190,30 +202,47 @@ export const findings = computed<Finding[]>(() =>
   layers.flatMap((l) => l.findings.value).sort((a, b) => a.mi - b.mi || a.tick - b.tick),
 );
 
-/** Whether any layer is on. */
-export const anyLayerOn = computed(() => layers.some((l) => l.on.value));
+/** Whether any layer with findings is on. */
+export const anyLayerOn = computed(() => layers.some((l) => l.on.value && !l.paintOnly));
 
-/** The notes in `findings` as `refKey`s with their severity (an error wins over a warning): the heads, and the events all of whose heads are involved (which are drawn whole). */
+/** The colors the layers paint notes with: errors, warnings, and the two hands. */
+export const LAYER_COLORS = { error: '#d6361f', warn: '#e08a00', left: '#00897b', right: '#c2185b' };
+
+/** What a note is painted for; an error wins over a warning, which wins over a hand. */
+type Paint = keyof typeof LAYER_COLORS;
+
+const RANK: Record<Paint, number> = { error: 3, warn: 2, left: 1, right: 1 };
+
+/** The notes the layers paint, as `refKey`s with their color: the heads, and the events whose heads are all painted alike or by a finding (which are drawn whole, stem and flags too). */
 export const layerNotes = computed(() => {
-  const heads = new Map<string, Finding['severity']>();
-  const wholeEvents = new Map<string, Finding['severity']>();
-  const all = findings.value;
-  const put = (m: Map<string, Finding['severity']>, k: string, sev: Finding['severity']) => {
-    if (m.get(k) !== 'error') m.set(k, sev);
+  const paint = new Map<string, Paint>();
+  const put = (k: string, p: Paint) => {
+    const old = paint.get(k);
+    if (!old || RANK[p] > RANK[old]) paint.set(k, p);
   };
-  for (const f of all) for (const r of f.refs) put(heads, refKey(r), f.severity);
+  for (const f of findings.value) for (const r of f.refs) put(refKey(r), f.severity);
+  if (handsOn.value)
+    for (const h of playResult.value.hands)
+      put(refKey({ t: 'ev', ...h.ev, pi: h.pi }), h.hand === 'L' ? 'left' : 'right');
   const sc = score.value;
-  for (const f of all)
-    for (const r of f.refs) {
-      if (r.t !== 'ev') continue;
-      const e = eventOf(sc, r);
-      if (e?.kind === 'note' && e.pitches.every((_, pi) => heads.has(refKey({ ...r, pi }))))
-        put(
-          wholeEvents,
-          refKey({ ...r, pi: undefined }),
-          e.pitches.some((_, pi) => heads.get(refKey({ ...r, pi })) === 'error') ? 'error' : 'warn',
-        );
-    }
+  const heads = new Map<string, string>();
+  const wholeEvents = new Map<string, string>();
+  for (const [k, p] of paint) heads.set(k, LAYER_COLORS[p]);
+  const seen = new Set<string>();
+  for (const f of findings.value
+    .flatMap((x) => x.refs)
+    .concat(playResult.value.hands.map((h) => ({ t: 'ev' as const, ...h.ev, pi: h.pi })))) {
+    if (f.t !== 'ev') continue;
+    const evKey = refKey({ ...f, pi: undefined });
+    if (seen.has(evKey)) continue;
+    seen.add(evKey);
+    const e = eventOf(sc, f);
+    if (e?.kind !== 'note') continue;
+    const ps = e.pitches.map((_, pi) => paint.get(refKey({ ...f, pi })));
+    if (ps.some((p) => !p)) continue;
+    const top = ps.reduce((a, b) => (RANK[b as Paint] > RANK[a as Paint] ? b : a)) as Paint;
+    if (RANK[top] > 1 || ps.every((p) => p === top)) wholeEvents.set(evKey, LAYER_COLORS[top]);
+  }
   return { heads, wholeEvents };
 });
 
