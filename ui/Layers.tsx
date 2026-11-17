@@ -2,16 +2,12 @@
 //
 // Layers are analyses that point at places in the score; display options such as voice colors are in the View menu.
 
-import { signal } from '@preact/signals';
 import type { JSX } from 'preact';
 import type { PedalMode } from '../src/analysis/playability.ts';
 import { spanName } from '../src/analysis/playability.ts';
 import { Dropdown } from './Dropdown.tsx';
 import type { ParallelKindChoice } from './layers.ts';
-import { HAND_SIZES, handSpan, layers, parallelKinds, pedalMode, spanNeeded } from './layers.ts';
-
-/** Whether the menu is open. */
-export const layersOpen = signal(false);
+import { HAND_SIZES, handSpan, layers, layersOpen, parallelKinds, pedalMode, spanNeeded } from './layers.ts';
 
 /** The settings of each layer, shown under its checkbox while it is on. */
 const SETTINGS: Record<string, () => JSX.Element> = {
@@ -48,11 +44,13 @@ const SETTINGS: Record<string, () => JSX.Element> = {
           title="Whether the sustain pedal can carry notes that the fingers would otherwise have to hold"
         />
         <span class="ctx">
-          {need === null
-            ? 'No span helps this piece'
-            : need === 0
-              ? 'No stretch needed'
-              : `The piece needs a span of a ${spanName(need)}`}
+          {need === undefined
+            ? 'Working out the span the piece needs...'
+            : need === null
+              ? 'No span helps this piece'
+              : need === 0
+                ? 'No stretch needed'
+                : `The piece needs a span of a ${spanName(need)}`}
         </span>
       </>
     );

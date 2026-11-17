@@ -91,6 +91,10 @@ test('a staccato note is let go at once, so it pins nothing', () => {
   assert.deepEqual(fs, []);
 });
 
+test('a piece of single notes needs no span', () => {
+  assert.equal(requiredSpan(score(['rh.1: c4:4 e4 g4 c5', 'lh.1: R:1'])), 0);
+});
+
 test('required span: what the widest unavoidable hand needs', () => {
   assert.equal(requiredSpan(score(['rh.1: <c2 c4 c6>:1', 'lh.1: R:1'])), 24);
   assert.equal(requiredSpan(score(['rh.1: <c4 e4 g4>:1', 'lh.1: c3:1'])), 7);

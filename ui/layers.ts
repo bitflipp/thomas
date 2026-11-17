@@ -10,15 +10,16 @@
 // without any bookkeeping. Nothing here touches the engraving or its cache.
 
 import type { ReadonlySignal } from '@preact/signals';
-import { computed, signal } from '@preact/signals';
+import { computed, effect, signal } from '@preact/signals';
 
 import type { ParallelGroup } from '../src/analysis/parallels.ts';
 import { findParallels } from '../src/analysis/parallels.ts';
-import type { PedalMode } from '../src/analysis/playability.ts';
-import { DEFAULT_PLAY, findPlayability, requiredSpan } from '../src/analysis/playability.ts';
+import type { PedalMode, PlayFinding } from '../src/analysis/playability.ts';
+import { DEFAULT_PLAY } from '../src/analysis/playability.ts';
 import type { Ref } from '../src/editor/addr.ts';
 import { eventOf, refKey } from '../src/editor/addr.ts';
 import { PPQ } from '../src/model.ts';
+import { playabilityFindings as solvePlayability, spanNeeded as solveSpan } from './analysis.ts';
 import { score } from './state.ts';
 
 /** One place a layer points at. */
@@ -103,10 +104,58 @@ const playabilityOn = signal(false);
 /** The voices column of a playability finding: the hand, where known. */
 const handName = (h: 'L' | 'R' | undefined): string => (h === 'L' ? 'left hand' : h === 'R' ? 'right hand' : '');
 
+/** Whether the Layers menu is open (the span the piece needs is only worked out then). */
+export const layersOpen = signal(false);
+
+/** How long the score has to stay unchanged before it is analyzed again, in milliseconds. */
+const SETTLE_MS = 120;
+
+/** What the worker last found for the current score and settings. */
+const playResult = signal<PlayFinding[]>([]);
+
+/** The widest span the piece needs, in semitones; null when no span helps, undefined while it is being worked out or not asked for. */
+export const spanNeeded = signal<number | null | undefined>(undefined);
+
+// The solver runs in a worker (see `analysis.ts`). A change of the score or the settings starts a request after a
+// short pause; an answer for an older request is dropped, and until the new one arrives the old findings stay.
+let playRequest = 0;
+
+effect(() => {
+  if (!playabilityOn.value) {
+    playRequest++;
+    playResult.value = [];
+    return;
+  }
+  const sc = score.value;
+  const options = { maxSpan: handSpan.value, pedal: pedalMode.value };
+  const id = ++playRequest;
+  const timer = setTimeout(async () => {
+    const found = await solvePlayability(sc, options);
+    if (id === playRequest) playResult.value = found;
+  }, SETTLE_MS);
+  return () => clearTimeout(timer);
+});
+
+let spanRequest = 0;
+
+effect(() => {
+  if (!(playabilityOn.value && layersOpen.value)) {
+    spanRequest++;
+    return;
+  }
+  const sc = score.value;
+  const pedal = pedalMode.value;
+  const id = ++spanRequest;
+  const timer = setTimeout(async () => {
+    const span = await solveSpan(sc, pedal);
+    if (id === spanRequest) spanNeeded.value = span;
+  }, SETTLE_MS);
+  return () => clearTimeout(timer);
+});
+
 /** The playability findings of the score as findings. */
-const playabilityFindings = computed<Finding[]>(() => {
-  if (!playabilityOn.value) return [];
-  return findPlayability(score.value, { maxSpan: handSpan.value, pedal: pedalMode.value }).map((f) => ({
+const playabilityFindings = computed<Finding[]>(() =>
+  playResult.value.map((f) => ({
     layer: 'playability',
     label: f.title,
     detail: f.message,
@@ -115,11 +164,8 @@ const playabilityFindings = computed<Finding[]>(() => {
     tick: f.tick,
     refs: f.notes.map((n) => ({ t: 'ev', ...n.ev, pi: n.pi })),
     severity: f.severity,
-  }));
-});
-
-/** The widest span the piece needs, in semitones, or null when no span helps; read only while the Layers menu shows it. */
-export const spanNeeded = computed(() => requiredSpan(score.value, pedalMode.value));
+  })),
+);
 
 /** All layers, in the order of the Layers menu. */
 export const layers: Layer[] = [

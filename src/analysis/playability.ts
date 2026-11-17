@@ -654,6 +654,7 @@ export function requiredSpan(score: Score, pedal: PedalMode = DEFAULT_PLAY.pedal
     solve(prep, span).some((f) => f.severity === 'error' && (f.kind === 'span' || f.kind === 'hold'));
   const WIDEST = 36;
   if (bad(WIDEST)) return null;
+  if (!bad(0)) return 0;
   let lo = 0;
   let hi = WIDEST;
   while (hi - lo > 1) {
