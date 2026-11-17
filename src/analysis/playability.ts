@@ -147,7 +147,7 @@ interface Step {
 }
 
 /** The notes of a score as steps, ready to be solved for any span. */
-export interface Prepared {
+interface Prepared {
   score: Score;
   measureStart: number[];
   steps: Step[];
@@ -315,7 +315,7 @@ function buildSteps(notes: PNote[], tickToSec: (tick: number) => number): Step[]
 }
 
 /** Reads the notes of a score once, so that it can be solved for several settings (`solve`). */
-export function prepare(score: Score, pedal: PedalMode): Prepared {
+function prepare(score: Score, pedal: PedalMode): Prepared {
   const { measureStart } = measureStarts(score);
   const tm = tempoMap(score, measureStart);
   const all = collectNotes(score, measureStart, pedal);
@@ -499,7 +499,14 @@ function staticFailure(steps: Step[], k: number, maxSpan: number): Failure {
 /** How many divisions per step the first attempt of `follow` keeps. */
 const BEAM = 40;
 
-/** The divisions of a step reachable from the ones before it (those chosen by index), the number of compatible pairs seen, and the gentlest leap among them. */
+/** What `advance` found: the divisions of a step reachable from the ones before it, the number of compatible pairs seen, and the gentlest leap among them. */
+interface Connection {
+  reached: State[];
+  compatible: number;
+  gentlest: { ratio: number; hand: 0 | 1; d: number; sec: number };
+}
+
+/** The divisions of a step reachable from the ones before it from the divisions `fromIdx` to those `toIdx`. */
 function advance(
   before: State[],
   fromIdx: number[],
@@ -507,7 +514,7 @@ function advance(
   toIdx: number[],
   step: Step,
   maxSpan: number,
-): { reached: State[]; compatible: number; gentlest: { ratio: number; hand: 0 | 1; d: number; sec: number } } {
+): Connection {
   const reached: State[] = [];
   let compatible = 0;
   let gentlest = { ratio: Number.POSITIVE_INFINITY, hand: 0 as 0 | 1, d: 0, sec: 0 };
@@ -565,51 +572,57 @@ function follow(steps: Step[], maxSpan: number): Solution {
       before = fresh;
       return;
     }
-    // The cheapest few divisions on both sides are tried first; only when none of them connects are all of them, so that a failure is exact.
-    const cheapest = (states: State[]) =>
-      states
-        .map((_, i) => i)
-        .sort((x, y) => states[x].cost - states[y].cost)
-        .slice(0, BEAM);
-    let tried = advance(before, cheapest(before), fresh, cheapest(fresh), step, maxSpan);
-    if (!tried.reached.length && (before.length > BEAM || fresh.length > BEAM))
-      tried = advance(
-        before,
-        before.map((_, i) => i),
-        fresh,
-        fresh.map((_, i) => i),
-        step,
-        maxSpan,
-      );
-    const { reached, compatible, gentlest } = tried;
-    if (reached.length) {
-      all.push(reached);
-      before = reached;
+    const tried = connect(before, fresh, step, maxSpan);
+    if (tried.reached.length) {
+      all.push(tried.reached);
+      before = tried.reached;
       return;
     }
-    const kind = compatible ? 'leap' : 'hold';
-    const hand = gentlest.hand === 0 ? 'L' : 'R';
-    failures.push({
-      step: k,
-      kind,
-      hand: kind === 'leap' ? hand : undefined,
-      title:
-        kind === 'leap'
-          ? `Leap of a ${spanName(Math.round(gentlest.d))} in ${Math.round(gentlest.sec * 1000)} ms`
-          : 'Held notes pin the hands',
-      message:
-        kind === 'leap'
-          ? `Leap of a ${spanName(Math.round(gentlest.d))} (${Math.round(gentlest.d)} semitones) in ${Math.round(gentlest.sec * 1000)} ms; it needs about ${Math.round(LEAP_BASE_MS + LEAP_MS_PER_SEMITONE * gentlest.d)} ms`
-          : 'Notes held down keep the hands from reaching the next notes',
-      keys: step.keys.filter((key) => kind === 'hold' || key.attack),
-    });
+    failures.push(transitionFailure(k, step, tried));
     all.push(fresh);
     before = fresh;
   });
-  const chosen: (State | undefined)[] = steps.map(() => undefined);
-  const linked: boolean[] = steps.map(() => false);
+  return { ...backtrack(all), failures };
+}
+
+/** The divisions of a step reachable from the ones before it. The cheapest few divisions on both sides are tried first; only when none of them connects are all of them, so that a failure is exact. */
+function connect(before: State[], fresh: State[], step: Step, maxSpan: number): Connection {
+  const cheapest = (states: State[]) =>
+    states
+      .map((_, i) => i)
+      .sort((x, y) => states[x].cost - states[y].cost)
+      .slice(0, BEAM);
+  const tried = advance(before, cheapest(before), fresh, cheapest(fresh), step, maxSpan);
+  if (tried.reached.length || !(before.length > BEAM || fresh.length > BEAM)) return tried;
+  const every = (states: State[]) => states.map((_, i) => i);
+  return advance(before, every(before), fresh, every(fresh), step, maxSpan);
+}
+
+/** Explains why no division of step `k` follows from the ones before: when some pair of divisions agrees about the held keys the leap is too fast, else the held notes pin the hands. */
+function transitionFailure(k: number, step: Step, tried: Connection): Failure {
+  const { compatible, gentlest } = tried;
+  const kind = compatible ? 'leap' : 'hold';
+  const ms = Math.round(gentlest.sec * 1000);
+  const d = Math.round(gentlest.d);
+  return {
+    step: k,
+    kind,
+    hand: kind === 'leap' ? (gentlest.hand === 0 ? 'L' : 'R') : undefined,
+    title: kind === 'leap' ? `Leap of a ${spanName(d)} in ${ms} ms` : 'Held notes pin the hands',
+    message:
+      kind === 'leap'
+        ? `Leap of a ${spanName(d)} (${d} semitones) in ${ms} ms; it needs about ${Math.round(LEAP_BASE_MS + LEAP_MS_PER_SEMITONE * gentlest.d)} ms`
+        : 'Notes held down keep the hands from reaching the next notes',
+    keys: step.keys.filter((key) => kind === 'hold' || key.attack),
+  };
+}
+
+/** Walks back from the end of each stretch of music along the cheapest path: the division chosen at each step, and whether it follows from the one before. */
+function backtrack(all: State[][]): Pick<Solution, 'chosen' | 'linked'> {
+  const chosen: (State | undefined)[] = all.map(() => undefined);
+  const linked: boolean[] = all.map(() => false);
   let idx = -2;
-  for (let k = steps.length - 1; k >= 0; k--) {
+  for (let k = all.length - 1; k >= 0; k--) {
     if (!all[k].length) {
       idx = -2;
       continue;
@@ -620,7 +633,7 @@ function follow(steps: Step[], maxSpan: number): Solution {
     idx = all[k][idx].prev;
     if (idx === -1) idx = -2;
   }
-  return { chosen, linked, failures };
+  return { chosen, linked };
 }
 
 /** A finding before neighboring ones are merged, with the step it belongs to. */
@@ -649,13 +662,13 @@ function merge(raws: Raw[]): Raw[] {
   return out;
 }
 
-/** Solves a prepared score for the setting: the findings in score order, and the hand of every note. Without `fingering` the fingers are not worked out (the span a piece needs does not depend on them). */
-export function solve(prep: Prepared, maxSpan: number, fingering = true): Analysis {
-  const { steps, measureStart } = prep;
-  const where = (tick: number) => placeOf(measureStart, tick);
-  const raws: Raw[] = [];
-  for (const n of prep.outside)
-    raws.push({
+/** Maps an absolute tick to its measure and the tick in it. */
+type Where = (tick: number) => { mi: number; tick: number };
+
+/** The errors about notes off the keyboard. */
+function rangeErrors(prep: Prepared, where: Where): Raw[] {
+  return prep.outside.map(
+    (n): Raw => ({
       severity: 'error',
       kind: 'range',
       title: 'Off the keyboard',
@@ -663,10 +676,14 @@ export function solve(prep: Prepared, maxSpan: number, fingering = true): Analys
       notes: [{ ev: n.ev, pi: n.pi }],
       step: -1,
       ...where(n.start),
-    });
-  const sol = follow(steps, maxSpan);
-  for (const f of sol.failures)
-    raws.push({
+    }),
+  );
+}
+
+/** The errors where the music could not be followed (see `Failure`). */
+function failureErrors(steps: Step[], sol: Solution, where: Where): Raw[] {
+  return sol.failures.map(
+    (f): Raw => ({
       severity: 'error',
       kind: f.kind,
       hand: f.hand,
@@ -675,8 +692,13 @@ export function solve(prep: Prepared, maxSpan: number, fingering = true): Analys
       notes: headsOf(f.keys),
       step: f.step,
       ...where(steps[f.step].tick),
-    });
-  // Warnings on the chosen path: a hand beyond its comfortable stretch, a leap that takes most of the time there is.
+    }),
+  );
+}
+
+/** The warnings on the chosen path: a hand beyond its comfortable stretch, a leap that takes most of the time there is. */
+function pathWarnings(steps: Step[], sol: Solution, maxSpan: number, where: Where): Raw[] {
+  const raws: Raw[] = [];
   const comfort = Math.max(2, maxSpan - 2);
   sol.chosen.forEach((st, k) => {
     if (!st) return;
@@ -709,6 +731,11 @@ export function solve(prep: Prepared, maxSpan: number, fingering = true): Analys
         ...where(steps[k].tick),
       });
   });
+  return raws;
+}
+
+/** The hand of every note struck, from the divisions chosen. */
+function handsOf(steps: Step[], sol: Solution): HandNote[] {
   const hands: HandNote[] = [];
   sol.chosen.forEach((st, k) => {
     if (!st) return;
@@ -718,6 +745,19 @@ export function solve(prep: Prepared, maxSpan: number, fingering = true): Analys
         if (n.start === steps[k].tick) hands.push({ ev: n.ev, pi: n.pi, hand: (st.mask >> i) & 1 ? 'R' : 'L' });
     });
   });
+  return hands;
+}
+
+/** Solves a prepared score for the setting: the findings in score order, the hand of every note and the fingers of the notes struck. Without `fingering` the fingers are not worked out (the span a piece needs does not depend on them). */
+function solve(prep: Prepared, maxSpan: number, fingering = true): Analysis {
+  const { steps, measureStart } = prep;
+  const where: Where = (tick) => placeOf(measureStart, tick);
+  const sol = follow(steps, maxSpan);
+  const raws = [
+    ...rangeErrors(prep, where),
+    ...failureErrors(steps, sol, where),
+    ...pathWarnings(steps, sol, maxSpan, where),
+  ];
   const fingers: FingerNote[] = [];
   if (fingering)
     for (const h of [0, 1] as const) {
@@ -729,7 +769,7 @@ export function solve(prep: Prepared, maxSpan: number, fingering = true): Analys
     findings: merge(raws)
       .map(({ step: _step, ...f }) => f)
       .sort((a, b) => a.mi - b.mi || a.tick - b.tick),
-    hands,
+    hands: handsOf(steps, sol),
     fingers,
   };
 }
@@ -740,7 +780,7 @@ function fingeringOf(
   sol: Solution,
   h: 0 | 1,
   maxSpan: number,
-  where: (tick: number) => { mi: number; tick: number },
+  where: Where,
 ): { raws: Raw[]; fingers: FingerNote[] } {
   const { steps } = prep;
   const fsteps: FStep[] = [];

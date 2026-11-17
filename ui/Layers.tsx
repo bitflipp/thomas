@@ -1,4 +1,5 @@
-// The Layers menu of the toolbar: one radio button per layer (see `layers.ts`; one layer or none is chosen) and the settings of the chosen layer.
+// The Layers menu of the toolbar: one radio button per layer (see `layers.ts`; one layer or none is chosen) and the
+// settings of the chosen layer.
 //
 // Layers are analyses that point at places in the score; display options such as voice colors are in the View menu.
 

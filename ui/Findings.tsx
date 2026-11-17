@@ -1,8 +1,8 @@
-// The findings control of the toolbar: a stepper through the findings of all layers that are on, and their list.
+// The findings control of the toolbar: a stepper through the findings of the chosen layer, and their list.
 //
-// The notes themselves are drawn in the warning color by the score pane (see `layerNotes` in layers.ts).
-// Here the findings are numbered in score order; the arrows and a click on a row select the notes of a
-// finding and scroll to it. The Layers menu (`Layers.tsx`) switches the layers on and off.
+// The notes themselves are painted by the score pane (see `layerNotes` in layers.ts). Here the findings are
+// numbered in score order; the arrows and a click on a row select the notes of a finding and scroll to it. The
+// Layers menu (`Layers.tsx`) chooses the layer.
 
 import { signal } from '@preact/signals';
 import { refKey } from '../src/editor/addr.ts';

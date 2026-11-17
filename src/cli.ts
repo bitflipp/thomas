@@ -5,12 +5,12 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
-import { findParallels } from './analysis/parallels.ts';
+import { findParallels, voicesOf } from './analysis/parallels.ts';
 import { findPlayability, requiredSpan } from './analysis/playability.ts';
 import { describe, findCollisions } from './engrave/collide.ts';
 import { engrave } from './engrave/system.ts';
 import type { Score } from './model.ts';
-import { PPQ, validate } from './model.ts';
+import { beatOf, validate } from './model.ts';
 import { importMusicXml } from './musicxml.ts';
 import { pageToSvg } from './render.ts';
 import { parseText, writeText } from './textformat.ts';
@@ -84,8 +84,8 @@ try {
     if (args.includes('--parallels')) {
       const gs = findParallels(s);
       for (const g of gs) {
-        const beat = Math.round((g.tick / PPQ + 1) * 100) / 100;
-        const voices = [...new Set(g.notes.map((n) => `${n.ev.staff}.${n.ev.voice}`))].join(' + ');
+        const beat = beatOf(g.tick);
+        const voices = voicesOf(g);
         console.log(`${g.number}. m${g.mi + 1} beat ${beat}: ${g.kinds.join(' + ')} (${voices})`);
       }
       console.log(`${gs.length} group${gs.length === 1 ? '' : 's'} of consecutive fifths or octaves`);
@@ -93,7 +93,7 @@ try {
     if (args.includes('--playability')) {
       const fs = findPlayability(s);
       for (const f of fs) {
-        const beat = Math.round((f.tick / PPQ + 1) * 100) / 100;
+        const beat = beatOf(f.tick);
         console.log(`m${f.mi + 1} beat ${beat}: ${f.severity} ${f.message}${f.hand ? ` (${f.hand})` : ''}`);
       }
       const need = requiredSpan(s);

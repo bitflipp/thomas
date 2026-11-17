@@ -11,6 +11,11 @@ import { must } from './util.ts';
 /** Ticks per quarter note: divisible by 2^5, 3, 5 and 7, so undotted 128th notes and tuplets up to septuplets are exact integers (a dotted 128th would be 157.5 ticks: not allowed). */
 export const PPQ = 3360;
 
+/** The beat of a tick within its measure as shown to people: counted from 1 (the downbeat), rounded to hundredths. */
+export function beatOf(tick: number): number {
+  return Math.round((tick / PPQ + 1) * 100) / 100;
+}
+
 export type Step = 'c' | 'd' | 'e' | 'f' | 'g' | 'a' | 'b';
 export const STEPS: Step[] = ['c', 'd', 'e', 'f', 'g', 'a', 'b'];
 

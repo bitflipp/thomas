@@ -4,11 +4,13 @@
 // module takes the keys of one hand step by step). It follows the idea of Parncutt and others: a Viterbi search
 // over the ways of putting the fingers 1 to 5 on the keys of each step, with the cost of a way made of rules
 // pianists know. A chord must keep its fingers in the order of the keys and within the reach of each pair of
-// fingers; a single note after a single note is judged by the pair rule (stretching outward is natural,
-// crossing the thumb under or a finger over costs, a hand that has to change position costs more the faster it
-// is, the thumb and little finger on a black key cost). Chords followed by chords only pay for how far the hand
-// moves. Nothing is a hard error here (the hands are, in `playability.ts`): what comes out are the fingers of
-// the cheapest path, and the places where its cost is high, each with the reason.
+// fingers; a single note after a single note is judged by the pair rule (stretching outward is natural; the thumb
+// under or a finger over costs little under the 3rd or 4th finger and more under the 2nd or 5th, the faster the
+// worse; a hand that has to change position costs more the faster it is; the same finger on two keys far apart is
+// a jump of the whole hand). The thumb on a black key costs in a line and hardly in a chord or octave. Chords
+// followed by chords only pay for how far the hand moves. Nothing is a hard error here (the hands are, in
+// `playability.ts`): what comes out are the fingers of the cheapest path, and the places where its cost is high,
+// each with the reason.
 //
 // Not modeled: the shape of the hand (rotation, arm weight), finger substitution on a held key, and a pivot of
 // the hand around the thumb in broken chords.
@@ -74,6 +76,7 @@ const FAST = 0.15;
 /** The black keys of an octave, by pitch class. */
 const BLACK = new Set([1, 3, 6, 8, 10]);
 
+/** Whether the key is a black one. */
 const isBlack = (midi: number): boolean => BLACK.has(((midi % 12) + 12) % 12);
 
 /** The ways to choose `k` of the fingers 1 to 5, each in ascending order. */

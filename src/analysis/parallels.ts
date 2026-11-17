@@ -60,6 +60,11 @@ interface Pair {
   voices: string;
 }
 
+/** The voices in the group, such as "rh.1 + lh.1". */
+export function voicesOf(g: ParallelGroup): string {
+  return [...new Set(g.notes.map((n) => `${n.ev.staff}.${n.ev.voice}`))].join(' + ');
+}
+
 const SEMITONES: Record<ParallelKind, number> = { fifths: 7, octaves: 0 };
 
 /** Whether the pitches form the interval: a fifth is 7 semitones modulo 12, an octave a non-zero multiple of 12. */

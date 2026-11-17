@@ -1,25 +1,25 @@
 // Layers: analyses that look at the score and point at places in it (consecutive fifths, playability, the hands).
 //
-// One layer at a time is chosen in the toolbar's Layers menu (`activeLayer`: the layers are independent analyses, and
-// one at a time lets them share colors) and then contributes `Finding`s: places in the score with a
-// short label and the notes involved (a layer can also just color notes, like the hands). Everything that shows
-// findings is written against this one shape: the notes are drawn in the color of their severity by the score pane (`layerNotes`), the stepper in `Findings.tsx` walks
-// through the findings of the chosen layer, and the Overview strip marks their measures. Display options
-// that do not analyze anything (voice colors, ...) stay in the View menu.
+// One layer or none is chosen in the toolbar's Layers menu (`activeLayer`; the layers are independent analyses, and
+// one at a time lets them share colors). The chosen layer contributes `Finding`s: places in the score with a short
+// label and the notes involved (a layer can also just color notes, like the hands). Everything that shows findings
+// is written against this one shape: the score pane paints the notes in the color of their severity (`layerNotes`),
+// the stepper in `Findings.tsx` walks through the findings of the chosen layer, and the Overview strip marks their
+// measures. Display options that do not analyze anything (voice colors, ...) stay in the View menu.
 //
-// A layer's findings are a pure function of the score and its settings (a computed signal), so they follow edits
-// without any bookkeeping. Nothing here touches the engraving or its cache.
+// The findings of the parallels layer are a pure function of the score and its settings (a computed signal), so
+// they follow edits without any bookkeeping. The playability and hands layers get theirs from a worker
+// (`analysis.ts`), a short pause after the last edit. Nothing here touches the engraving or its cache.
 
 import type { ReadonlySignal } from '@preact/signals';
 import { computed, effect, signal } from '@preact/signals';
 
-import type { ParallelGroup } from '../src/analysis/parallels.ts';
-import { findParallels } from '../src/analysis/parallels.ts';
+import { findParallels, voicesOf } from '../src/analysis/parallels.ts';
 import type { Analysis, PedalMode } from '../src/analysis/playability.ts';
 import { DEFAULT_PLAY } from '../src/analysis/playability.ts';
 import type { Ref } from '../src/editor/addr.ts';
 import { eventOf, refKey } from '../src/editor/addr.ts';
-import { PPQ } from '../src/model.ts';
+import { beatOf } from '../src/model.ts';
 import { analyze, spanNeeded as solveSpan } from './analysis.ts';
 import { score } from './state.ts';
 
@@ -69,11 +69,6 @@ export const parallelKinds = signal<ParallelKindChoice>('both');
 export const activeLayer = signal<string | null>(null);
 
 const parallelsOn = computed(() => activeLayer.value === 'parallels');
-
-/** The voices in the group, such as "rh.1 + lh.1". */
-function voicesOf(g: ParallelGroup): string {
-  return [...new Set(g.notes.map((n) => `${n.ev.staff}.${n.ev.voice}`))].join(' + ');
-}
 
 /** The groups of consecutive fifths and octaves of the score as findings. */
 const parallelFindings = computed<Finding[]>(() => {
@@ -211,7 +206,7 @@ export const findings = computed<Finding[]>(() =>
 export const anyLayerOn = computed(() => layers.some((l) => l.on.value && !l.paintOnly));
 
 /** The colors the layers paint notes with: errors, warnings, and the two hands. */
-export const LAYER_COLORS = { error: '#d6361f', warn: '#e08a00', left: '#00897b', right: '#c2185b' };
+const LAYER_COLORS = { error: '#d6361f', warn: '#e08a00', left: '#00897b', right: '#c2185b' };
 
 /** What a note is painted for; an error wins over a warning, which wins over a hand. */
 type Paint = keyof typeof LAYER_COLORS;
@@ -261,6 +256,5 @@ export const layerNotes = computed(() => {
 
 /** Where the finding starts, as a measure and a beat. */
 export function placeOf(f: Finding): string {
-  const beat = Math.round((f.tick / PPQ + 1) * 100) / 100;
-  return `m. ${f.mi + 1}, beat ${beat}`;
+  return `m. ${f.mi + 1}, beat ${beatOf(f.tick)}`;
 }
