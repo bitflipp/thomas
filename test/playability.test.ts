@@ -144,3 +144,16 @@ test('a chord that forces a big stretch between two fingers is an awkward finger
   assert.equal(f?.severity, 'warn');
   assert.match(f?.title ?? '', /stretch between fingers/);
 });
+
+test('the fingering of a triad is 1-3-5 in the right hand and 5-3-1 up the keys in the left', () => {
+  const right = analyzePlayability(score(['rh.1: <c5 e5 g5>:1', 'lh.1: R:1'])).fingers;
+  assert.deepEqual(
+    right.map((f) => f.finger),
+    [1, 3, 5],
+  );
+  const left = analyzePlayability(score(['rh.1: R:1', 'lh.1: <c3 e3 g3>:1'])).fingers;
+  assert.deepEqual(
+    left.map((f) => f.finger),
+    [5, 3, 1],
+  );
+});

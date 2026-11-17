@@ -120,7 +120,7 @@ export const layersOpen = signal(false);
 const SETTLE_MS = 120;
 
 /** What the worker last found for the current score and settings. */
-const playResult = signal<Analysis>({ findings: [], hands: [] });
+const playResult = signal<Analysis>({ findings: [], hands: [], fingers: [] });
 
 /** The widest span the piece needs, in semitones; null when no span helps, undefined while it is being worked out or not asked for. */
 export const spanNeeded = signal<number | null | undefined>(undefined);
@@ -132,7 +132,7 @@ let playRequest = 0;
 effect(() => {
   if (!(playabilityOn.value || handsOn.value)) {
     playRequest++;
-    playResult.value = { findings: [], hands: [] };
+    playResult.value = { findings: [], hands: [], fingers: [] };
     return;
   }
   const sc = score.value;
@@ -217,6 +217,14 @@ export const LAYER_COLORS = { error: '#d6361f', warn: '#e08a00', left: '#00897b'
 type Paint = keyof typeof LAYER_COLORS;
 
 const RANK: Record<Paint, number> = { error: 3, warn: 2, left: 1, right: 1 };
+
+/** The fingers to draw on the notes (by `refKey` of the head): while the playability or hands layer is chosen. */
+export const layerFingers = computed(() => {
+  const out = new Map<string, number>();
+  if (playabilityOn.value || handsOn.value)
+    for (const f of playResult.value.fingers) out.set(refKey({ t: 'ev', ...f.ev, pi: f.pi }), f.finger);
+  return out;
+});
 
 /** The notes the layers paint, as `refKey`s with their color: the heads, and the events whose heads are all painted alike or by a finding (which are drawn whole, stem and flags too). */
 export const layerNotes = computed(() => {

@@ -113,6 +113,9 @@ function chordCost(keys: FKey[], fingers: number[], scale: number): Part | null 
       else if (f === 5) add(0.3, 'little finger on a black key');
     }
     if (f === 4) add(0.3, 'fourth finger');
+    // Fingers are spread as the keys are: a wide interval wants far-apart fingers (a fifth the thumb and little finger), a narrow one neighbors.
+    if (i + 1 < keys.length)
+      cost += 0.1 * Math.abs(Math.abs(fingers[i + 1] - f) - (keys[i + 1].midi - keys[i].midi) / 1.8);
     for (let j = i + 1; j < keys.length; j++) {
       const g = fingers[j];
       const a = Math.min(f, g);

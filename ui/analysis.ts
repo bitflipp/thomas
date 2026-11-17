@@ -61,7 +61,7 @@ function ask(make: (id: number) => Request): Promise<Response> {
 /** The playability findings of the score and the hand of every note. */
 export async function analyze(score: Score, options: PlayOptions): Promise<Analysis> {
   const r = await ask((id) => ({ id, type: 'findings', score, options }));
-  return r.type === 'findings' ? r.analysis : { findings: [], hands: [] };
+  return r.type === 'findings' ? r.analysis : { findings: [], hands: [], fingers: [] };
 }
 
 /** The span the score needs, in semitones, or null when no span helps. */

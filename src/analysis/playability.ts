@@ -64,10 +64,16 @@ export interface HandNote extends PlayNote {
   hand: 'L' | 'R';
 }
 
-/** What the check found: the findings, and which hand plays which note. */
+/** A note and the finger the cheapest fingering puts on it (1 thumb to 5 little finger). */
+export interface FingerNote extends PlayNote {
+  finger: number;
+}
+
+/** What the check found: the findings, which hand plays which note, and the fingers of the notes struck. */
 export interface Analysis {
   findings: PlayFinding[];
   hands: HandNote[];
+  fingers: FingerNote[];
 }
 
 /** The lowest key of a piano (A0). */
@@ -686,23 +692,30 @@ export function solve(prep: Prepared, maxSpan: number, fingering = true): Analys
         if (n.start === steps[k].tick) hands.push({ ev: n.ev, pi: n.pi, hand: (st.mask >> i) & 1 ? 'R' : 'L' });
     });
   });
-  if (fingering) for (const h of [0, 1] as const) raws.push(...fingeringFindings(prep, sol, h, maxSpan, where));
+  const fingers: FingerNote[] = [];
+  if (fingering)
+    for (const h of [0, 1] as const) {
+      const r = fingeringOf(prep, sol, h, maxSpan, where);
+      raws.push(...r.raws);
+      fingers.push(...r.fingers);
+    }
   return {
     findings: merge(raws)
       .map(({ step: _step, ...f }) => f)
       .sort((a, b) => a.mi - b.mi || a.tick - b.tick),
     hands,
+    fingers,
   };
 }
 
-/** The awkward fingerings of one hand along the chosen path, as findings that name the fingering the search found cheapest. */
-function fingeringFindings(
+/** The fingering of one hand along the chosen path: the finger of each struck note, and the awkward places as findings that name the cheapest fingering around them. */
+function fingeringOf(
   prep: Prepared,
   sol: Solution,
   h: 0 | 1,
   maxSpan: number,
   where: (tick: number) => { mi: number; tick: number },
-): Raw[] {
+): { raws: Raw[]; fingers: FingerNote[] } {
   const { steps } = prep;
   const fsteps: FStep[] = [];
   /** The step of the score and the indexes of the hand's keys in it, for each step of the hand. */
@@ -727,7 +740,17 @@ function fingeringFindings(
   }
   const hand = h === 0 ? 'L' : 'R';
   const result = fingerHand(fsteps, hand, maxSpan);
-  return result.issues.map((issue): Raw => {
+  const fingers: FingerNote[] = [];
+  at.forEach(({ k, keys }, j) => {
+    keys.forEach((ki, n) => {
+      const key = steps[k].keys[ki];
+      const finger = result.fingers[j][n];
+      if (!key.attack || finger === undefined) return;
+      for (const note of key.notes)
+        if (note.start === steps[k].tick) fingers.push({ ev: note.ev, pi: note.pi, finger });
+    });
+  });
+  const raws = result.issues.map((issue): Raw => {
     const { k, keys } = at[issue.step];
     const around = result.fingers
       .slice(Math.max(0, issue.step - 2), issue.step + 3)
@@ -748,6 +771,7 @@ function fingeringFindings(
       ...where(steps[k].tick),
     };
   });
+  return { raws, fingers };
 }
 
 /** The findings of a score for the options (the default span and pedal where left out). */

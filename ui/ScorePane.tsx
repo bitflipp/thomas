@@ -10,7 +10,7 @@ import { effect } from '@preact/signals';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Ref } from '../src/editor/addr.ts';
 import { refKey } from '../src/editor/addr.ts';
-import type { HitIndex } from '../src/editor/hit.ts';
+import type { Box, HitIndex, Target } from '../src/editor/hit.ts';
 import { dependentNotes, noteBoxes, primRef } from '../src/editor/hit.ts';
 import type { Prim } from '../src/engrave/scene.ts';
 import type { Engraved } from '../src/engrave/system.ts';
@@ -32,7 +32,7 @@ import {
   zoomBy,
 } from './interact.ts';
 
-import { layerNotes } from './layers.ts';
+import { layerFingers, layerNotes } from './layers.ts';
 
 import { playhead, playing } from './player.ts';
 
@@ -296,11 +296,66 @@ function PageView({
           );
         })}
         <NotesSvg page={i} h={h} />
+        <FingeringSvg page={i} h={h} />
         <GhostSvg g={ghost.value} page={i} />
         <PlayheadSvg page={i} />
       </svg>
     </div>
   );
+}
+
+/** The fingers of the chosen layer next to the heads of page `page`: above or below a single note on the side away from its stem, and for a chord above the top note, below the bottom one (when the stem is not there) and left of the others. */
+function FingeringSvg({ page, h }: { page: number; h: HitIndex }) {
+  const fingers = layerFingers.value;
+  if (!fingers.size || printing.value) return null;
+  const targets = h.byPage[page] ?? [];
+  const stems = new Map<string, Box>();
+  const chords = new Map<string, Target[]>();
+  for (const t of targets) {
+    if (t.ref.t !== 'ev') continue;
+    if (t.k === 'stem') stems.set(refKey({ ...t.ref, pi: undefined }), t.bbox);
+    else if (t.k === 'head' && fingers.has(refKey(t.ref))) {
+      const k = refKey({ ...t.ref, pi: undefined });
+      chords.set(k, [...(chords.get(k) ?? []), t]);
+    }
+  }
+  const out: preact.JSX.Element[] = [];
+  for (const [ek, heads] of chords) {
+    heads.sort((a, b) => a.bbox.y0 - b.bbox.y0);
+    const stem = stems.get(ek);
+    const top = heads[0].bbox;
+    const stemUp = !!stem && stem.y0 < top.y0 - 0.5;
+    heads.forEach((t, i) => {
+      const b = t.bbox;
+      const n = fingers.get(refKey(t.ref));
+      const first = i === 0;
+      const last = i === heads.length - 1;
+      let x = (b.x0 + b.x1) / 2;
+      let y: number;
+      if (first && !stemUp) y = b.y0 - 0.4;
+      else if (last && stemUp) y = b.y1 + 1.2;
+      else if (last && !stem) y = b.y1 + 1.2;
+      else {
+        x = b.x0 - 0.7;
+        y = (b.y0 + b.y1) / 2 + 0.4;
+      }
+      out.push(
+        <text
+          key={refKey(t.ref)}
+          x={x}
+          y={y}
+          font-size="1.15"
+          font-style="italic"
+          font-family="serif"
+          text-anchor="middle"
+          fill="#3a3a3a"
+        >
+          {n}
+        </text>,
+      );
+    });
+  }
+  return <>{out}</>;
 }
 
 /** Notes that the selected slurs, ties and tuplets belong to. */
