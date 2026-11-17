@@ -304,7 +304,10 @@ function PageView({
   );
 }
 
-/** The fingers of the chosen layer next to the heads of page `page`: above or below a single note on the side away from its stem, and for a chord above the top note, below the bottom one (when the stem is not there) and left of the others. */
+/** The side of the square a finger number sits in, in staff spaces. */
+const FINGER_BOX = 1.3;
+
+/** The fingers of the chosen layer on page `page`, each in an opaque square so that whatever is under it stays out of the way of the digit. The squares are centered above the notehead, above the stem when it points up; a chord gets a column above it with the number of the top note on top. */
 function FingeringSvg({ page, h }: { page: number; h: HitIndex }) {
   const fingers = layerFingers.value;
   if (!fingers.size || printing.value) return null;
@@ -324,34 +327,34 @@ function FingeringSvg({ page, h }: { page: number; h: HitIndex }) {
     heads.sort((a, b) => a.bbox.y0 - b.bbox.y0);
     const stem = stems.get(ek);
     const top = heads[0].bbox;
-    const stemUp = !!stem && stem.y0 < top.y0 - 0.5;
+    const x = (top.x0 + top.x1) / 2;
+    // The lowest square rests above the top head, or above the end of an upward stem.
+    const base = (stem && stem.y0 < top.y0 - 0.5 ? stem.y0 : top.y0) - 0.35;
     heads.forEach((t, i) => {
-      const b = t.bbox;
-      const n = fingers.get(refKey(t.ref));
-      const first = i === 0;
-      const last = i === heads.length - 1;
-      let x = (b.x0 + b.x1) / 2;
-      let y: number;
-      if (first && !stemUp) y = b.y0 - 0.4;
-      else if (last && stemUp) y = b.y1 + 1.2;
-      else if (last && !stem) y = b.y1 + 1.2;
-      else {
-        x = b.x0 - 0.7;
-        y = (b.y0 + b.y1) / 2 + 0.4;
-      }
+      const bottom = base - (heads.length - 1 - i) * (FINGER_BOX + 0.1);
       out.push(
-        <text
-          key={refKey(t.ref)}
-          x={x}
-          y={y}
-          font-size="1.15"
-          font-style="italic"
-          font-family="serif"
-          text-anchor="middle"
-          fill="#3a3a3a"
-        >
-          {n}
-        </text>,
+        <g key={refKey(t.ref)}>
+          <rect
+            x={x - FINGER_BOX / 2}
+            y={bottom - FINGER_BOX}
+            width={FINGER_BOX}
+            height={FINGER_BOX}
+            rx="0.15"
+            fill="#fff"
+            stroke="#8a8a8a"
+            stroke-width="0.07"
+          />
+          <text
+            x={x}
+            y={bottom - FINGER_BOX * 0.25}
+            font-size="1.05"
+            font-family="serif"
+            text-anchor="middle"
+            fill="#222"
+          >
+            {fingers.get(refKey(t.ref))}
+          </text>
+        </g>,
       );
     });
   }
