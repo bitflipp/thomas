@@ -33,7 +33,7 @@ interface Item {
   move?: (dx: number) => void;
   /** The model mark (the start mark of a span). */
   src?: Mark;
-  /** Placed between the staves: its `side` is the one facing the neighbouring staff. */
+  /** Placed between the staves: its `side` is the one facing the neighboring staff. */
   between?: boolean;
   /** Row and order within the stack on one side: lower rows are nearer the staff. */
   row: number;
@@ -43,7 +43,7 @@ interface Item {
 /** Gap between a row of marks and what it clears. */
 const ROW_CLEARANCE = 0.55;
 
-/** The hairpin's centre sits this far above the dynamic baseline. */
+/** The hairpin's center sits this far above the dynamic baseline. */
 const HAIRPIN_OFFSET = 0.55;
 
 /** A span mark (hairpin, pedal, ottava) from its start mark to the matching stop, which may be in a later measure or system. */
@@ -105,8 +105,8 @@ function dynRun(text: string): { names: string[]; w: number; up: number; down: n
   return { names, w, up, down, ink0, ink1 };
 }
 
-/** Centre of the notehead(s) sounding at `tick` (falls back to the column x plus half a head). */
-function xHeadCentre(evs: EvL[], tick: number, x: number, other?: EvL[]): number {
+/** Center of the notehead(s) sounding at `tick` (falls back to the column x plus half a head). */
+function xHeadCenter(evs: EvL[], tick: number, x: number, other?: EvL[]): number {
   for (const list of other ? [evs, other] : [evs]) {
     const e = list.find((q) => q.ev.kind === 'note' && q.start === tick);
     const g = e && geomOf.get(e);
@@ -115,34 +115,34 @@ function xHeadCentre(evs: EvL[], tick: number, x: number, other?: EvL[]): number
   return x + 0.6;
 }
 
-/** The side of staff `s` that faces its neighbour: below, unless it is the last staff, and the staff there (none for a single staff). */
-function facing(sm0: StaffMarks): { side: Side; neighbour?: number } {
+/** The side of staff `s` that faces its neighbor: below, unless it is the last staff, and the staff there (none for a single staff). */
+function facing(sm0: StaffMarks): { side: Side; neighbor?: number } {
   const n = sm0.systems[0].prep.score.staves.length;
-  if (sm0.staff + 1 < n) return { side: 'below', neighbour: sm0.staff + 1 };
-  return { side: 'above', neighbour: sm0.staff > 0 ? sm0.staff - 1 : undefined };
+  if (sm0.staff + 1 < n) return { side: 'below', neighbor: sm0.staff + 1 };
+  return { side: 'above', neighbor: sm0.staff > 0 ? sm0.staff - 1 : undefined };
 }
 
-/** The side of a dynamic or hairpin; `between` goes to the side facing the neighbouring staff. */
+/** The side of a dynamic or hairpin; `between` goes to the side facing the neighboring staff. */
 function markSide(sm0: StaffMarks, p: MarkPlacement | undefined): Side {
   return p === 'between' ? facing(sm0).side : (p ?? 'below');
 }
 
 /**
- * The placement item of a dynamic mark: its letters at the tick, centred between two staves if the placement is
+ * The placement item of a dynamic mark: its letters at the tick, centered between two staves if the placement is
  * `between`.
  */
 function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' }): Item {
   const sys = sm0.systems[sm0.sysOf[mi]];
   const run = dynRun(m.text);
   const x = xAtTick(sys, mi, m.tick);
-  const nb = m.placement === 'between' ? facing(sm0).neighbour : undefined;
-  const centre = xHeadCentre(
+  const nb = m.placement === 'between' ? facing(sm0).neighbor : undefined;
+  const center = xHeadCenter(
     sm0.prep.measures[mi][sm0.staff].evs,
     m.tick,
     x,
     nb === undefined ? undefined : sm0.prep.measures[mi][nb].evs,
   );
-  let left = centre - (run.ink0 + run.ink1) / 2; // This is the origin at which the visible ink is centred on the notehead.
+  let left = center - (run.ink0 + run.ink1) / 2; // This is the origin at which the visible ink is centered on the notehead.
   // Never straddle a barline: slide the run beside it, to the left, except for a dynamic at the
   // start of a measure, which stays in that measure.
   for (let k = sys.a; k <= sys.b; k++) {
@@ -318,7 +318,7 @@ function collectMarks(sm0: StaffMarks, items: Item[][]): Spans {
 }
 
 /**
- * x of the stem (head centre if stemless) of the note starting at `tick` ('at') or of the last note
+ * x of the stem (head center if stemless) of the note starting at `tick` ('at') or of the last note
  * before it ('before'), in system coordinates.
  */
 function noteX(
@@ -448,7 +448,7 @@ function addPedals(sm0: StaffMarks, spans: Span[], items: Item[][]): void {
       });
 }
 
-/** Octave shifts: the `8va`/`8vb` label at the start, a dashed line, and at a real end a hook pointing towards the staff. A continuation on a later system has the line only. */
+/** Octave shifts: the `8va`/`8vb` label at the start, a dashed line, and at a real end a hook pointing toward the staff. A continuation on a later system has the line only. */
 function addOctaveShifts(sm0: StaffMarks, spans: Span[], items: Item[][]): void {
   for (const sp of spans) {
     const m = sp.mark as Mark & { type: 'ottava' };

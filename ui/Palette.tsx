@@ -257,7 +257,7 @@ const HINTS: Record<Tool, string> = {
   trill: 'Drag from the first note to the last to trill them with a wavy line.',
   '8va': 'Drag from the first note to the last to shift.',
   '8vb': 'Drag from the first note to the last to shift.',
-  dynamic: 'Click a note or rest: the mark hangs on it (above the staff centre puts it above).',
+  dynamic: 'Click a note or rest: the mark hangs on it (above the staff center puts it above).',
   text: 'Click a note or rest to hang the text on it.',
   tempo: 'Click a note or rest to hang the tempo on it.',
   clef: 'Click a note or rest: the clef changes from it.',

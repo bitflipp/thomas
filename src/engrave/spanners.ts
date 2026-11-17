@@ -22,7 +22,7 @@ type Side = 'above' | 'below';
 /**
  * The form of a slur's cubic: `a0`/`a1` are how far along the span (as a fraction) the control points sit, and `m0`/`m1`
  * scale how high each one is lifted off the chord. The symmetric default is `{ a0: 0.2, a1: 0.2, m0: 1, m1: 1 }`; a
- * skewed shape moves the peak towards the end with the larger lift, so a slur can hug a low side and rise over a high one.
+ * skewed shape moves the peak toward the end with the larger lift, so a slur can hug a low side and rise over a high one.
  */
 interface SlurShape {
   a0: number;
@@ -73,7 +73,7 @@ function crescent(
   const out = slurControls(x0, y0, x1, y1, h, above, sh);
   const inn = slurControls(x0, y0, x1, y1, Math.max(0, h - thick), above, sh);
   const f = (q: [number, number]) => `${q[0].toFixed(3)} ${q[1].toFixed(3)}`;
-  // The inner edge ends slightly towards the chord (`tip`) so that the tips of the crescent
+  // The inner edge ends slightly toward the chord (`tip`) so that the tips of the crescent
   // keep a visible thickness instead of tapering to a hairline.
   const iy0 = y0 - s * tip;
   const iy1 = y1 - s * tip;
@@ -280,10 +280,10 @@ function drawLink(ctx: SysCtx, a: EvL, b: EvL, id: number, dashed: boolean): voi
   if (len < 1e-6) return;
   const ux = (x1 - x0) / len;
   const uy = (y1 - y0) / len;
-  /** Distance from a head's centre to its outline along the line (an ellipse), plus clearance. */
+  /** Distance from a head's center to its outline along the line (an ellipse), plus clearance. */
   const reach = (hw: number) => 1 / Math.hypot(ux / (hw / 2), uy / 0.5) + 0.6;
   // The end keeps the same clearance from the note's own stem as from the head: it is pushed along the line until it is
-  // out of the stem's neighbourhood (which may mean past the stem).
+  // out of the stem's neighborhood (which may mean past the stem).
   const CLEAR = 0.6;
   const pastStem = (e: EvL, g: typeof ga, cx: number, cy: number, dir: number, r: number): number => {
     if (!e.stem) return r;
@@ -455,7 +455,7 @@ function headPoint(e: EvL, side: 'above' | 'below'): { x: number; y: number; ste
       stemSide,
       homed: !!g.homed,
     };
-  const headGap = HEAD_HALF + SLUR_CLEAR; // This is measured from the centre of the outermost head.
+  const headGap = HEAD_HALF + SLUR_CLEAR; // This is measured from the center of the outermost head.
   const ref = above
     ? e.heads.reduce((a, h) => (h.pos > a.pos ? h : a))
     : e.heads.reduce((a, h) => (h.pos < a.pos ? h : a));

@@ -68,7 +68,7 @@ function autoGroups(
         prev.tuplets.length === te.tuplets.length && prev.tuplets.every((t, i) => t === te.tuplets[i]);
       const beatCross = Math.floor(prev.start / beatLen) !== Math.floor(te.start / beatLen);
       // `sameTuplets` is the cheap case. Otherwise the run is cut unless the two notes share some
-      // tuplet (one side nested inside the other), so a tuplet's beam never extends to a neighbour.
+      // tuplet (one side nested inside the other), so a tuplet's beam never extends to a neighbor.
       if (
         beatCross ||
         (!sameTuplets &&
@@ -89,7 +89,7 @@ function autoGroups(
 // MuseScore view instead: every note has a mode, which is derived from the model and turned back into
 // groups and flags by `planBeams` (+ `setBeamMode` in editor/commands.ts).
 //   auto   the automatic rules decide whether the note is beamed to the previous one
-//   none   the note is beamed to neither neighbour
+//   none   the note is beamed to neither neighbor
 //   break  the note starts a new beam (not beamed to the previous note)
 //   join   the note continues the beam of the previous note
 
@@ -144,7 +144,7 @@ export interface BeamPlan {
 
 /**
  * Applies per-note modes (`changes`: event index -> mode) to the current beaming of a voice. A string (a
- * message for the user) says why a note cannot be joined. The result is realised by `setBeamMode`.
+ * message for the user) says why a note cannot be joined. The result is realized by `setBeamMode`.
  */
 export function planBeams(v: Voice, beatLen: number, changes: Map<number, BeamMode>): BeamPlan | string {
   const flat = flattenVoice(v);
@@ -169,7 +169,7 @@ export function planBeams(v: Voice, beatLen: number, changes: Map<number, BeamMo
       }
     }
   }
-  // A note that lost its flag was cut off from both neighbours by it: they go back to the automatic choice.
+  // A note that lost its flag was cut off from both neighbors by it: they go back to the automatic choice.
   const auto = autoLinks(v, beatLen, flags);
   for (const i of cleared) {
     links[i] = auto[i];

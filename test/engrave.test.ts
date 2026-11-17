@@ -297,7 +297,7 @@ m1 time=4/4
   assert.equal(res.pages[0].prims.length > 0, true);
 });
 
-test('a dynamic placed between the staves is centred in the gap, from either staff', () => {
+test('a dynamic placed between the staves is centered in the gap, from either staff', () => {
   const body = (rh: string, lh: string) => `${HEAD}
 m1 time=4/4 key=0
   rh.1: ${rh}
@@ -311,10 +311,10 @@ m1 time=4/4 key=0
     const dyn = prims.find((p) => p.k === 'dyn');
     assert.ok(dyn && dyn.t === 'glyph');
     const box = loadSmufl().bbox(dyn.name);
-    const centre = dyn.y - (box.y1 + box.y0) / 2;
+    const center = dyn.y - (box.y1 + box.y0) / 2;
     assert.ok(
-      Math.abs(centre - (lines[4] + lines[5]) / 2) < 0.05,
-      `ink centre ${centre} vs gap ${lines[4]}..${lines[5]}`,
+      Math.abs(center - (lines[4] + lines[5]) / 2) < 0.05,
+      `ink center ${center} vs gap ${lines[4]}..${lines[5]}`,
     );
   }
 });

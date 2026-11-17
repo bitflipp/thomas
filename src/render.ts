@@ -27,7 +27,7 @@ export interface SvgOptions {
   crop?: { x: number; y: number; w: number; h: number };
 }
 
-/** Renders `page` (sizes in staff spaces) at `staffSpaceMm` millimetres per staff space. Lines are emitted after fills so that they stay on top. */
+/** Renders `page` (sizes in staff spaces) at `staffSpaceMm` millimeters per staff space. Lines are emitted after fills so that they stay on top. */
 export function pageToSvg(page: Page, staffSpaceMm: number, opts: SvgOptions = {}): string {
   const sm = loadSmufl();
   const used = new Set<string>();

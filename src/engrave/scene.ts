@@ -135,7 +135,7 @@ export interface Page {
 
 /** Occupied regions, used to place marks without collisions (y down). */
 export class Skyline {
-  /** `btw`: a dynamic or hairpin placed between the staves, which is centred in the gap later (`centreBetweenMarks`). `o`: the owner tag of a dynamic or hairpin's primitives. */
+  /** `btw`: a dynamic or hairpin placed between the staves, which is centered in the gap later (`centerBetweenMarks`). `o`: the owner tag of a dynamic or hairpin's primitives. */
   boxes: {
     x0: number;
     x1: number;

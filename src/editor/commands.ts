@@ -1485,7 +1485,7 @@ export function setMeta(score: Score, patch: Partial<Score['meta']>): Score {
 
 // Staff commands: adding, removing, moving and duplicating staves, names, measure numbering and
 // page settings, and brace/bracket groups (`connections` presents the groups as the kind of link
-// between neighbouring staves).
+// between neighboring staves).
 
 export type Connection = 'brace' | 'bracket' | undefined;
 
@@ -1504,7 +1504,7 @@ export function connections(score: Score): Connection[] {
 }
 
 /**
- * Rebuilds the staff groups from the connection kind between each pair of neighbouring staves `ids`: a run of
+ * Rebuilds the staff groups from the connection kind between each pair of neighboring staves `ids`: a run of
  * equal kinds is one group, a missing kind joins nothing.
  */
 function groupsFrom(ids: string[], conn: Connection[]): Score['groups'] {
@@ -1541,7 +1541,7 @@ export function addStaff(score: Score, o: { clef: Clef; name?: string; at?: numb
     const at = Math.max(0, Math.min(o.at ?? d.staves.length, d.staves.length));
     const conn = connections(score);
     d.staves.splice(at, 0, { id, clef: { ...o.clef }, ...(o.name ? { name: o.name } : {}) });
-    // Inserting between two joined staves splits the join: both neighbouring connections become
+    // Inserting between two joined staves splits the join: both neighboring connections become
     // unconnected (`nc` lists the connection after each staff).
     const nc = [
       ...conn.slice(0, Math.max(0, at - 1)),
@@ -1589,7 +1589,7 @@ export function removeStaff(score: Score, id: string): Score {
   });
 }
 
-/** Swap a staff with its neighbour; the joins stay where they are (between the same two positions). */
+/** Swap a staff with its neighbor; the joins stay where they are (between the same two positions). */
 export function moveStaff(score: Score, id: string, dir: -1 | 1): Score {
   const i = score.staves.findIndex((s) => s.id === id);
   const j = i + dir;
@@ -1970,9 +1970,9 @@ function wrapEvents(items: Draft<Item>[], ea: Event, eb: Event): boolean {
 /**
  * Rewrites the explicit beam groups and `noBeam` flags of a voice so that it is beamed as `plan` says:
  * all groups are dissolved, then a group is written for every wanted beam that the automatic rules
- * would not produce, and a flag for every note that is wanted alone but would be beamed to a neighbour.
+ * would not produce, and a flag for every note that is wanted alone but would be beamed to a neighbor.
  */
-function realiseBeams(v: Draft<Voice>, beatLen: number, plan: BeamPlan, preferred: Set<number>): void {
+function realizeBeams(v: Draft<Voice>, beatLen: number, plan: BeamPlan, preferred: Set<number>): void {
   const dissolve = (items: Draft<Item>[]) => {
     for (let i = 0; i < items.length; i++) {
       const it = items[i] as Item;
@@ -2014,7 +2014,7 @@ function realiseBeams(v: Draft<Voice>, beatLen: number, plan: BeamPlan, preferre
     }
     i = j + 1;
   }
-  // Notes that should stand alone but that the automatic rules would join to a neighbour now get a
+  // Notes that should stand alone but that the automatic rules would join to a neighbor now get a
   // flag, one at a time (the flag of one often frees its partner), the notes the user chose first.
   for (;;) {
     const joined = beamGroups(v as Voice, beatLen)
@@ -2052,7 +2052,7 @@ export function setBeamMode(score: Score, addrs: EvAddr[], mode: BeamMode): Scor
       const same =
         plan.links.every((l, i) => l === links[i]) &&
         flattenVoice(v as Voice).every((t, i) => plan.flags[i] === (t.ev.kind === 'note' && !!t.ev.noBeam));
-      if (!same) realiseBeams(v, beatLen, plan, new Set(list.map((a) => a.idx)));
+      if (!same) realizeBeams(v, beatLen, plan, new Set(list.map((a) => a.idx)));
     }
   });
 }

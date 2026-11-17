@@ -28,8 +28,8 @@ const TYPES = [{ description: 'Scores', accept: { 'text/plain': ['.txt'], 'appli
 /** The handles of the files opened or saved in this page, by the path the editor keeps for them (the name; there are no real paths in a browser). */
 const handles = new Map<string, FileHandle>();
 
-/** A user cancelling a picker rejects with an AbortError, which is no failure. */
-const cancelled = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
+/** A user canceling a picker rejects with an AbortError, which is no failure. */
+const canceled = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
 
 /** Lets the user choose a file through an `<input type=file>` (the fallback without a file picker API). */
 function pickWithInput(): Promise<File | null> {
@@ -55,7 +55,7 @@ const browserApi: NativeApi = {
       const f = await pickWithInput();
       return f ? { path: f.name, name: f.name, data: await f.text() } : null;
     } catch (e) {
-      if (cancelled(e)) return null;
+      if (canceled(e)) return null;
       throw e;
     }
   },
@@ -80,7 +80,7 @@ const browserApi: NativeApi = {
       URL.revokeObjectURL(a.href);
       return { path: name, name };
     } catch (e) {
-      if (cancelled(e)) return null;
+      if (canceled(e)) return null;
       throw e;
     }
   },

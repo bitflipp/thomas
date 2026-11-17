@@ -1,4 +1,4 @@
-// Icons for the palette: SMuFL glyphs from the same font as the score, centred on their ink and
+// Icons for the palette: SMuFL glyphs from the same font as the score, centered on their ink and
 // scaled to fit, plus text labels. Glyph outlines come from the engraver's font access (smufl.ts).
 
 import { loadSmufl } from '../src/smufl.ts';
@@ -27,7 +27,7 @@ function glyphBox(cp: number) {
   return g;
 }
 
-/** A SMuFL glyph as an icon: centred on its ink and scaled to fit `max` px (never beyond `cap` px per staff space). */
+/** A SMuFL glyph as an icon: centered on its ink and scaled to fit `max` px (never beyond `cap` px per staff space). */
 export function Glyph({ cp, max = 24, cap = 7.5 }: { cp: number; max?: number; cap?: number }) {
   const g = glyphBox(cp);
   const w = g.x1 - g.x0;

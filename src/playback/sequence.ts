@@ -370,7 +370,7 @@ function transposeStepDown(p: Pitch): Pitch {
 
 /**
  * A mordent or turn: a few quick notes (32nds) on the start of the note, which then sounds on its main pitch for the rest of its
- * time. The neighbours are the diatonic ones in the key. The quick notes shrink for short notes so that the main note keeps
+ * time. The neighbors are the diatonic ones in the key. The quick notes shrink for short notes so that the main note keeps
  * at least a quarter of the time.
  */
 function addOrnament(
@@ -402,7 +402,7 @@ function addOrnament(
   sink.add(start + seq.length * step, end, main, vel, false, false, true);
 }
 
-/** A trill: the pitch alternates with the diatonic upper neighbour (by the key, or `upAcc`), in 32nds, starting on the main note and ending on it. */
+/** A trill: the pitch alternates with the diatonic upper neighbor (by the key, or `upAcc`), in 32nds, starting on the main note and ending on it. */
 function addTrill(
   sink: VoiceNotes,
   pitch: Pitch,

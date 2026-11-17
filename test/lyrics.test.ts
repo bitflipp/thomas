@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as C from '../src/editor/commands.ts';
-import { neighbourNote } from '../src/editor/lyrics.ts';
+import { neighborNote } from '../src/editor/lyrics.ts';
 import { findCollisions } from '../src/engrave/collide.ts';
 import { engrave } from '../src/engrave/system.ts';
 import type { NoteEvent } from '../src/model.ts';
@@ -76,7 +76,7 @@ test('lyrics are drawn in one row per verse below the staff, without collisions'
   assert.deepEqual(findCollisions(out.pages), []);
 });
 
-test('a long syllable pushes its neighbours apart', () => {
+test('a long syllable pushes its neighbors apart', () => {
   const tight = SCORE.replace('"is"', '"is"').replace('"than"', '"than"');
   const wide = SCORE.replace('"than"', '"thanksgiving"');
   const x = (src: string, s: string) => {
@@ -113,13 +113,13 @@ test('setSyllable chains hyphens and keeps syllabic consistent', () => {
   assert.throws(() => C.setSyllable(s, at(0, 2), 1, { text: 'x' }), /note/);
 });
 
-test('neighbourNote skips rests and tied notes, across measures', () => {
+test('neighborNote skips rests and tied notes, across measures', () => {
   const s = parseText(EDIT);
   const at = (mi: number, idx: number) => ({ mi, staff: 'rh', voice: 1, idx });
-  assert.deepEqual(neighbourNote(s, at(0, 0), 1), at(0, 3));
-  assert.deepEqual(neighbourNote(s, at(0, 4), 1), at(1, 0));
-  assert.deepEqual(neighbourNote(s, at(1, 0), -1), at(0, 4));
-  assert.equal(neighbourNote(s, at(1, 0), 1), undefined);
+  assert.deepEqual(neighborNote(s, at(0, 0), 1), at(0, 3));
+  assert.deepEqual(neighborNote(s, at(0, 4), 1), at(1, 0));
+  assert.deepEqual(neighborNote(s, at(1, 0), -1), at(0, 4));
+  assert.equal(neighborNote(s, at(1, 0), 1), undefined);
 });
 
 test('a hyphen across a barline stays clear of it', () => {

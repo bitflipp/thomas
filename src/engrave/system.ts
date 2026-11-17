@@ -1,7 +1,7 @@
 // The top level of the engraver: `engrave` runs the whole pipeline.
 //
 // Prepare the score, space every measure, choose the systems (`planSystems`), justify and draw each
-// system's notes, run the spanners over all systems, then finalise each system (staff distances from the
+// system's notes, run the spanners over all systems, then finalize each system (staff distances from the
 // skylines, staff lines, clefs, barlines, brace) and paginate.
 
 import type { Score } from '../model.ts';
@@ -27,7 +27,7 @@ export type { Layout, MeasureGeom, SystemGeom } from './paginate.ts';
 export { clefGlyph } from './signatures.ts';
 
 export interface EngraveOptions {
-  /** Honour the score's `breakBefore` flags (default true). */
+  /** Honor the score's `breakBefore` flags (default true). */
   respectBreaks?: boolean;
   /** Spread the systems of full pages over the page height (default true). */
   justifyVertical?: boolean;
@@ -51,10 +51,10 @@ export interface EngraveCache {
   scoreKey: unknown[];
 }
 
-/** What a system looked like just before it was finalised, and the result of that: if the next run arrives at the same, the result is still good. */
+/** What a system looked like just before it was finalized, and the result of that: if the next run arrives at the same, the result is still good. */
 interface FinalSnapshot {
   key: string;
-  /** Copies of the primitives added after the notes (spanners, marks): finalising moves some of them. */
+  /** Copies of the primitives added after the notes (spanners, marks): finalizing moves some of them. */
   post: Prim[][];
   extents: { top: number; bottom: number }[];
   done: FinalizedSystem;

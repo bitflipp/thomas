@@ -10,7 +10,7 @@ import type { EvAddr, Ref } from '../src/editor/addr.ts';
 import { eventOf, markOf, refKey, tupletOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import { transposeSteps } from '../src/editor/context.ts';
-import { neighbourNote, syllableText } from '../src/editor/lyrics.ts';
+import { neighborNote, syllableText } from '../src/editor/lyrics.ts';
 import type { OrnamentKind } from '../src/editor/similar.ts';
 import { eventsInMeasures } from '../src/editor/similar.ts';
 import type { Event, Grace, MarkBody, MarkPlacement, NoteEvent, Score, Syllable } from '../src/model.ts';
@@ -22,7 +22,7 @@ import { deleteSelection, evRefs, measureRefs, select, selectSimilar, tupletsAro
 import { DYNAMICS } from './Palette.tsx';
 import { run, score, selection, space } from './state.ts';
 
-/** A labelled row of controls in the Properties panel. */
+/** A labeled row of controls in the Properties panel. */
 function Row({ label, children }: { label: string; children: preact.ComponentChildren }) {
   return (
     <div class="row">
@@ -193,7 +193,7 @@ const CLEF_OPTS: [string, { sign: 'G' | 'F' | 'C'; line: number; octave?: number
 /** A string that identifies a clef for the clef picker. */
 const clefKey = (c: { sign: string; line: number; octave?: number }) => `${c.sign}${c.line}${c.octave ? '-1' : ''}`;
 
-/** The staves list: names, clefs, order, instrument presets and how neighbouring staves are joined. */
+/** The staves list: names, clefs, order, instrument presets and how neighboring staves are joined. */
 function StavesSection() {
   const s = score.value;
   const conn = C.connections(s);
@@ -577,7 +577,7 @@ function Tog({
 
 const BEAM_MODES: [BeamMode, string, string][] = [
   ['auto', 'auto', 'The automatic rules decide whether this note is beamed to the previous one'],
-  ['none', 'none', 'Not beamed to either neighbour'],
+  ['none', 'none', 'Not beamed to either neighbor'],
   ['break', 'start', 'Start a new beam at this note'],
   ['join', 'join', 'Continue the beam of the previous note (also across a beat)'],
 ];
@@ -697,7 +697,7 @@ function LyricBox({ ref0, verse, cur, sc }: { ref0: EvAddr; verse: number; cur: 
         const forward = (join: boolean, extend: boolean) => {
           e.preventDefault();
           if (text) commit(join, extend);
-          go(neighbourNote(score.peek(), ref0, 1));
+          go(neighborNote(score.peek(), ref0, 1));
         };
         if (e.key === ' ') forward(false, false);
         else if (e.key === '-' && text) forward(true, false);
@@ -708,7 +708,7 @@ function LyricBox({ ref0, verse, cur, sc }: { ref0: EvAddr; verse: number; cur: 
           el.current?.blur();
         } else if (e.key === 'Backspace' && !text && !(e.target as HTMLInputElement).value) {
           e.preventDefault();
-          go(neighbourNote(sc, ref0, -1));
+          go(neighborNote(sc, ref0, -1));
         } else if (e.key === 'Escape') {
           e.preventDefault();
           done.current = true;

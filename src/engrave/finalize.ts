@@ -1,4 +1,4 @@
-// Finalising a system once the spanners are placed: staff lines, the notes shifted onto their staves,
+// Finalizing a system once the spanners are placed: staff lines, the notes shifted onto their staves,
 // clefs and signatures, measure numbers, barlines and the brace or bracket. All in system coordinates.
 
 import type { Score, StaffGroup } from '../model.ts';

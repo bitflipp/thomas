@@ -84,7 +84,7 @@ export function prefixWidth(prep: Prepared, mi: number, first: boolean): number 
   return w;
 }
 
-/** Draws a time signature as stacked digits, each row centred on the wider one. */
+/** Draws a time signature as stacked digits, each row centered on the wider one. */
 function drawTimeSig(P: Prim[], x: number, y0: number, ts: TimeSignature): void {
   const wn = String(ts.beats).length;
   const wd = String(ts.beatType).length;
@@ -124,7 +124,7 @@ export function drawSystemStart(P: Prim[], ctx: SysCtx, s: number, y0: number): 
   if (ctx.a === 0) drawTimeSig(P, kx, y0, timeAt(score, ctx.a));
 }
 
-/** A key change at the start of measure `mi` (naturals for cancelled accidentals, then the new ones); returns the x after it. */
+/** A key change at the start of measure `mi` (naturals for canceled accidentals, then the new ones); returns the x after it. */
 function drawKeyChange(P: Prim[], ctx: SysCtx, mi: number, s: number, y0: number, x: number): number {
   const { score } = ctx.prep;
   const kc = keyChange(score, mi);

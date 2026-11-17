@@ -52,7 +52,7 @@ function idealSpace(dt: number): number {
 }
 
 /** All events starting at one tick of a measure, across staves. Columns of one tick are aligned vertically. */
-/** Key change at the start of measure `mi` (not the first): the naturals cancelling the old key
+/** Key change at the start of measure `mi` (not the first): the naturals canceling the old key
  *  (indices into the old key's accidental order) and the number of new accidentals. */
 export function keyChange(
   score: Score,
@@ -69,7 +69,7 @@ export function keyChange(
 }
 
 /**
- * The width of the key signature change at measure `mi`: naturals cancelling the old key, then the new
+ * The width of the key signature change at measure `mi`: naturals canceling the old key, then the new
  * accidentals.
  */
 function keyChangeWidth(score: Score, mi: number): number {
@@ -168,7 +168,7 @@ function collectColumns(prep: Prepared, mi: number): { cols: Column[]; restOnly:
 
 /**
  * How far each column reaches left and right of its x on each staff (heads, accidentals, dots,
- * graces, a clef change), which decides the minimum distance to its neighbours.
+ * graces, a clef change), which decides the minimum distance to its neighbors.
  */
 function measureColumnExtents(cols: Column[], nStaves: number): void {
   for (let s = 0; s < nStaves; s++) {
@@ -547,12 +547,12 @@ export interface PlacedMeasure {
 /** Clearance scale a line may be planned with (squeezing the clearances is otherwise a last resort down to MIN_CLEARANCE). */
 const PLANNED_CLEARANCE = 0.9;
 
-/** Least scale of the clearances between neighbouring columns (see `placeMeasure`'s `z`). */
+/** Least scale of the clearances between neighboring columns (see `placeMeasure`'s `z`). */
 export const MIN_CLEARANCE = 0.75;
 
 /**
  * Place columns for stretch factor f (f=1 natural). x = 0 at the measure's left edge. `z` scales the
- * clearances (head/accidental extents plus gap) between neighbouring columns; it is below 1 only
+ * clearances (head/accidental extents plus gap) between neighboring columns; it is below 1 only
  * for a measure so dense that it does not fit a line even when compressed (`justifySystem`).
  */
 export function placeMeasure(sp: MeasureSpacing, f: number, z = 1): PlacedMeasure {

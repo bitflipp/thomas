@@ -89,7 +89,7 @@ const HYPHEN_HALF = 0.25;
 const BAR_CLEAR = 0.3;
 
 /**
- * A hyphen centred at `x` between `from` and `to` is moved beside a barline it would touch: to the
+ * A hyphen centered at `x` between `from` and `to` is moved beside a barline it would touch: to the
  * left of the barline if that fits between the syllables, else to the right.
  */
 function clearOfBarlines(ctx: SysCtx, x: number, from: number, to: number): number {

@@ -110,7 +110,7 @@ export interface BeamL {
   evs: EvL[]; // These are all members, including rests.
   notes: EvL[]; // These are the members that are notes.
   dir: 'up' | 'down';
-  cross?: boolean; // The members sit on different staves, so the beam runs between them and the stems point towards it.
+  cross?: boolean; // The members sit on different staves, so the beam runs between them and the stems point toward it.
   crossY?: [number, number]; // For a cross-staff beam these are the top and bottom edge (y in the voice's staff, set when drawn).
 }
 

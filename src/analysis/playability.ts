@@ -56,24 +56,34 @@ export interface PlayFinding {
   tick: number;
 }
 
-/** The lowest and highest key of a piano. */
+/** The lowest key of a piano (A0). */
 const LOWEST = 21;
+
+/** The highest key of a piano (C8). */
 const HIGHEST = 108;
 
 /** The most keys one hand can hold down. */
 const FINGERS = 5;
 
-/** A leap of `d` semitones needs about `LEAP_BASE_MS + LEAP_MS_PER_SEMITONE * d` milliseconds, counted from one attack of the hand to the next. */
+/** The fixed part of the time a leap needs, in milliseconds, counted from one attack of the hand to the next. */
 const LEAP_BASE_MS = 30;
+
+/** The part of the time a leap needs that grows with its length, in milliseconds per semitone. */
 const LEAP_MS_PER_SEMITONE = 5;
 
 /** A leap that uses more than this share of the time there is is a warning. */
 const LEAP_WARN = 0.7;
 
-/** The weights of the path cost: a note in the other hand's staff, hands that interleave, the squared stretch beyond the comfortable span, the squared share of the leap time used. */
+/** The cost of a note in the staff of the other hand. */
 const PRIOR_COST = 1;
+
+/** The cost of hands that interleave (the left hand's top note above the right hand's bottom note). */
 const CROSS_COST = 3;
+
+/** The weight of the squared stretch beyond the comfortable span. */
 const STRETCH_COST = 0.5;
+
+/** The weight of the squared share of the leap time used. */
 const LEAP_COST = 4;
 
 /** The most keys a step can have and still be divided (two full hands). */
@@ -135,11 +145,12 @@ interface State {
   atk: [boolean, boolean];
 }
 
-/** The generic name of an interval of `semitones`: "octave", "9th", "10th". */
+/** The generic name of an interval of `semitones`: "2nd", "3rd", "octave", "9th", "10th". */
 export function spanName(semitones: number): string {
   if (semitones === 0) return 'unison';
   const generic = [1, 2, 2, 3, 3, 4, 5, 5, 6, 6, 7, 7][semitones % 12] + 7 * Math.floor(semitones / 12);
-  return generic === 8 ? 'octave' : `${generic}th`;
+  if (generic === 8) return 'octave';
+  return `${generic}${generic === 2 ? 'nd' : generic === 3 ? 'rd' : 'th'}`;
 }
 
 /** The absolute ticks where the sustain pedal goes down and comes up, as intervals. */
@@ -351,12 +362,13 @@ function statesOf(step: Step, maxSpan: number): State[] {
   return out;
 }
 
-/** The time a leap of `d` semitones needs, as a share of the `sec` seconds there are, for the worse of the two hands, with that hand and distance. */
-function leapOf(a: State, b: State, sec: number): { ratio: number; hand: 0 | 1; d: number } {
+/** The time a leap of `d` semitones needs, as a share of the `sec` seconds there are, for the worse of the two hands, with that hand and distance. A move within the span of a hand is no leap: the hand reaches it by stretching. */
+function leapOf(a: State, b: State, sec: number, maxSpan: number): { ratio: number; hand: 0 | 1; d: number } {
   let worst = { ratio: 0, hand: 0 as 0 | 1, d: 0 };
   for (const h of [0, 1] as const) {
     if (!(b.atk[h] && a.n[h] && b.n[h])) continue;
     const d = Math.abs((b.lo[h] + b.hi[h]) / 2 - (a.lo[h] + a.hi[h]) / 2);
+    if (d <= maxSpan) continue;
     const ratio = (LEAP_BASE_MS + LEAP_MS_PER_SEMITONE * d) / (sec * 1000);
     if (ratio > worst.ratio) worst = { ratio, hand: h, d };
   }
@@ -429,6 +441,7 @@ function advance(
   toIdx: number[],
   step: Step,
   sec: number,
+  maxSpan: number,
 ): { reached: State[]; compatible: number; gentlest: { ratio: number; hand: 0 | 1; d: number } } {
   const reached: State[] = [];
   let compatible = 0;
@@ -440,7 +453,7 @@ function advance(
       const a = before[ai];
       if (!consistent(a, b, step)) continue;
       compatible++;
-      const leap = leapOf(a, b, sec);
+      const leap = leapOf(a, b, sec, maxSpan);
       if (leap.ratio < gentlest.ratio) gentlest = leap;
       if (leap.ratio > 1) continue;
       const cost = a.cost + b.cost + LEAP_COST * leap.ratio ** 2;
@@ -484,7 +497,7 @@ function follow(steps: Step[], maxSpan: number): Solution {
         .map((_, i) => i)
         .sort((x, y) => states[x].cost - states[y].cost)
         .slice(0, BEAM);
-    let tried = advance(before, cheapest(before), fresh, cheapest(fresh), step, sec);
+    let tried = advance(before, cheapest(before), fresh, cheapest(fresh), step, sec, maxSpan);
     if (!tried.reached.length && (before.length > BEAM || fresh.length > BEAM))
       tried = advance(
         before,
@@ -493,6 +506,7 @@ function follow(steps: Step[], maxSpan: number): Solution {
         fresh.map((_, i) => i),
         step,
         sec,
+        maxSpan,
       );
     const { reached, compatible, gentlest } = tried;
     if (reached.length) {
@@ -536,7 +550,7 @@ function follow(steps: Step[], maxSpan: number): Solution {
   return { chosen, linked, failures };
 }
 
-/** A finding before neighbouring ones are merged, with the step it belongs to. */
+/** A finding before neighboring ones are merged, with the step it belongs to. */
 type Raw = PlayFinding & { step: number };
 
 /** Joins findings of the same kind, severity and hand at successive steps into one, with all their notes. */
@@ -609,7 +623,7 @@ export function solve(prep: Prepared, maxSpan: number): PlayFinding[] {
     }
     const before = sol.chosen[k - 1];
     if (!(sol.linked[k] && before)) return;
-    const leap = leapOf(before, st, steps[k].sec - steps[k - 1].sec);
+    const leap = leapOf(before, st, steps[k].sec - steps[k - 1].sec, maxSpan);
     if (leap.ratio > LEAP_WARN)
       raws.push({
         severity: 'warn',

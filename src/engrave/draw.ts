@@ -69,7 +69,7 @@ export interface SysCtx {
 
 export const CROSS_GAP0 = 6;
 
-/** A glyph primitive whose bounding box is centred on (cx, cy). */
+/** A glyph primitive whose bounding box is centered on (cx, cy). */
 function glyphCentered(name: string, cx: number, cy: number): Prim {
   const b = sm.bbox(name);
   return { t: 'glyph', name, x: cx - (b.x0 + b.x1) / 2, y: cy + (b.y0 + b.y1) / 2 };
@@ -140,7 +140,7 @@ export const geomOf = new WeakMap<EvL, Geom>();
 /** Outer edge (y) of the articulation stack of a note and the side it is on; slurs on that side start beyond it. */
 export const articExtent = new WeakMap<EvL, { above: boolean; edge: number }>();
 
-/** One ledger line as drawn, with the extent of the head it serves (`hx0`..`hx1`), so that neighbours can be trimmed. */
+/** One ledger line as drawn, with the extent of the head it serves (`hx0`..`hx1`), so that neighbors can be trimmed. */
 interface LedgerSeg {
   prim: Prim;
   s: number;
@@ -149,12 +149,12 @@ interface LedgerSeg {
   x1: number;
   hx0: number;
   hx1: number;
-  merged?: boolean; // Whether the line was joined with a neighbour's (it then serves several heads).
+  merged?: boolean; // Whether the line was joined with a neighbor's (it then serves several heads).
 }
 
 let ledgerSegs: LedgerSeg[] = [];
 
-/** Neighbouring notes must not have their ledger lines run into each other: leave a gap, trimming both sides evenly. */
+/** Neighboring notes must not have their ledger lines run into each other: leave a gap, trimming both sides evenly. */
 function trimLedgers(ctx: SysCtx): void {
   const GAP = 0.35;
   const groups = new Map<string, LedgerSeg[]>();
@@ -197,7 +197,7 @@ function trimLedgers(ctx: SysCtx): void {
       dead.add(l.prim);
       continue;
     }
-    // A line trimmed on one side only would leave its head off-centre: take the same off the other side.
+    // A line trimmed on one side only would leave its head off-center: take the same off the other side.
     if (!l.merged) {
       const ext = Math.min(l.hx0 - l.x0, l.x1 - l.hx1);
       l.x0 = l.hx0 - ext;
@@ -248,7 +248,7 @@ const beamLevelsOf = (e: EvL) => beamLevels(e.te.ev.dur.base);
 
 /**
  * Phase 1: positions the events. x comes from the measure's columns, so notes sounding together line
- * up across staves; a whole-measure rest is centred in the bar instead.
+ * up across staves; a whole-measure rest is centered in the bar instead.
  */
 function positionEvents(ctx: SysCtx, mi: number, s: number): void {
   const sp = ctx.spacing[mi];
@@ -256,7 +256,7 @@ function positionEvents(ctx: SysCtx, mi: number, s: number): void {
   const colIndex = new Map(sp.cols.map((c, j) => [c.tick, j]));
   for (const e of ctx.prep.measures[mi][s].evs) {
     if (e.ev.kind === 'rest' && e.ev.style === 'measure') {
-      // Centred between the first column and the barline, or the small clef that precedes it.
+      // Centered between the first column and the barline, or the small clef that precedes it.
       const right = sp.endClef[s] ? pl.endX - sm.adv('gClefChange') - 2 * END_CLEF_GAP : pl.endX;
       e.x = ctx.mx[mi] + (sp.lead + right) / 2 - sm.adv('restWhole') / 2;
       continue;
@@ -293,7 +293,7 @@ function drawSingleStem(ctx: SysCtx, e: EvL): void {
   // A displaced head right of an up-stem would run into the flag: lengthen the stem so that
   // the flag starts clear of it.
   if (e.stem === 'up' && e.te.ev.dur.base >= 8 && e.heads.some((h) => h.dx > g.hw / 2 && !h.shared)) len += 0.6;
-  // The flag of a down-stem curls up towards the (wider) head, so it needs a little more
+  // The flag of a down-stem curls up toward the (wider) head, so it needs a little more
   // length to avoid touching it.
   if (e.stem === 'down' && e.te.ev.dur.base >= 8) len += 0.3;
   setStem(e, g, len);
@@ -474,7 +474,7 @@ function drawCrossBeam(ctx: SysCtx, beam: BeamL, home: number, levelsFor: (e: Ev
   const gs = notes.map((n) => must(geomOf.get(n)));
   const off = notes.map((n) => staffOffset(ctx, home, n.staff));
   const { lo, hi } = crossBeamRange(notes, gs, off, inner);
-  // The beam lives in the gap between the staves: centre it in the admissible range so that
+  // The beam lives in the gap between the staves: center it in the admissible range so that
   // the stems of both staves have the same slack.
   const a = Number.isFinite(lo) && Number.isFinite(hi) ? (lo + hi) / 2 : Number.isFinite(lo) ? lo : hi;
   if (Number.isFinite(lo) && Number.isFinite(hi)) {
@@ -640,7 +640,7 @@ function drawHeadWithAccidental(ctx: SysCtx, e: EvL, s: number, hi: number): voi
 /**
  * Ledger lines, one per staff line crossed. A line is needed where a head sits on it or beyond it (not
  * for the space just outside the staff) and extends over those heads only (not over displaced heads of
- * the rest of the chord); `trimLedgers` later shortens neighbouring ones so that they do not run together.
+ * the rest of the chord); `trimLedgers` later shortens neighboring ones so that they do not run together.
  */
 function drawLedgerLines(ctx: SysCtx, e: EvL, s: number): void {
   const own = e.heads.filter((h) => !h.shared);
@@ -707,7 +707,7 @@ function drawArpeggio(ctx: SysCtx, e: EvL, s: number, yTop: number, yBot: number
   // is `len` long and the next one starts `step` further (they overlap), so n copies cover
   // (n - 1) * step + len. Take the count that comes closest to the wanted span, stretch the
   // step a little to absorb the rest (staying within the range where the joins still look
-  // continuous) and centre what remains, so that the length does not depend on the phase.
+  // continuous) and center what remains, so that the length does not depend on the phase.
   const len = seg.x1 - seg.x0;
   const span = bot - top;
   const n = Math.max(1, Math.round((span - len) / step) + 1);
@@ -900,7 +900,7 @@ function drawGraceRun(d: GraceDrawing, geo: GraceGeom[], i: number, j: number): 
       }
       let b = a;
       while (b + 1 < j && levelOf(b + 1) >= level) b++;
-      // A lone note of this level gets a hook towards the rest of the run.
+      // A lone note of this level gets a hook toward the rest of the run.
       let xa: number;
       let xb: number;
       if (b > a) {
@@ -1001,7 +1001,7 @@ function drawMultiRest(ctx: SysCtx, e: EvL, s: number, count: number): void {
 }
 
 /**
- * The primitives of a rest: a multi-measure rest, a whole-measure rest centred in the bar, or the rest glyph with
+ * The primitives of a rest: a multi-measure rest, a whole-measure rest centered in the bar, or the rest glyph with
  * its dots.
  */
 function drawRestPrims(ctx: SysCtx, e: EvL, s: number, ghost: boolean): void {
@@ -1114,7 +1114,7 @@ function clearBeamLine(ctx: SysCtx, notes: EvL[], s: number, gs: Geom[], line: B
   return { ...line, a };
 }
 
-/** Does the lone note `i` of a beam get its hook (the short stub of a level only it has) to the right? Towards the neighbour it is rhythmically closer to; after a dotted note, towards the left. */
+/** Does the lone note `i` of a beam get its hook (the short stub of a level only it has) to the right? Toward the neighbor it is rhythmically closer to; after a dotted note, toward the left. */
 function hookPointsRight(notes: EvL[], i: number): boolean {
   if (i === 0) return true;
   if (i === notes.length - 1) return false;
@@ -1294,7 +1294,7 @@ function drawTuplet(ctx: SysCtx, t: TupletGroup, evs: EvL[], s: number): void {
   tagFrom(ctx.prims[s], n0, 'tuplet', t);
 }
 
-/** Where a tuplet's bracket and number go: the bracket line from (bx0, ya) to (bx1, yb) in the slope of (x0, ya)-(x1, yb), the number centred at (cx, cy). */
+/** Where a tuplet's bracket and number go: the bracket line from (bx0, ya) to (bx1, yb) in the slope of (x0, ya)-(x1, yb), the number centered at (cx, cy). */
 interface TupletPlan {
   bracket: boolean;
   showNum: boolean;
@@ -1476,7 +1476,7 @@ function planTuplet(
   const sloped = (fullyBeamed || bracket) && x1 > x0 && notes.length > 1;
   const flatY = (above ? Math.min(...reach) : Math.max(...reach)) + (above ? -clearance : clearance);
   let { ya, yb } = sloped ? slopedTupletLine(frame, clearance) : { ya: flatY, yb: flatY };
-  // A bare number is centred over the beam (first to last stem), a bracketed one over the
+  // A bare number is centered over the beam (first to last stem), a bracketed one over the
   // whole group including the heads at either end.
   const cx = !bracket && x1 > x0 && notes.length > 1 ? (x0 + x1) / 2 : (bx0 + bx1) / 2;
   let cy = ya + ((yb - ya) * (cx - x0)) / Math.max(0.001, x1 - x0);
@@ -1629,7 +1629,7 @@ function articulationAnchor(e: EvL, g: Geom, above: boolean, nearest: Articulati
     return { cx: g.stemX, y: e.beam ? y + (above ? -0.2 : 0.2) : y };
   }
   const ref = above ? Math.max(...e.heads.map((h) => h.pos)) : Math.min(...e.heads.map((h) => h.pos));
-  let q = above ? ref + 3 : ref - 3; // A distance of 1.5 spaces from the head centre leaves a clear gap.
+  let q = above ? ref + 3 : ref - 3; // A distance of 1.5 spaces from the head center leaves a clear gap.
   if (q % 2 === 0 && q >= 0 && q <= 8) q += above ? 1 : -1; // Inside the staff the articulation sits in a space, not on a line.
   const y = nearest === 'staccato' ? posToY(ref) + (above ? -1.25 : 1.25) : posToY(q); // Staccato dots hug the head a little closer.
   const head = must(e.heads.find((h) => h.pos === ref));

@@ -21,7 +21,7 @@ const lines = [0, 1, 2, 3, 4]
 
 const smufl = loadSmufl();
 const gAdv = smufl.adv('gClef');
-const x0 = CX - ((gAdv + GAP + smufl.adv('fClef')) * S) / 2; // The pair is centred on the icon.
+const x0 = CX - ((gAdv + GAP + smufl.adv('fClef')) * S) / 2; // The pair is centered on the icon.
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}">
 <defs>

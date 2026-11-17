@@ -25,8 +25,8 @@ test('an ordinary two-hand passage has no findings', () => {
   assert.deepEqual(fs, []);
 });
 
-test('interval names: octave, ninth, tenth', () => {
-  assert.deepEqual([12, 14, 16, 19].map(spanName), ['octave', '9th', '10th', '12th']);
+test('interval names: 2nd, 3rd, octave, ninth, tenth', () => {
+  assert.deepEqual([2, 4, 12, 14, 16, 19].map(spanName), ['2nd', '3rd', 'octave', '9th', '10th', '12th']);
 });
 
 test('a chord in one staff that is too wide for one hand is split between the hands, not reported', () => {
@@ -63,6 +63,12 @@ test('a leap that two hands cannot share and no hand has time for is an error', 
   // Both hands play five-key chords, then both have to be about four octaves away within a sixteenth (125 ms).
   const fs = findPlayability(score(['rh.1: <c2 g2 c3 e3 g3>:16 <c6 g6 c7 e7 g7>:16 r:8 r:4 r:2', 'lh.1: R:1']));
   assert.ok(kinds(fs).includes('error/leap'), kinds(fs).join());
+});
+
+test('fast leaps within the span of a hand are not leaps', () => {
+  // Fifths and octaves in thirty-seconds (62 ms) are within a hand's reach, however fast.
+  const fs = findPlayability(score(['rh.1: c4:32 g4:32 c4:32 c5:32 g4:32 c4:32 r:8 r:4 r:2', 'lh.1: R:1']));
+  assert.deepEqual(fs, []);
 });
 
 test('the same leap with enough time is fine', () => {

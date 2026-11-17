@@ -2,7 +2,7 @@
 
 A score is a plain UTF-8 text file. It is line oriented, one measure per block, so that diffs are readable
 and a GUI can address one *measure × staff × voice* as one cell. The internal model (`src/model.ts`,
-JSON-serialisable) is the source of truth. The text format is a lossless serialisation of it
+JSON-serializable) is the source of truth. The text format is a lossless serialization of it
 (`node src/cli.ts import` followed by `render` gives the same result as rendering the MusicXML directly,
 and `write(parse(text))` equals `text`).
 
@@ -48,7 +48,7 @@ Voice numbers are local to a staff (`s1.1`, `s1.2`, `s2.1`, ...). Every voice of
 | Line | `&` before the first note, `;` after the second (any two notes of one system, also in other voices or staves; `&` and `;` pair by number). Optional number (lines that overlap in time need different ones), `&.` dashed | `&c5:4 ... e3;` `&2.g4 ... c3;2` |
 | Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |
 | Accidental override | `!` force, `?` cautionary (after the pitch) | `c#4!` `e4?` |
-| Mordent, turn | `+mo` mordent (with line: main, lower neighbour, main), `+mi` inverted mordent (upper neighbour), `+tu` turn, `+ti` inverted turn; notes only, after any trill and before `+fm` | `e5:4+tu` |
+| Mordent, turn | `+mo` mordent (with line: main, lower neighbor, main), `+mi` inverted mordent (upper neighbor), `+tu` turn, `+ti` inverted turn; notes only, after any trill and before `+fm` | `e5:4+tu` |
 | Trill, fermata | `+tr` (trill mark, notes only; `+tr#`, `+tr=`, `+trb` add a small sharp, natural or flat above it for the upper note; without one, playback uses the upper note of the key) and `+fm` (fermata, notes and rests) after the note, after any articulations; `+fms` short and `+fml` long fermata, `_` after it puts it below (`+fm_`, `+fms_`) | `c5:4->+tr+fm`, `r+fm`, `g4:2+fml_` |
 | Lyrics | a quoted syllable after the note (after any `+tr`/`+fm`). A leading `-` joins it to the previous syllable of the word, a trailing `-` to the next one (`"Ly-"` `"-ri-"` `"-cs"`; `"word"` is a whole word). `v2` before the quote is verse 2 (verse 1 is the default), `_` after it an extender line (melisma). Notes only | `c5:4"Hel-" d5"-lo"v2"-ld"_` |
 | Arpeggio | `\arp` before a chord | `\arp <c3 g3 e4>:8` |
@@ -80,7 +80,7 @@ beam covers the whole group; `bracket`/`nobracket` override that. The importer w
 
 | Mark | Syntax |
 |---|---|
-| Dynamics | `\pppp \ppp \pp \p \mp \mf \f \ff \fff \ffff \sf \sfz \fp \rfz ...`; `^`/`_` forces above/below, `=` puts it between the staves (centred in the gap; below the upper staff or above the lower one) |
+| Dynamics | `\pppp \ppp \pp \p \mp \mf \f \ff \fff \ffff \sf \sfz \fp \rfz ...`; `^`/`_` forces above/below, `=` puts it between the staves (centered in the gap; below the upper staff or above the lower one) |
 | Hairpin | `\<` crescendo, `\>` diminuendo, `\!` end. With a number to overlap: `\<2` ... `\!2`. Optional `^`/`_` |
 | Trill line | `\trill` starts the `tr` sign and wavy line, `\trilloff` ends it (may span measures); every note under the line is trilled in playback. The note needs no `+tr` |
 | Pedal | `\ped` press, `\unped` release (a change is `\unped \ped`) |

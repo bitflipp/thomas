@@ -179,7 +179,7 @@ export function placeStaves(ctx: SysCtx): void {
     ctx.staffY[s] = ctx.staffY[s - 1] + STAFF_HEIGHT + gap;
   }
   for (let s = 0; s + 1 < nStaves; s++) alignDynamicsBetween(ctx, s);
-  for (let s = 0; s + 1 < nStaves; s++) centreBetweenMarks(ctx, s);
+  for (let s = 0; s + 1 < nStaves; s++) centerBetweenMarks(ctx, s);
 }
 
 /** Whether a primitive belongs to a mark that sits between the staves. */
@@ -247,9 +247,9 @@ function verticalSpan(p: Prim): [number, number] {
   return [0, 0];
 }
 
-interface CentrePlan {
+interface CenterPlan {
   marks: Prim[];
-  /** The range of moves that keep the marks clear of the content, and the move that centres them. */
+  /** The range of moves that keep the marks clear of the content, and the move that centers them. */
   dyMin: number;
   dyMax: number;
   dy: number;
@@ -263,13 +263,13 @@ interface CentrePlan {
  * between staff s and s+1. Content in the way of the move (what hangs into the gap, other marks of the staves)
  * limits it; a mark with content on both sides is left alone.
  */
-function planCentre(
+function planCenter(
   ctx: SysCtx,
   s: number,
   owner: number,
   first: Prim[],
   sameSide: (p: Prim) => boolean,
-): CentrePlan | undefined {
+): CenterPlan | undefined {
   if (!first.length) return;
   const marks = [...first, ...attachedMarks(ctx, owner, first, sameSide)]; // The attached marks move along, so they are limited by the content too.
   const moving = new Set(marks.map((p) => p.o));
@@ -338,19 +338,19 @@ function attachedMarks(ctx: SysCtx, owner: number, marks: Prim[], sameSide: (p: 
 }
 
 /**
- * Centres the `between` dynamics and hairpins of staves `s` and `s+1` in the free space of the gap; two rows that
+ * Centers the `between` dynamics and hairpins of staves `s` and `s+1` in the free space of the gap; two rows that
  * both fit share one line.
  */
-function centreBetweenMarks(ctx: SysCtx, s: number): void {
+function centerBetweenMarks(ctx: SysCtx, s: number): void {
   const plans = [
-    planCentre(
+    planCenter(
       ctx,
       s,
       s,
       ctx.prims[s].filter((p) => isBetweenMark(p) && must(p.a) > STAFF_HEIGHT),
       (p) => must(p.a) > STAFF_HEIGHT,
     ),
-    planCentre(
+    planCenter(
       ctx,
       s,
       s + 1,
@@ -358,7 +358,7 @@ function centreBetweenMarks(ctx: SysCtx, s: number): void {
       (p) => must(p.a) < 0,
     ),
   ].filter((p) => p !== undefined);
-  // Both rows sit on one line when the content allows it: the line nearest to where each would be centred alone.
+  // Both rows sit on one line when the content allows it: the line nearest to where each would be centered alone.
   if (plans.length === 2) {
     const [a, b] = plans;
     const lo = Math.max(a.mid + a.dyMin, b.mid + b.dyMin);

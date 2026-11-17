@@ -1,4 +1,4 @@
-// Core score model. The model (plain JSON-serialisable data) is the source of truth; the text format
+// Core score model. The model (plain JSON-serializable data) is the source of truth; the text format
 // (textformat.ts) and the MusicXML importer produce and consume it, the engraver and playback read it,
 // and the editor changes it only through pure functions (src/editor/commands.ts).
 //
@@ -78,7 +78,7 @@ export interface EventBase {
 export interface Syllable {
   verse: number; // This is the verse number, from 1.
   text: string;
-  /** Whether the syllable is a whole word or joins its neighbours with a hyphen (`begin`: more follows, `end`: the last of a word). */
+  /** Whether the syllable is a whole word or joins its neighbors with a hyphen (`begin`: more follows, `end`: the last of a word). */
   syllabic: 'single' | 'begin' | 'middle' | 'end';
   extend?: boolean; // An extender line follows the syllable (a melisma over the next notes).
 }
@@ -94,7 +94,7 @@ export interface NoteEvent extends EventBase {
   trillAcc?: -1 | 0 | 1; // The alteration of the trill's upper note, shown as a small accidental above the mark (flat, natural, sharp); absent: none shown, a whole tone up.
   lyrics?: Syllable[]; // These are the syllables sung on this note, one per verse, in ascending verse order.
   graces?: Grace[]; // These are the grace notes in front of this note, in playing order.
-  noBeam?: boolean; // The note stays unbeamed although the automatic beaming would join it to its neighbours.
+  noBeam?: boolean; // The note stays unbeamed although the automatic beaming would join it to its neighbors.
 }
 
 export type RestStyle = 'normal' | 'hidden' | 'measure'; // A hidden rest is a spacer, and a measure rest is a whole-measure rest (its `dur` is informational).
@@ -146,7 +146,7 @@ export interface Voice {
   end?: MarkBody[];
 }
 
-/** A mordent or turn: `mordent` has the vertical line (main, lower neighbour, main), `mordent-inverted` has none (main, upper neighbour, main); a `turn` plays upper, main, lower, main and an inverted one lower, main, upper, main. */
+/** A mordent or turn: `mordent` has the vertical line (main, lower neighbor, main), `mordent-inverted` has none (main, upper neighbor, main); a `turn` plays upper, main, lower, main and an inverted one lower, main, upper, main. */
 export type Ornament = 'mordent' | 'mordent-inverted' | 'turn' | 'turn-inverted';
 
 /** A fermata's shape besides the normal round one: short (angled, MusicXML `angled`) and long (square). */
@@ -154,7 +154,7 @@ export type FermataShape = 'short' | 'long';
 
 export type Placement = 'above' | 'below';
 
-/** Dynamics, hairpins and text can also sit `between` their staff and its neighbour (below the upper one, above the lower one), centred in the gap: for piano parts, where one dynamic serves both hands. */
+/** Dynamics, hairpins and text can also sit `between` their staff and its neighbor (below the upper one, above the lower one), centered in the gap: for piano parts, where one dynamic serves both hands. */
 export type MarkPlacement = Placement | 'between';
 
 export type MarkBody =
@@ -208,7 +208,7 @@ export interface Measure {
   repeatStart?: true;
   /**
    * The volta (first, second ending ...) the measure belongs to: the numbers of the passes it is played
-   * in. Neighbouring measures with the same numbers share one bracket, which is closed at the right
+   * in. Neighboring measures with the same numbers share one bracket, which is closed at the right
    * (a hook) when the last of them ends in a repeat sign.
    */
   ending?: number[];
@@ -234,11 +234,11 @@ export interface Meta {
 }
 
 export interface PageSetup {
-  /** Page size and margin in millimetres. */
+  /** Page size and margin in millimeters. */
   width: number;
   height: number;
   margin: number;
-  /** Millimetres per staff space: the global engraving scale. */
+  /** Millimeters per staff space: the global engraving scale. */
   staffSpace: number;
   /** Undefined: number the first measure of every system but the first. */
   measureNumbers?: 'all' | 'none';
