@@ -14,6 +14,8 @@ import { computed, signal } from '@preact/signals';
 
 import type { ParallelGroup } from '../src/analysis/parallels.ts';
 import { findParallels } from '../src/analysis/parallels.ts';
+import type { PedalMode } from '../src/analysis/playability.ts';
+import { DEFAULT_PLAY, findPlayability, requiredSpan } from '../src/analysis/playability.ts';
 import type { Ref } from '../src/editor/addr.ts';
 import { eventOf, refKey } from '../src/editor/addr.ts';
 import { PPQ } from '../src/model.ts';
@@ -23,8 +25,10 @@ import { score } from './state.ts';
 export interface Finding {
   /** The id of the layer that found it. */
   layer: string;
-  /** What was found, such as "fifths + octaves". */
+  /** What was found, in a few words, such as "fifths + octaves". */
   label: string;
+  /** A longer explanation, shown as a tooltip. */
+  detail?: string;
   /** The voices involved, such as "rh.1 + lh.1". */
   voices: string;
   /** The measure and the tick in it where the finding starts. */
@@ -32,6 +36,8 @@ export interface Finding {
   tick: number;
   /** The notes involved, as head refs. */
   refs: Ref[];
+  /** An error is drawn in red, a warning in orange. */
+  severity: 'error' | 'warn';
 }
 
 /** A layer: a switch, a title, and the findings it contributes while the switch is on. */
@@ -72,8 +78,48 @@ const parallelFindings = computed<Finding[]>(() => {
     mi: g.mi,
     tick: g.tick,
     refs: g.notes.map((n) => ({ t: 'ev', ...n.ev, pi: n.pi })),
+    severity: 'error' as const,
   }));
 });
+
+// The playability layer: spans, leaps and note counts that the hands cannot manage, with the hand size and pedal setting.
+
+/** The hand sizes to choose from: the widest span of one hand in semitones, thumb to little finger. */
+export const HAND_SIZES = [
+  { value: 12, label: 'Small (octave)' },
+  { value: 14, label: 'Medium (9th)' },
+  { value: 16, label: 'Large (10th)' },
+  { value: 19, label: 'Very large (12th)' },
+];
+
+/** The widest span of one hand the layer allows, in semitones. */
+export const handSpan = signal(DEFAULT_PLAY.maxSpan);
+
+/** Whether the sustain pedal is assumed to carry held notes. */
+export const pedalMode = signal<PedalMode>(DEFAULT_PLAY.pedal);
+
+const playabilityOn = signal(false);
+
+/** The voices column of a playability finding: the hand, where known. */
+const handName = (h: 'L' | 'R' | undefined): string => (h === 'L' ? 'left hand' : h === 'R' ? 'right hand' : '');
+
+/** The playability findings of the score as findings. */
+const playabilityFindings = computed<Finding[]>(() => {
+  if (!playabilityOn.value) return [];
+  return findPlayability(score.value, { maxSpan: handSpan.value, pedal: pedalMode.value }).map((f) => ({
+    layer: 'playability',
+    label: f.title,
+    detail: f.message,
+    voices: handName(f.hand),
+    mi: f.mi,
+    tick: f.tick,
+    refs: f.notes.map((n) => ({ t: 'ev', ...n.ev, pi: n.pi })),
+    severity: f.severity,
+  }));
+});
+
+/** The widest span the piece needs, in semitones, or null when no span helps; read only while the Layers menu shows it. */
+export const spanNeeded = computed(() => requiredSpan(score.value, pedalMode.value));
 
 /** All layers, in the order of the Layers menu. */
 export const layers: Layer[] = [
@@ -83,6 +129,13 @@ export const layers: Layer[] = [
     title: 'Consecutive fifths and octaves',
     on: parallelsOn,
     findings: parallelFindings,
+  },
+  {
+    id: 'playability',
+    label: 'Playability',
+    title: 'Chords, spans and leaps that two hands cannot manage',
+    on: playabilityOn,
+    findings: playabilityFindings,
   },
 ];
 
@@ -94,19 +147,26 @@ export const findings = computed<Finding[]>(() =>
 /** Whether any layer is on. */
 export const anyLayerOn = computed(() => layers.some((l) => l.on.value));
 
-/** The notes in `findings` as `refKey`s: the heads, and the events all of whose heads are involved (which are drawn whole). */
+/** The notes in `findings` as `refKey`s with their severity (an error wins over a warning): the heads, and the events all of whose heads are involved (which are drawn whole). */
 export const layerNotes = computed(() => {
-  const heads = new Set<string>();
-  const wholeEvents = new Set<string>();
+  const heads = new Map<string, Finding['severity']>();
+  const wholeEvents = new Map<string, Finding['severity']>();
   const all = findings.value;
-  for (const f of all) for (const r of f.refs) heads.add(refKey(r));
+  const put = (m: Map<string, Finding['severity']>, k: string, sev: Finding['severity']) => {
+    if (m.get(k) !== 'error') m.set(k, sev);
+  };
+  for (const f of all) for (const r of f.refs) put(heads, refKey(r), f.severity);
   const sc = score.value;
   for (const f of all)
     for (const r of f.refs) {
       if (r.t !== 'ev') continue;
       const e = eventOf(sc, r);
       if (e?.kind === 'note' && e.pitches.every((_, pi) => heads.has(refKey({ ...r, pi }))))
-        wholeEvents.add(refKey({ ...r, pi: undefined }));
+        put(
+          wholeEvents,
+          refKey({ ...r, pi: undefined }),
+          e.pitches.some((_, pi) => heads.get(refKey({ ...r, pi })) === 'error') ? 'error' : 'warn',
+        );
     }
   return { heads, wholeEvents };
 });

@@ -95,8 +95,8 @@ export function FindingsControl() {
             <ol>
               {all.map((f, i) => (
                 <li>
-                  <button type="button" class={i === cur ? 'on' : ''} onClick={() => goTo(f)}>
-                    <span class="num">{i + 1}</span>
+                  <button type="button" class={i === cur ? 'on' : ''} title={f.detail} onClick={() => goTo(f)}>
+                    <span class={`num ${f.severity}`}>{i + 1}</span>
                     <span>
                       {f.label}
                       <span class="ctx">

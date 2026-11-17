@@ -4,9 +4,11 @@
 
 import { signal } from '@preact/signals';
 import type { JSX } from 'preact';
+import type { PedalMode } from '../src/analysis/playability.ts';
+import { spanName } from '../src/analysis/playability.ts';
 import { Dropdown } from './Dropdown.tsx';
 import type { ParallelKindChoice } from './layers.ts';
-import { layers, parallelKinds } from './layers.ts';
+import { HAND_SIZES, handSpan, layers, parallelKinds, pedalMode, spanNeeded } from './layers.ts';
 
 /** Whether the menu is open. */
 export const layersOpen = signal(false);
@@ -25,6 +27,36 @@ const SETTINGS: Record<string, () => JSX.Element> = {
       title="Which parallel intervals to mark"
     />
   ),
+  playability: () => {
+    const need = spanNeeded.value;
+    return (
+      <>
+        <Dropdown<number>
+          value={handSpan.value}
+          opts={HAND_SIZES}
+          onChange={(v) => (handSpan.value = v)}
+          title="The widest span of one hand (thumb to little finger) the check allows; the default stays below what most adults reach"
+        />
+        <Dropdown<PedalMode>
+          value={pedalMode.value}
+          opts={[
+            { value: 'assumed', label: 'Pedal assumed' },
+            { value: 'explicit', label: 'Pedal as marked' },
+            { value: 'never', label: 'No pedal' },
+          ]}
+          onChange={(v) => (pedalMode.value = v)}
+          title="Whether the sustain pedal can carry notes that the fingers would otherwise have to hold"
+        />
+        <span class="ctx">
+          {need === null
+            ? 'No span helps this piece'
+            : need === 0
+              ? 'No stretch needed'
+              : `The piece needs a span of a ${spanName(need)}`}
+        </span>
+      </>
+    );
+  },
 };
 
 /** The "Layers" button and its popover. */

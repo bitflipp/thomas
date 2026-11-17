@@ -111,7 +111,7 @@ function fermataSpans(score: Score, measureStart: number[]): [number, number, nu
  * Tempo map: a list of segments of constant seconds-per-tick, starting at 120 bpm (quarter) until the
  * first tempo mark. A mark at the same tick as the previous one replaces it.
  */
-function tempoMap(score: Score, measureStart: number[]): Pick<Sequence, 'tickToSec' | 'secToTick'> {
+export function tempoMap(score: Score, measureStart: number[]): Pick<Sequence, 'tickToSec' | 'secToTick'> {
   const tempi: { tick: number; spt: number }[] = [{ tick: 0, spt: 60 / 120 / PPQ }];
   score.measures.forEach((m, mi) => {
     for (const st of Object.values(m.staves))

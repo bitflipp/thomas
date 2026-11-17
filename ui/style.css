@@ -616,6 +616,9 @@ button.mini {
 .findings button.on {
   border-color: var(--accent);
 }
+.findings .num.warn {
+  color: #e08a00;
+}
 .findings .num {
   font-variant-numeric: tabular-nums;
   min-width: 2ch;
