@@ -157,3 +157,14 @@ test('the fingering of a triad is 1-3-5 in the right hand and 5-3-1 up the keys 
     [5, 3, 1],
   );
 });
+
+test('the third finger over the thumb in a fast left-hand scale is not awkward', () => {
+  // D major up the left hand at 180 bpm in sixteenths (83 ms): the 3 crosses over the thumb on A, as in every scale.
+  const s = score(['rh.1: R:1', 'lh.1: \\tempo 4=180 d3:16 e3 f#3 g3 a3 b3 c#4 d4 r:8 r:4 r:2']);
+  const a = analyzePlayability(s);
+  assert.deepEqual(
+    a.fingers.map((f) => f.finger),
+    [5, 4, 3, 2, 1, 3, 2, 1],
+  );
+  assert.deepEqual(a.findings, []);
+});

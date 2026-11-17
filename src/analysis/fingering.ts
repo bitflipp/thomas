@@ -153,9 +153,11 @@ function pairCost(p1: number, f1: number, p2: number, f2: number, sec: number, d
   const thumb = outward ? f2 === 1 : f1 === 1;
   const other = outward ? f1 : f2;
   if (!thumb) return { cost: 6 * hurry, why: 'change of hand position' };
-  const crossing = other === 5 ? 4 : other === 2 ? 2.5 : 1.5;
   const onBlack = isBlack(outward ? p2 : p1) ? 1 : 0;
-  return { cost: (crossing + onBlack) * hurry, why: 'thumb crossing' };
+  // The thumb under the third or fourth finger, or those over the thumb, is the crossing of every scale: it costs
+  // the same at any speed. Under the index finger or the little finger it is hard, and harder the faster it goes.
+  if (other === 3 || other === 4) return { cost: 1.5 + onBlack, why: 'thumb crossing' };
+  return { cost: ((other === 5 ? 4 : 2) + onBlack) * hurry, why: 'thumb crossing' };
 }
 
 /** The cost of the move between two steps that are not both single notes: a little for how far the hand moves (the speed of a long move is judged by the check of the hands). */
