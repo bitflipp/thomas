@@ -378,7 +378,7 @@ function linkTremoloPairs(v: VoiceL): void {
 /**
  * Stem directions (`decideDir`): a beam group or tremolo pair shares one direction; with several
  * voices on a staff the first points up and the others down; a lone voice goes by which side of the
- * middle line its heads are farther from. An explicit `stem` on the event overrides afterwards.
+ * middle line its heads are farther from. An explicit `stem` on the event overrides afterward.
  */
 function decideStems(v: VoiceL): void {
   const decidedBeams = new Set<BeamL>();

@@ -832,7 +832,8 @@ kbd {
   align-items: center;
   gap: var(--sp-2);
 }
-.popover input[type="checkbox"] {
+.popover input[type="checkbox"],
+.popover input[type="radio"] {
   margin: 0;
 }
 

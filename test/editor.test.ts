@@ -308,7 +308,7 @@ test('a line drawn from note to note hangs on those events (a stop goes before t
   );
   s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, c4); // The voice is a quarter, a quarter and a half rest.
   s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 2 }, { ...loc, idx: 2 })); // The span ends on the last event of the voice.
-  s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 1 }, { ...loc, idx: 0 })); // The span is drawn backwards and ends where the first one starts.
+  s = ok(C.addSpanOver(s, 'pedal', { ...loc, idx: 1 }, { ...loc, idx: 0 })); // The span is drawn backward and ends where the first one starts.
   const m = marksOf(s.measures[0].staves.rh).map((x) => `${x.type === 'stop' ? 'stop' : x.type}@${x.tick}`);
   assert.deepEqual(m, ['pedal@0', `stop@${2 * PPQ4}`, `pedal@${2 * PPQ4}`, `stop@${4 * PPQ4}`]);
   assert.throws(() => C.addSpanOver(s, 'cresc', { ...loc, idx: 0 }, { ...loc, staff: 'lh', idx: 0 }), /one staff/);

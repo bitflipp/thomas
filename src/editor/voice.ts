@@ -99,7 +99,7 @@ function overwrite(items: Item[], t0: number, t1: number, insert: Item[]): Item[
   const flat: Item[] = [];
   let pos = 0;
   // Explicit beam groups touched by the edit dissolve into their members (automatic beaming
-  // applies afterwards), because a group with a changed member is no longer what was written.
+  // applies afterward), because a group with a changed member is no longer what was written.
   for (const it of items) {
     const len = itemTicks(it);
     if (isBeam(it) && pos < t1 && pos + len > t0) flat.push(...it.items);

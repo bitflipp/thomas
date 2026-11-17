@@ -456,7 +456,7 @@ function stackAccidentals(heads: { h: HeadL; e: EvL }[]): number {
     return right;
   });
   info.forEach((it, idx) => {
-    it.head.accX = colRight[colOf[idx]] - it.w; // This is the left edge of the (possibly parenthesised) glyph.
+    it.head.accX = colRight[colOf[idx]] - it.w; // This is the left edge of the (possibly parenthesized) glyph.
   });
   return -(edge + ACCIDENTAL_GAP);
 }

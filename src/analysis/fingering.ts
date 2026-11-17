@@ -78,6 +78,7 @@ const isBlack = (midi: number): boolean => BLACK.has(((midi % 12) + 12) % 12);
 
 /** The ways to choose `k` of the fingers 1 to 5, each in ascending order. */
 const COMBOS: number[][][] = [[[]], [], [], [], [], []];
+
 for (let k = 1; k <= 5; k++) {
   const out: number[][] = [];
   const walk = (from: number, acc: number[]) => {

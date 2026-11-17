@@ -8,7 +8,7 @@ import { signal } from '@preact/signals';
 import { refKey } from '../src/editor/addr.ts';
 import { reveal, select } from './interact.ts';
 import type { Finding } from './layers.ts';
-import { anyLayerOn, findings, layers, placeOf } from './layers.ts';
+import { activeLayer, anyLayerOn, findings, layers, placeOf } from './layers.ts';
 import { say, selection } from './state.ts';
 
 /** Whether the list of findings is open. */
@@ -37,15 +37,10 @@ function step(dir: 1 | -1): void {
   goTo(all[cur < 0 ? (dir > 0 ? 0 : all.length - 1) : (cur + dir + all.length) % all.length]);
 }
 
-/** Steps through the findings from the keyboard (F8 / Shift+F8), turning the first layer on if none is. */
+/** Steps through the findings from the keyboard (F8 / Shift+F8), choosing the first layer if none is. */
 export function stepFindings(dir: 1 | -1): void {
-  if (!anyLayerOn.peek()) layers[0].on.value = true;
+  if (!anyLayerOn.peek()) activeLayer.value = layers[0].id;
   step(dir);
-}
-
-/** The layer's menu label, for the list. */
-function layerLabel(id: string): string {
-  return layers.find((l) => l.id === id)?.label ?? id;
 }
 
 /** The text of the middle button: the current finding with its label, place and voices, else how many there are and of which kinds. */
@@ -67,9 +62,8 @@ export function FindingsControl() {
   const text = summary(all, cur);
   // Every text the button can show, stacked in one grid cell, so that it is always as wide as the longest and the next button stays put.
   const texts = [...new Set([summary(all, -1), ...all.map((_, i) => summary(all, i))])];
-  const several = layers.filter((l) => l.on.value).length > 1;
   return (
-    <div class="findingsmenu seg" title="Findings of the layers that are on">
+    <div class="findingsmenu seg" title="Findings of the chosen layer">
       <button type="button" disabled={!n} title="Previous finding (Shift+F8)" onClick={() => step(-1)}>
         ‹
       </button>
@@ -102,7 +96,6 @@ export function FindingsControl() {
                       <span class="ctx">
                         {' '}
                         · {placeOf(f)} · {f.voices}
-                        {several && ` · ${layerLabel(f.layer)}`}
                       </span>
                     </span>
                   </button>

@@ -7,7 +7,7 @@
 // the hand can get there in the time between the attacks. The staves only act as a prior (a note taken by the
 // other hand costs a little, and a note can be pinned to a hand), so music with crossings or both hands on one
 // staff is judged by what the hands could do, not by how it is written. Where no division is possible the findings are errors; where the best
-// path still stretches or hurries, or its fingering (`fingering.ts`, worked out per hand afterwards) is awkward,
+// path still stretches or hurries, or its fingering (`fingering.ts`, worked out per hand afterward) is awkward,
 // they are warnings. Nothing here draws anything: the editor lists and
 // colors the notes of the findings (`ui/`), and `thomas check --playability` prints them.
 //

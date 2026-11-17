@@ -183,7 +183,7 @@ function trimLedgers(ctx: SysCtx): void {
       a.x1 -= ta2;
       b.x0 += tb;
       // No room for a gap (heads nearly on top of each other): merge the two lines into one.
-      // The second segment is marked dead (NaN) and removed afterwards.
+      // The second segment is marked dead (NaN) and removed afterward.
       if (b.x0 < a.x1 + GAP / 2) {
         a.x1 = Math.max(a.x1, b.x1);
         a.merged = true;

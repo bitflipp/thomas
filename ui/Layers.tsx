@@ -1,4 +1,4 @@
-// The Layers menu of the toolbar: one checkbox per layer (see `layers.ts`) and the settings of the layers that are on.
+// The Layers menu of the toolbar: one radio button per layer (see `layers.ts`; one layer or none is chosen) and the settings of the chosen layer.
 //
 // Layers are analyses that point at places in the score; display options such as voice colors are in the View menu.
 
@@ -7,9 +7,19 @@ import type { PedalMode } from '../src/analysis/playability.ts';
 import { spanName } from '../src/analysis/playability.ts';
 import { Dropdown } from './Dropdown.tsx';
 import type { ParallelKindChoice } from './layers.ts';
-import { HAND_SIZES, handSpan, layers, layersOpen, parallelKinds, pedalMode, spanNeeded } from './layers.ts';
 
-/** The settings of each layer, shown under its checkbox while it is on. */
+import {
+  activeLayer,
+  HAND_SIZES,
+  handSpan,
+  layers,
+  layersOpen,
+  parallelKinds,
+  pedalMode,
+  spanNeeded,
+} from './layers.ts';
+
+/** The settings of each layer, shown under its radio button while it is chosen. */
 const SETTINGS: Record<string, () => JSX.Element> = {
   parallels: () => (
     <Dropdown<ParallelKindChoice>
@@ -66,14 +76,21 @@ export function LayersMenu() {
       </button>
       {layersOpen.value && (
         <div class="popover">
+          <div class="layer">
+            <label>
+              <input
+                type="radio"
+                name="layer"
+                checked={activeLayer.value === null}
+                onChange={() => (activeLayer.value = null)}
+              />{' '}
+              Off
+            </label>
+          </div>
           {layers.map((l) => (
             <div class="layer" key={l.id}>
               <label title={l.title}>
-                <input
-                  type="checkbox"
-                  checked={l.on.value}
-                  onChange={(e) => (l.on.value = (e.target as HTMLInputElement).checked)}
-                />{' '}
+                <input type="radio" name="layer" checked={l.on.value} onChange={() => (activeLayer.value = l.id)} />{' '}
                 {l.label}
               </label>
               {l.on.value && SETTINGS[l.id]?.()}

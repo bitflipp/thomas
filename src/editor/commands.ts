@@ -65,7 +65,7 @@ export interface Loc {
 }
 
 // Shared plumbing of the commands below: `edit` runs a recipe on an Immer draft and re-establishes
-// the model's invariants afterwards, and the helpers locate voices, events and measures by address.
+// the model's invariants afterward, and the helpers locate voices, events and measures by address.
 
 /** Runs `fn` on a draft of the score and tidies what it touched (`tidy` re-establishes the invariants). Returns the same score if nothing changed. */
 function edit(score: Score, fn: (d: Draft<Score>) => void): Score {

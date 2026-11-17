@@ -13,7 +13,7 @@ import { evRefs, graceRefs, sameSystem } from './interact.ts';
 import { acc, commit, dots, dur, hit, run, say, score, selection } from './state.ts';
 
 /**
- * Orders event addresses from the end of the score backwards, so that edits applied in this order keep earlier
+ * Orders event addresses from the end of the score backward, so that edits applied in this order keep earlier
  * indices valid.
  */
 const sortedDesc = (a: EvAddr, b: EvAddr) =>

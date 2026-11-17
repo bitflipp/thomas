@@ -27,7 +27,7 @@ const ROWS: [string, string][] = [
   ['Delete', 'Notes become rests; marks, slurs, tuplets are removed'],
   ['Space', 'Play / stop (resumes where it stopped)'],
   ['Home', 'Playhead back to the start'],
-  ['F8 / Shift F8', 'Next / previous finding of the Layers that are on (turns the first layer on if none is)'],
+  ['F8 / Shift F8', 'Next / previous finding of the chosen layer (chooses the first layer if none is)'],
   ['Alt + click (select)', 'Put the playhead there'],
   ['Ctrl Z / Ctrl Shift Z', 'Undo / redo'],
   [

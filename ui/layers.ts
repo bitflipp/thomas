@@ -1,9 +1,10 @@
 // Layers: analyses that look at the score and point at places in it (consecutive fifths, playability, the hands).
 //
-// A layer is switched on in the toolbar's Layers menu and then contributes `Finding`s: places in the score with a
+// One layer at a time is chosen in the toolbar's Layers menu (`activeLayer`: the layers are independent analyses, and
+// one at a time lets them share colors) and then contributes `Finding`s: places in the score with a
 // short label and the notes involved (a layer can also just color notes, like the hands). Everything that shows
 // findings is written against this one shape: the notes are drawn in the color of their severity by the score pane (`layerNotes`), the stepper in `Findings.tsx` walks
-// through all findings of the layers that are on, and the Overview strip marks their measures. Display options
+// through the findings of the chosen layer, and the Overview strip marks their measures. Display options
 // that do not analyze anything (voice colors, ...) stay in the View menu.
 //
 // A layer's findings are a pure function of the score and its settings (a computed signal), so they follow edits
@@ -41,14 +42,15 @@ export interface Finding {
   severity: 'error' | 'warn';
 }
 
-/** A layer: a switch, a title, and the findings it contributes while the switch is on. */
+/** A layer: a title, and the findings it contributes while it is the chosen one. */
 export interface Layer {
   id: string;
   /** The name in the Layers menu. */
   label: string;
   /** The tooltip of the menu entry. */
   title: string;
-  on: ReadonlySignal<boolean> & { value: boolean };
+  /** Whether this is the chosen layer. */
+  on: ReadonlySignal<boolean>;
   /** The findings, in score order; empty while the layer is off. */
   findings: ReadonlySignal<Finding[]>;
   /** Whether the layer only colors notes and has no findings to step through. */
@@ -63,7 +65,10 @@ export type ParallelKindChoice = 'both' | 'fifths' | 'octaves';
 /** The intervals the parallels layer looks for: both, or only fifths or only octaves. */
 export const parallelKinds = signal<ParallelKindChoice>('both');
 
-const parallelsOn = signal(false);
+/** The id of the chosen layer, or null for none. */
+export const activeLayer = signal<string | null>(null);
+
+const parallelsOn = computed(() => activeLayer.value === 'parallels');
 
 /** The voices in the group, such as "rh.1 + lh.1". */
 function voicesOf(g: ParallelGroup): string {
@@ -101,9 +106,9 @@ export const handSpan = signal(DEFAULT_PLAY.maxSpan);
 /** Whether the sustain pedal is assumed to carry held notes. */
 export const pedalMode = signal<PedalMode>(DEFAULT_PLAY.pedal);
 
-const playabilityOn = signal(false);
+const playabilityOn = computed(() => activeLayer.value === 'playability');
 
-const handsOn = signal(false);
+const handsOn = computed(() => activeLayer.value === 'hands');
 
 /** The voices column of a playability finding: the hand, where known. */
 const handName = (h: 'L' | 'R' | undefined): string => (h === 'L' ? 'left hand' : h === 'R' ? 'right hand' : '');
@@ -202,7 +207,7 @@ export const findings = computed<Finding[]>(() =>
   layers.flatMap((l) => l.findings.value).sort((a, b) => a.mi - b.mi || a.tick - b.tick),
 );
 
-/** Whether any layer with findings is on. */
+/** Whether the chosen layer has findings to step through. */
 export const anyLayerOn = computed(() => layers.some((l) => l.on.value && !l.paintOnly));
 
 /** The colors the layers paint notes with: errors, warnings, and the two hands. */
