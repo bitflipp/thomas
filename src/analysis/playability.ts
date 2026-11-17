@@ -94,8 +94,8 @@ const LEAP_MS_PER_SEMITONE = 5;
 /** A leap that uses more than this share of the time there is is a warning. */
 const LEAP_WARN = 0.7;
 
-/** The cost of a note in the staff of the other hand. */
-const PRIOR_COST = 1;
+/** The cost of a note in the staff of the other hand: more than a hard leap costs, so that a figure written for one hand stays in it unless it cannot be played that way. */
+const PRIOR_COST = 4;
 
 /** The cost of hands that interleave (the left hand's top note above the right hand's bottom note). */
 const CROSS_COST = 3;

@@ -139,7 +139,12 @@ function pairCost(p1: number, f1: number, p2: number, f2: number, sec: number, d
   if (size > limit) return { cost: 0.5, why: 'leap' };
   const hurry = 1 + (Math.max(0, FAST - sec) / FAST) * 1.5;
   if (size === 0) return { cost: f1 === f2 ? (sec < 0.09 ? 2 : 0) : 0.3, why: 'fast repeated finger' };
-  if (f1 === f2) return { cost: (size <= 1 ? 0.5 : 1 + 0.3 * size) * hurry, why: 'change of hand position' };
+  // The same finger on two different keys is a slide, fine over a semitone and rare over a tone; over more it is a jump of the whole hand, which no legato figure uses.
+  if (f1 === f2)
+    return {
+      cost: (size <= 1 ? 0.5 : size === 2 ? 1.5 : 3 + 0.3 * size) * hurry,
+      why: 'same finger on different keys',
+    };
   const outward = d > 0;
   if (outward === f2 > f1) {
     // The fingers go the way the notes go: only the stretch counts, and fingers far apart on close notes.

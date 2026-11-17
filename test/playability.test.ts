@@ -168,3 +168,15 @@ test('the third finger over the thumb in a fast left-hand scale is not awkward',
   );
   assert.deepEqual(a.findings, []);
 });
+
+test('a left-hand arpeggio with a wide leap back down stays in the left hand', () => {
+  // Eb2 Bb2 Eb3 G3 repeated: handing the G to the right hand would save a leap, but nobody plays it that way.
+  const s = score(['rh.1: R:1', 'lh.1: eb3:16 bb3 g3 eb3 eb2 bb2 eb3 g3 eb2 bb2 eb3 g3 eb2 bb2 eb3 g3']);
+  assert.ok(analyzePlayability(s).hands.every((h) => h.hand === 'L'));
+});
+
+test('no legato figure repeats a finger on different keys', () => {
+  const s = score(['rh.1: R:1', 'lh.1: eb3:16 bb3 g3 eb3 eb2 bb2 eb3 g3 eb2 bb2 eb3 g3 eb2 bb2 eb3 g3']);
+  const fingers = analyzePlayability(s).fingers.map((f) => f.finger);
+  fingers.slice(1).forEach((f, i) => assert.notEqual(f, fingers[i], `notes ${i} and ${i + 1}`));
+});
