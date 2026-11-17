@@ -178,5 +178,39 @@ test('a left-hand arpeggio with a wide leap back down stays in the left hand', (
 test('no legato figure repeats a finger on different keys', () => {
   const s = score(['rh.1: R:1', 'lh.1: eb3:16 bb3 g3 eb3 eb2 bb2 eb3 g3 eb2 bb2 eb3 g3 eb2 bb2 eb3 g3']);
   const fingers = analyzePlayability(s).fingers.map((f) => f.finger);
-  fingers.slice(1).forEach((f, i) => assert.notEqual(f, fingers[i], `notes ${i} and ${i + 1}`));
+  for (let i = 1; i < fingers.length; i++) assert.notEqual(fingers[i], fingers[i - 1], `notes ${i - 1} and ${i}`);
+});
+
+test('steps of the other hand between two notes do not free the hand from the move between them', () => {
+  // The right hand attacks between every two left-hand notes (a thirty-second later), so the left hand never has two attacks in a row.
+  const text = `page 210x297 margin=10 space=1.75
+staff rh clef=F4
+staff lh clef=F4
+brace rh lh
+
+m1 time=2/4
+  rh.1: r:32 c5:16 c5 c5 c5 c5 c5 c5 r:32
+  lh.1: eb2:16 bb2 eb3 g3 eb2 bb2 eb3 g3
+`;
+  const a = analyzePlayability(parseText(text));
+  assert.ok(a.hands.filter((h) => h.ev.staff === 'lh').every((h) => h.hand === 'L'));
+  const fingers = a.fingers.filter((f) => f.ev.staff === 'lh').map((f) => f.finger);
+  for (let i = 1; i < fingers.length; i++) assert.notEqual(fingers[i], fingers[i - 1], `notes ${i - 1} and ${i}`);
+});
+
+test("a leap is timed from the hand's own last attack, however many steps of the other hand lie between", () => {
+  // The left hand leaps two octaves down in a sixteenth; a right-hand attack in between must not hide it.
+  const text = (rh: string) => `page 210x297 margin=10 space=1.75
+staff rh clef=G2
+staff lh clef=F4
+brace rh lh
+
+m1 time=2/4
+  rh.1: ${rh}
+  lh.1: <c3 g3 c4>:16 <c1 g1 c2>:16 r:4
+`;
+  const plain = kinds(findPlayability(parseText(text('r:4 r:4'))));
+  const between = kinds(findPlayability(parseText(text('r:32 c5:32 r:16 r:4'))));
+  assert.deepEqual(plain, ['warn/leap']);
+  assert.deepEqual(between, plain);
 });

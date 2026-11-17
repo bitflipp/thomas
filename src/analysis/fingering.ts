@@ -109,7 +109,8 @@ function chordCost(keys: FKey[], fingers: number[], scale: number): Part | null 
   for (let i = 0; i < keys.length; i++) {
     const f = fingers[i];
     if (isBlack(keys[i].midi)) {
-      if (f === 1) add(1, 'thumb on a black key');
+      // In a chord or octave the hand is set and the thumb on a black key is ordinary; in a line it is a place to avoid.
+      if (f === 1) add(keys.length > 1 ? 0.3 : 1, 'thumb on a black key');
       else if (f === 5) add(0.3, 'little finger on a black key');
     }
     if (f === 4) add(0.3, 'fourth finger');
@@ -123,7 +124,7 @@ function chordCost(keys: FKey[], fingers: number[], scale: number): Part | null 
       const reach = (REACH[`${a},${b}`] ?? 0) * scale;
       const d = Math.abs(keys[j].midi - keys[i].midi);
       if (d > reach) return null;
-      const comfort = reach - 3;
+      const comfort = reach - 2;
       if (d > comfort) add(0.6 * (d - comfort) ** 2, 'stretch between fingers');
       if (b - a > 1 && d < b - a) add(0.5 * (b - a - d), 'fingers crowded together');
     }

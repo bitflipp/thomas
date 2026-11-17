@@ -89,7 +89,7 @@ const FINGERS = 5;
 const LEAP_BASE_MS = 30;
 
 /** The part of the time a leap needs that grows with its length, in milliseconds per semitone. */
-const LEAP_MS_PER_SEMITONE = 5;
+const LEAP_MS_PER_SEMITONE = 3.5;
 
 /** A leap that uses more than this share of the time there is is a warning. */
 const LEAP_WARN = 0.7;
@@ -167,6 +167,9 @@ interface State {
   hi: [number, number];
   /** Whether the hand attacks a key at this step. */
   atk: [boolean, boolean];
+  /** Where each hand was last seen (the middle of its keys) and when, in seconds: its own at this step, else carried over from the steps where only the other hand played. NaN before the hand has played. */
+  pos: [number, number];
+  at: [number, number];
 }
 
 /** The generic name of an interval of `semitones`: "2nd", "3rd", "octave", "9th", "10th". */
@@ -393,20 +396,36 @@ function statesOf(step: Step, maxSpan: number): State[] {
     }
     if (!ok) continue;
     if (count[0] && count[1] && hi[0] > lo[1]) cost += CROSS_COST;
-    out.push({ mask, cost, prev: -1, n: count, lo, hi, atk: [!!(attacks & sets[0]), !!(attacks & sets[1])] });
+    out.push({
+      mask,
+      cost,
+      prev: -1,
+      n: count,
+      lo,
+      hi,
+      atk: [!!(attacks & sets[0]), !!(attacks & sets[1])],
+      pos: [count[0] ? (lo[0] + hi[0]) / 2 : Number.NaN, count[1] ? (lo[1] + hi[1]) / 2 : Number.NaN],
+      at: [step.sec, step.sec],
+    });
   }
   return out;
 }
 
-/** The time a leap of `d` semitones needs, as a share of the `sec` seconds there are, for the worse of the two hands, with that hand and distance. A move within the span of a hand is no leap: the hand reaches it by stretching. */
-function leapOf(a: State, b: State, sec: number, maxSpan: number): { ratio: number; hand: 0 | 1; d: number } {
-  let worst = { ratio: 0, hand: 0 as 0 | 1, d: 0 };
+/** The time a leap needs, as a share of the time there is since the hand last played, for the worse of the two hands, with that hand, the distance and the time in seconds. A move within the span of a hand is no leap: the hand reaches it by stretching. The time counts from the hand's own last attack, however many steps of the other hand lie between. */
+function leapOf(
+  a: State,
+  b: State,
+  now: number,
+  maxSpan: number,
+): { ratio: number; hand: 0 | 1; d: number; sec: number } {
+  let worst = { ratio: 0, hand: 0 as 0 | 1, d: 0, sec: 0 };
   for (const h of [0, 1] as const) {
-    if (!(b.atk[h] && a.n[h] && b.n[h])) continue;
-    const d = Math.abs((b.lo[h] + b.hi[h]) / 2 - (a.lo[h] + a.hi[h]) / 2);
+    if (!(b.atk[h] && b.n[h]) || Number.isNaN(a.pos[h])) continue;
+    const d = Math.abs(b.pos[h] - a.pos[h]);
     if (d <= maxSpan) continue;
+    const sec = now - a.at[h];
     const ratio = (LEAP_BASE_MS + LEAP_MS_PER_SEMITONE * d) / (sec * 1000);
-    if (ratio > worst.ratio) worst = { ratio, hand: h, d };
+    if (ratio > worst.ratio) worst = { ratio, hand: h, d, sec };
   }
   return worst;
 }
@@ -487,12 +506,11 @@ function advance(
   fresh: State[],
   toIdx: number[],
   step: Step,
-  sec: number,
   maxSpan: number,
-): { reached: State[]; compatible: number; gentlest: { ratio: number; hand: 0 | 1; d: number } } {
+): { reached: State[]; compatible: number; gentlest: { ratio: number; hand: 0 | 1; d: number; sec: number } } {
   const reached: State[] = [];
   let compatible = 0;
-  let gentlest = { ratio: Number.POSITIVE_INFINITY, hand: 0 as 0 | 1, d: 0 };
+  let gentlest = { ratio: Number.POSITIVE_INFINITY, hand: 0 as 0 | 1, d: 0, sec: 0 };
   for (const bi of toIdx) {
     const b = fresh[bi];
     let best: State | undefined;
@@ -500,11 +518,21 @@ function advance(
       const a = before[ai];
       if (!consistent(a, b, step)) continue;
       compatible++;
-      const leap = leapOf(a, b, sec, maxSpan);
+      const leap = leapOf(a, b, step.sec, maxSpan);
       if (leap.ratio < gentlest.ratio) gentlest = leap;
       if (leap.ratio > 1) continue;
       const cost = a.cost + b.cost + LEAP_COST * leap.ratio ** 2;
-      if (!best || cost < best.cost) best = { ...b, cost, prev: ai };
+      if (!best || cost < best.cost) {
+        // A hand that does not play here keeps the place and time it was last seen at.
+        const keep = (h: 0 | 1) => b.n[h] > 0;
+        best = {
+          ...b,
+          cost,
+          prev: ai,
+          pos: [keep(0) ? b.pos[0] : a.pos[0], keep(1) ? b.pos[1] : a.pos[1]],
+          at: [keep(0) ? b.at[0] : a.at[0], keep(1) ? b.at[1] : a.at[1]],
+        };
+      }
     }
     if (best) reached.push(best);
   }
@@ -537,14 +565,13 @@ function follow(steps: Step[], maxSpan: number): Solution {
       before = fresh;
       return;
     }
-    const sec = step.sec - steps[k - 1].sec;
     // The cheapest few divisions on both sides are tried first; only when none of them connects are all of them, so that a failure is exact.
     const cheapest = (states: State[]) =>
       states
         .map((_, i) => i)
         .sort((x, y) => states[x].cost - states[y].cost)
         .slice(0, BEAM);
-    let tried = advance(before, cheapest(before), fresh, cheapest(fresh), step, sec, maxSpan);
+    let tried = advance(before, cheapest(before), fresh, cheapest(fresh), step, maxSpan);
     if (!tried.reached.length && (before.length > BEAM || fresh.length > BEAM))
       tried = advance(
         before,
@@ -552,7 +579,6 @@ function follow(steps: Step[], maxSpan: number): Solution {
         fresh,
         fresh.map((_, i) => i),
         step,
-        sec,
         maxSpan,
       );
     const { reached, compatible, gentlest } = tried;
@@ -569,11 +595,11 @@ function follow(steps: Step[], maxSpan: number): Solution {
       hand: kind === 'leap' ? hand : undefined,
       title:
         kind === 'leap'
-          ? `Leap of a ${spanName(Math.round(gentlest.d))} in ${Math.round(sec * 1000)} ms`
+          ? `Leap of a ${spanName(Math.round(gentlest.d))} in ${Math.round(gentlest.sec * 1000)} ms`
           : 'Held notes pin the hands',
       message:
         kind === 'leap'
-          ? `Leap of a ${spanName(Math.round(gentlest.d))} (${Math.round(gentlest.d)} semitones) in ${Math.round(sec * 1000)} ms; it needs about ${Math.round(LEAP_BASE_MS + LEAP_MS_PER_SEMITONE * gentlest.d)} ms`
+          ? `Leap of a ${spanName(Math.round(gentlest.d))} (${Math.round(gentlest.d)} semitones) in ${Math.round(gentlest.sec * 1000)} ms; it needs about ${Math.round(LEAP_BASE_MS + LEAP_MS_PER_SEMITONE * gentlest.d)} ms`
           : 'Notes held down keep the hands from reaching the next notes',
       keys: step.keys.filter((key) => kind === 'hold' || key.attack),
     });
@@ -670,14 +696,14 @@ export function solve(prep: Prepared, maxSpan: number, fingering = true): Analys
     }
     const before = sol.chosen[k - 1];
     if (!(sol.linked[k] && before)) return;
-    const leap = leapOf(before, st, steps[k].sec - steps[k - 1].sec, maxSpan);
+    const leap = leapOf(before, st, steps[k].sec, maxSpan);
     if (leap.ratio > LEAP_WARN)
       raws.push({
         severity: 'warn',
         kind: 'leap',
         hand: leap.hand === 0 ? 'L' : 'R',
         title: `Fast leap of a ${spanName(Math.round(leap.d))}`,
-        message: `Leap of a ${spanName(Math.round(leap.d))} (${Math.round(leap.d)} semitones) in ${Math.round((steps[k].sec - steps[k - 1].sec) * 1000)} ms, using ${Math.round(leap.ratio * 100)}% of the time it needs at most`,
+        message: `Leap of a ${spanName(Math.round(leap.d))} (${Math.round(leap.d)} semitones) in ${Math.round(leap.sec * 1000)} ms, using ${Math.round(leap.ratio * 100)}% of the time it needs at most`,
         notes: headsOf(steps[k].keys.filter((key, i) => key.attack && ((st.mask >> i) & 1) === leap.hand)),
         step: k,
         ...where(steps[k].tick),
@@ -727,9 +753,12 @@ function fingeringOf(
     if (!idx.length) continue;
     const prev = at[at.length - 1];
     const adjacent = !!prev && prev.k === k - 1 && sol.linked[k];
+    // The hand carries on from its last step unless the music had to start afresh somewhere since: steps where only the other hand plays do not interrupt it.
+    let continues = !!prev;
+    for (let j = (prev?.k ?? k) + 1; j <= k && continues; j++) continues = !!sol.chosen[j] && sol.linked[j];
     fsteps.push({
       sec: steps[k].sec,
-      fresh: !adjacent,
+      fresh: !continues,
       keys: idx.map((i) => ({
         midi: steps[k].keys[i].midi,
         attack: steps[k].keys[i].attack,
