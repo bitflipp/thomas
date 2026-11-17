@@ -19,9 +19,9 @@ import {
   toggleOrnament,
 } from './actions.ts';
 
+import { stepFindings } from './Findings.tsx';
 import { cancelDrag, deleteSelection, evRefs, graceRefs, measureRefs, selectSimilar, zoomBy } from './interact.ts';
 import { focusGoto } from './Overview.tsx';
-import { stepParallels } from './Parallels.tsx';
 import { rewind, toggle } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
@@ -218,7 +218,7 @@ function onNavigationKey(e: KeyboardEvent): boolean {
       return true;
     case 'F8':
       e.preventDefault();
-      stepParallels(e.shiftKey ? -1 : 1);
+      stepFindings(e.shiftKey ? -1 : 1);
       return true;
     case '?':
       showHelp.value = !showHelp.value;

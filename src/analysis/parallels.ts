@@ -2,7 +2,7 @@
 //
 // A port of the detector of the `conseq` tool, which worked on MusicXML elements, to the Score model:
 // there the onsets and offsets of notes come straight from the tick-based voices instead of being
-// rebuilt from durations. Nothing here draws or edits anything; the editor colours the notes of the
+// rebuilt from durations. Nothing here draws or edits anything; the editor colors the notes of the
 // groups found (`ui/`), and `thomas check --parallels` lists them.
 //
 // Rules, as in conseq: a "voice" is a (staff, voice id) stream, and every pair of voices is compared,

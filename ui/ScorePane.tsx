@@ -3,7 +3,7 @@
 //
 // Re-engraving happens in state.ts; this pane only draws its result. To stay fast on a big piece, SVG is
 // generated only for pages near the viewport, and again only when the page's own part of the selection
-// changed; hover and selection recolour primitives in place instead of regenerating the SVG.
+// changed; hover and selection recolor primitives in place instead of regenerating the SVG.
 
 import { effect } from '@preact/signals';
 
@@ -32,13 +32,14 @@ import {
   zoomBy,
 } from './interact.ts';
 
+import { layerNotes } from './layers.ts';
+
 import { playhead, playing } from './player.ts';
 
 import {
   engraved,
   fit,
   hit,
-  parallelNotes,
   printing,
   score,
   selection,
@@ -52,8 +53,8 @@ import {
 const MM_PX = 96 / 25.4;
 const SEL = '#2f6fed';
 const GHOST = '#c4c4c4'; // A hidden rest is drawn faintly in the editor only.
-const WARN = '#d6361f'; // A note in a parallel fifth or octave (the check is on).
-const HOVER = '#6b9af0'; // This is the selection colour, but lighter.
+const WARN = '#d6361f'; // A note in a finding of a layer that is on.
+const HOVER = '#6b9af0'; // This is the selection color, but lighter.
 
 type GhostOf<K extends Ghost['kind']> = Extract<Ghost, { kind: K }>;
 
@@ -196,11 +197,11 @@ function PageView({
     return () => io.disconnect();
   }, []);
   const p = res.pages[i];
-  const warn = parallelNotes.value;
+  const warn = layerNotes.value;
   const svg = useMemo(() => {
     if (!near) return '';
     const colorFor = (q: Prim): string | undefined => {
-      if (!q.r || printing.value) return undefined; // Print output is plain black, so it has no selection or voice colours.
+      if (!q.r || printing.value) return undefined; // Print output is plain black, so it has no selection or voice colors.
       const r = primRef(h.index, q);
       if (!r) return undefined;
       if (keys.size && q.k !== 'beam') {
@@ -228,7 +229,7 @@ function PageView({
       '',
     );
   }, [res, h, sig, near, voiceColors.value, printing.value, warn]);
-  // The hovered element is recoloured in place, like a selected one but lighter. Generating
+  // The hovered element is recolored in place, like a selected one but lighter. Generating
   // new SVG on every pointer move would be far too slow, so only the matching primitives change.
   const wrap = useRef<HTMLDivElement | null>(null);
   const hov = hover.value;
@@ -260,7 +261,7 @@ function PageView({
     const undo: (() => void)[] = [];
     for (const n of hovered) {
       const el = root.querySelector<SVGElement>(`[data-p="${n}"]`);
-      if (!el || el.getAttribute('fill') === SEL || el.getAttribute('stroke') === SEL) continue; // A selected element keeps its colour.
+      if (!el || el.getAttribute('fill') === SEL || el.getAttribute('stroke') === SEL) continue; // A selected element keeps its color.
       const prop = el.tagName === 'line' ? 'stroke' : 'fill';
       const old = el.style.getPropertyValue(prop);
       el.style.setProperty(prop, HOVER);

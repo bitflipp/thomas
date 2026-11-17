@@ -17,9 +17,9 @@ function esc(s: string): string {
 }
 
 export interface SvgOptions {
-  /** Per-primitive colour override, used by the editor to highlight the selection. */
+  /** Per-primitive color override, used by the editor to highlight the selection. */
   color?: (p: Prim) => string | undefined;
-  /** Tag each element with `data-p` = its index in `page.prims`, so an editor can recolour single primitives in the DOM. */
+  /** Tag each element with `data-p` = its index in `page.prims`, so an editor can recolor single primitives in the DOM. */
   index?: boolean;
   /** Keep the editor-only ghost primitives (hidden rests); they are left out by default. */
   ghosts?: boolean;

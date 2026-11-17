@@ -187,7 +187,7 @@ export const Icon = {
   rest: () => <Glyph cp={CPS.restQuarter} />,
 };
 
-/** Small line icons for toolbar and Properties panel buttons (24 px grid, drawn in the text colour; sized by CSS). */
+/** Small line icons for toolbar and Properties panel buttons (24 px grid, drawn in the text color; sized by CSS). */
 const S = (d: preact.ComponentChildren, fill = false) => (
   <svg
     viewBox="0 0 24 24"

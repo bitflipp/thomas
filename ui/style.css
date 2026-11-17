@@ -567,35 +567,35 @@ button.mini {
   margin-left: var(--sp-1);
   color: var(--fg);
 }
-.parallelmenu {
+.findingsmenu {
   position: relative;
 }
-.parallels .num {
+.findings .num {
   color: #d6361f;
   font-weight: 600;
 }
-.parallelmenu .summary {
+.findingsmenu .summary {
   display: inline-grid;
   max-width: 70ch;
   white-space: nowrap;
   text-align: left;
   vertical-align: bottom;
 }
-.parallelmenu .summary > span {
+.findingsmenu .summary > span {
   grid-area: 1 / 1;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.parallelmenu .summary > .sizer {
+.findingsmenu .summary > .sizer {
   visibility: hidden;
 }
-.popover.parallels {
+.popover.findings {
   left: auto;
   right: 0;
   padding: var(--sp-2);
 }
 /* The list scrolls after ten rows. It reaches to the popover's right border, so that a scrollbar sits there and its own padding keeps the rows as far from the edge as on the other sides. */
-.parallels ol {
+.findings ol {
   list-style: none;
   margin: 0 calc(-1 * var(--sp-2)) 0 0;
   padding: 0 var(--sp-2) 0 0;
@@ -605,7 +605,7 @@ button.mini {
   max-height: min(60vh, calc(10 * var(--h) + 9 * var(--sp-1)));
   overflow-y: auto;
 }
-.parallels button {
+.findings button {
   display: flex;
   gap: var(--sp-2);
   align-items: center;
@@ -613,10 +613,10 @@ button.mini {
   width: 100%;
   text-align: left;
 }
-.parallels button.on {
+.findings button.on {
   border-color: var(--accent);
 }
-.parallels .num {
+.findings .num {
   font-variant-numeric: tabular-nums;
   min-width: 2ch;
   text-align: right;
@@ -795,7 +795,8 @@ kbd {
   padding: 1px var(--sp-1);
 }
 
-.viewmenu {
+.viewmenu,
+.layersmenu {
   position: relative;
 }
 .popover {
@@ -814,7 +815,7 @@ kbd {
   min-width: calc(var(--h) * 8);
   white-space: nowrap;
 }
-.popover .parkinds {
+.popover .layer {
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -8,14 +8,16 @@ import { useEffect } from 'preact/hooks';
 import { importMusicXml } from '../src/musicxml.ts';
 import { writeText } from '../src/textformat.ts';
 import { Dropdown } from './Dropdown.tsx';
+import { FindingsControl, findingsOpen } from './Findings.tsx';
 import { Ui } from './icons.tsx';
 import { zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
+import { LayersMenu, layersOpen } from './Layers.tsx';
+import { anyLayerOn } from './layers.ts';
 import { chooseInput, midiIn, midiInPorts } from './midiin.ts';
 import { native } from './native.ts';
 import { Overview } from './Overview.tsx';
 import { Palette } from './Palette.tsx';
-import { ParallelsControl, parallelsOpen } from './Parallels.tsx';
 import { Properties } from './Properties.tsx';
 import { chooseOutput, midiOut, midiPorts, playing, toggle } from './player.ts';
 import { ScorePane } from './ScorePane.tsx';
@@ -32,13 +34,11 @@ import {
   load,
   loadText,
   NEW_SCORE_TEXT,
-  parallelKinds,
   printing,
   redo,
   say,
   score,
   shownZoom,
-  showParallels,
   showProperties,
   showText,
   timing,
@@ -99,7 +99,8 @@ function useGlobalHandlers(): void {
     const close = (e: Event) => {
       const t = e.target as HTMLElement;
       if (!t.closest?.('.viewmenu')) viewOpen.value = false;
-      if (!t.closest?.('.parallelmenu')) parallelsOpen.value = false;
+      if (!t.closest?.('.layersmenu')) layersOpen.value = false;
+      if (!t.closest?.('.findingsmenu')) findingsOpen.value = false;
     };
     addEventListener('pointerdown', close, true);
     const unsaved = dirty.subscribe((d) => native.setUnsaved(d));
@@ -239,32 +240,13 @@ function Toolbar() {
                 checked={voiceColors.value}
                 onChange={(e) => (voiceColors.value = (e.target as HTMLInputElement).checked)}
               />{' '}
-              Voice colours
+              Voice colors
             </label>
-            <div class="parkinds">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={showParallels.value}
-                  onChange={(e) => (showParallels.value = (e.target as HTMLInputElement).checked)}
-                />{' '}
-                Mark parallels
-              </label>
-              <Dropdown<typeof parallelKinds.value>
-                value={parallelKinds.value}
-                opts={[
-                  { value: 'both', label: 'Fifths and octaves' },
-                  { value: 'fifths', label: 'Fifths' },
-                  { value: 'octaves', label: 'Octaves' },
-                ]}
-                onChange={(v) => (parallelKinds.value = v)}
-                title="Which parallel intervals to mark"
-              />
-            </div>
           </div>
         )}
       </div>
-      {showParallels.value && <ParallelsControl />}
+      <LayersMenu />
+      {anyLayerOn.value && <FindingsControl />}
       <span class="grow" />
       <span class={`status${engraveError.value ? ' err' : ''}`}>
         {engraveError.value ||

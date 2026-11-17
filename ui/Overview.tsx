@@ -15,8 +15,9 @@ import { measureStarts } from '../src/playback/sequence.ts';
 import { pageToSvg } from '../src/render.ts';
 import { must } from '../src/util.ts';
 import { pageEls, revealMeasure, select } from './interact.ts';
+import { findings } from './layers.ts';
 import { playMeasure } from './player.ts';
-import { engraved, parallels, score, selection, zoom } from './state.ts';
+import { engraved, score, selection, zoom } from './state.ts';
 
 /** Whether the "go to measure" prompt is open. */
 const gotoOpen = signal(false);
@@ -306,7 +307,7 @@ export function Overview() {
 
   const selected = new Set<number>();
   for (const r of selection.value) if ('mi' in r) selected.add(r.mi);
-  const warn = new Set(parallels.value.map((g) => g.mi));
+  const warn = new Set(findings.value.map((f) => f.mi));
   const playing = playMeasure.value;
   const pct = (t: number) => `${(t / total) * 100}%`;
 
