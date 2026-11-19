@@ -10,7 +10,7 @@ import { effect } from '@preact/signals';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Ref } from '../src/editor/addr.ts';
 import { refKey } from '../src/editor/addr.ts';
-import type { Box, HitIndex, Target } from '../src/editor/hit.ts';
+import type { HitIndex } from '../src/editor/hit.ts';
 import { dependentNotes, noteBoxes, primRef } from '../src/editor/hit.ts';
 import type { Prim } from '../src/engrave/scene.ts';
 import type { Engraved } from '../src/engrave/system.ts';
@@ -32,7 +32,7 @@ import {
   zoomBy,
 } from './interact.ts';
 
-import { layerFingers, layerNotes } from './layers.ts';
+import { layerNotes } from './layers.ts';
 
 import { playhead, playing } from './player.ts';
 
@@ -296,69 +296,11 @@ function PageView({
           );
         })}
         <NotesSvg page={i} h={h} />
-        <FingeringSvg page={i} h={h} />
         <GhostSvg g={ghost.value} page={i} />
         <PlayheadSvg page={i} />
       </svg>
     </div>
   );
-}
-
-/** The side of the square a finger number sits in, in staff spaces. */
-const FINGER_BOX = 1.3;
-
-/** The fingers of the chosen layer on page `page`, each in an opaque square so that whatever is under it stays out of the way of the digit. The squares are centered above the notehead, above the stem when it points up; a chord gets a column above it with the number of the top note on top. */
-function FingeringSvg({ page, h }: { page: number; h: HitIndex }) {
-  const fingers = layerFingers.value;
-  if (!fingers.size || printing.value) return null;
-  const targets = h.byPage[page] ?? [];
-  const stems = new Map<string, Box>();
-  const chords = new Map<string, Target[]>();
-  for (const t of targets) {
-    if (t.ref.t !== 'ev') continue;
-    if (t.k === 'stem') stems.set(refKey({ ...t.ref, pi: undefined }), t.bbox);
-    else if (t.k === 'head' && fingers.has(refKey(t.ref))) {
-      const k = refKey({ ...t.ref, pi: undefined });
-      chords.set(k, [...(chords.get(k) ?? []), t]);
-    }
-  }
-  const out: preact.JSX.Element[] = [];
-  for (const [ek, heads] of chords) {
-    heads.sort((a, b) => (a.core ?? a.bbox).y0 - (b.core ?? b.bbox).y0);
-    const stem = stems.get(ek);
-    const top = heads[0].core ?? heads[0].bbox;
-    const x = (top.x0 + top.x1) / 2;
-    // The lowest square rests above the top head, or above the end of an upward stem.
-    const base = (stem && stem.y0 < top.y0 - 0.5 ? stem.y0 : top.y0) - 0.35;
-    heads.forEach((t, i) => {
-      const bottom = base - (heads.length - 1 - i) * (FINGER_BOX + 0.1);
-      out.push(
-        <g key={refKey(t.ref)}>
-          <rect
-            x={x - FINGER_BOX / 2}
-            y={bottom - FINGER_BOX}
-            width={FINGER_BOX}
-            height={FINGER_BOX}
-            rx="0.15"
-            fill="#fff"
-            stroke="#8a8a8a"
-            stroke-width="0.07"
-          />
-          <text
-            x={x}
-            y={bottom - FINGER_BOX * 0.25}
-            font-size="1.05"
-            font-family="serif"
-            text-anchor="middle"
-            fill="#222"
-          >
-            {fingers.get(refKey(t.ref))}
-          </text>
-        </g>,
-      );
-    });
-  }
-  return <>{out}</>;
 }
 
 /** Notes that the selected slurs, ties and tuplets belong to. */

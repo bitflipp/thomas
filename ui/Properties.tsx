@@ -13,7 +13,7 @@ import { transposeSteps } from '../src/editor/context.ts';
 import { neighborNote, syllableText } from '../src/editor/lyrics.ts';
 import type { OrnamentKind } from '../src/editor/similar.ts';
 import { eventsInMeasures } from '../src/editor/similar.ts';
-import type { Event, Grace, MarkBody, MarkPlacement, NoteEvent, NotePitch, Score, Syllable } from '../src/model.ts';
+import type { Event, Grace, MarkBody, MarkPlacement, NoteEvent, Score, Syllable } from '../src/model.ts';
 import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
 import { chooseDots, flipStem, lineSelection, slurSelection, tieSelection } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
@@ -1042,16 +1042,7 @@ function EventNotation({ ctx }: { ctx: EvSel }) {
   );
 }
 
-/** The heads the refs mean: the one head of a ref with a head index, else all heads of the event. */
-function handHeads(sc: Score, refs: Extract<Ref, { t: 'ev' }>[]): NotePitch[] {
-  return refs.flatMap((r) => {
-    const e = eventOf(sc, r);
-    if (e?.kind !== 'note') return [];
-    return r.pi === undefined ? e.pitches : e.pitches.filter((_, i) => i === r.pi);
-  });
-}
-
-/** Accidental display, the hand that plays the note and the staff a cross-staff note is shown on. */
+/** Accidental display and the staff a cross-staff note is shown on. */
 function EventPitch({ ctx }: { ctx: EvSel }) {
   const { sc, refs, notes, r0 } = ctx;
   const homeStaffs = new Set(refs.map((r) => r.staff));
@@ -1075,17 +1066,6 @@ function EventPitch({ ctx }: { ctx: EvSel }) {
               }),
             )
           }
-        />
-      </Row>
-      <Row label="Hand">
-        <Pick
-          value={same(handHeads(sc, refs).map((np) => np.hand))}
-          opts={[
-            [undefined, 'auto'],
-            ['l', 'left'],
-            ['r', 'right'],
-          ]}
-          onChange={(v) => run((x) => C.setHand(x, refs, v))}
         />
       </Row>
       {nonHome.length > 0 && (

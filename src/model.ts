@@ -34,15 +34,11 @@ export interface Dur {
 
 export type AccOverride = 'force' | 'cautionary';
 
-/** A hand of the player: left or right. */
-export type Hand = 'l' | 'r';
-
 export interface NotePitch {
   pitch: Pitch;
   tie?: boolean; // The note is tied to the next note of the same pitch.
   tieSide?: 'above' | 'below'; // The tie arches to this side instead of the automatic one.
   acc?: AccOverride;
-  hand?: Hand; // The playability check takes the note with this hand instead of inferring it.
 }
 
 export type Articulation = 'accent' | 'marcato' | 'staccato';

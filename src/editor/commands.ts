@@ -19,7 +19,6 @@ import type {
   Event,
   FermataShape,
   Grace,
-  Hand,
   Item,
   LineEnd,
   MarkBody,
@@ -556,21 +555,6 @@ export function transpose(
           by.semis !== undefined ? transposeSemis(np.pitch, by.semis) : transposeSteps(np.pitch, by.steps ?? 0);
       });
       e.pitches.sort((x, y) => comparePitch(x.pitch, y.pitch));
-    }
-  });
-}
-
-/** Pins the addressed notes to a hand (undefined: back to inferring it). With `pi` only that pitch of a chord is meant. */
-export function setHand(score: Score, addrs: (EvAddr & { pi?: number })[], hand: Hand | undefined): Score {
-  return edit(score, (d) => {
-    for (const a of addrs) {
-      const e = eventIn(d, a);
-      if (e.kind !== 'note') continue;
-      e.pitches.forEach((np, i) => {
-        if (a.pi !== undefined && a.pi !== i) return;
-        if (hand) np.hand = hand;
-        else delete np.hand;
-      });
     }
   });
 }

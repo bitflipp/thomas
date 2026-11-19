@@ -6,7 +6,6 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { findParallels, voicesOf } from './analysis/parallels.ts';
-import { findPlayability, requiredSpan } from './analysis/playability.ts';
 import { describe, findCollisions } from './engrave/collide.ts';
 import { engrave } from './engrave/system.ts';
 import type { Score } from './model.ts';
@@ -39,9 +38,8 @@ const USAGE = `usage:
                                                   convert MusicXML to the text format
   thomas render  <in.txt|in.musicxml> <out-base> [--pdf] [--no-breaks] [--numbers|--no-numbers] [--space <mm>]
                                                   write <out-base>-<page>.svg (and <out-base>.pdf)
-  thomas check   <in.txt|in.musicxml> [--parallels] [--playability] [--collisions [--mark <out-base>]]
+  thomas check   <in.txt|in.musicxml> [--parallels] [--collisions [--mark <out-base>]]
                                                   --parallels lists consecutive fifths and octaves (src/analysis/parallels.ts)
-                                                  --playability lists what two hands cannot play or only just (src/analysis/playability.ts)
                                                   validate; with --collisions also engrave and list overlapping
                                                   elements (see src/engrave/collide.ts); --mark writes <out-base>-<page>.svg
                                                   with every collision boxed in red
@@ -95,17 +93,6 @@ try {
         console.log(`${g.number}. m${g.mi + 1} beat ${beat}: ${g.kinds.join(' + ')} (${voices})`);
       }
       console.log(`${gs.length} group${gs.length === 1 ? '' : 's'} of consecutive fifths or octaves`);
-    }
-    if (args.includes('--playability')) {
-      const fs = findPlayability(s);
-      for (const f of fs) {
-        const beat = beatOf(f.tick);
-        console.log(`m${f.mi + 1} beat ${beat}: ${f.severity} ${f.message}${f.hand ? ` (${f.hand})` : ''}`);
-      }
-      const need = requiredSpan(s);
-      console.log(
-        `${fs.length} finding${fs.length === 1 ? '' : 's'}; the piece needs a span of ${need === null ? 'more than two hands have' : `${need} semitones`}`,
-      );
     }
     if (args.includes('--collisions')) {
       const res = engrave(s, { respectBreaks: true, measureNumbers: s.page.measureNumbers ?? 'system' });
