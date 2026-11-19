@@ -1,7 +1,7 @@
-// The findings control of the toolbar: a stepper through the findings of the chosen layer, and the titles on the score.
+// Stepping through the findings of the chosen layer from the keyboard (F8 / Shift+F8).
 //
-// The notes and the numbered titles of the findings are drawn in the score pane (`layerNotes` in layers.ts,
-// `FindingsSvg` in ScorePane.tsx). Here the arrows select the notes of a finding and scroll to it. The
+// The notes and the titles of the findings are drawn in the score pane (`layerNotes` in layers.ts,
+// `FindingsSvg` in ScorePane.tsx). Here a step selects the notes of a finding and scrolls to it. The
 // Layers menu (`Layers.tsx`) chooses the layer.
 
 import { refKey } from '../src/editor/addr.ts';

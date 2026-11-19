@@ -2,9 +2,9 @@
 //
 // One layer or none is chosen in the toolbar's Layers menu (`activeLayer`; the layers are independent analyses, and
 // one at a time lets them share colors). The chosen layer contributes `Finding`s: places in the score with a short
-// label and the notes involved. Everything that shows findings
-// is written against this one shape: the score pane paints the notes in the color of their severity (`layerNotes`),
-// the stepper in `Findings.tsx` walks through the findings of the chosen layer, and the Overview strip marks their
+// label and the notes involved. Everything that shows findings is written against this one shape: the score pane
+// paints the notes in the color of their severity (`layerNotes`) and frames each finding with a titled overlay,
+// F8 / Shift+F8 (`Findings.tsx`) walk through the findings of the chosen layer, and the Overview strip marks their
 // measures. Display options that do not analyze anything (voice colors, ...) stay in the View menu.
 //
 // The findings of the parallels layer are a pure function of the score and its settings (a computed signal), so
@@ -25,8 +25,6 @@ export interface Finding {
   layer: string;
   /** What was found, in a few words, such as "2 fifths + 1 octave". */
   label: string;
-  /** A longer explanation, shown as a tooltip. */
-  detail?: string;
   /** The voices involved, such as "rh.1 + lh.1". */
   voices: string;
   /** The measure and the tick in it where the finding starts. */
@@ -103,11 +101,11 @@ export const findings = computed<Finding[]>(() =>
   layers.flatMap((l) => l.findings.value).sort((a, b) => a.mi - b.mi || a.tick - b.tick),
 );
 
-/** Whether the chosen layer has findings to step through. */
+/** Whether any layer is chosen. */
 export const anyLayerOn = computed(() => layers.some((l) => l.on.value));
 
 /** The colors the layers paint notes with: errors and warnings. */
-const LAYER_COLORS = { error: '#d6361f', warn: '#e08a00' };
+export const LAYER_COLORS = { error: '#d6361f', warn: '#e08a00' };
 
 /** What a note is painted for; an error wins over a warning. */
 type Paint = keyof typeof LAYER_COLORS;

@@ -32,7 +32,7 @@ import {
   zoomBy,
 } from './interact.ts';
 
-import { findings, layerNotes, placeOf } from './layers.ts';
+import { findings, LAYER_COLORS, layerNotes, placeOf } from './layers.ts';
 
 import { playhead, playing } from './player.ts';
 
@@ -366,7 +366,7 @@ function FindingsSvg({ page, h }: { page: number; h: HitIndex }) {
         const x0 = Math.min(...boxes.map((b) => b.x0)) - 0.5;
         const x1 = Math.max(...boxes.map((b) => b.x1)) + 0.5;
         const y1 = Math.max(...boxes.map((b) => b.y1)) + 0.5;
-        const col = f.severity === 'error' ? '#d6361f' : '#e08a00';
+        const col = LAYER_COLORS[f.severity];
         const text = f.label;
         const pad = size * 0.4;
         const w = titleWidth(text, size) + 2 * pad;
