@@ -7,11 +7,13 @@
 
 import { computed, effect, signal } from '@preact/signals';
 
+import { voiceOf } from '../src/editor/addr.ts';
 import { xOfTick } from '../src/editor/hit.ts';
 import type { Score } from '../src/model.ts';
+import { flattenVoice } from '../src/model.ts';
 import { buildSequence, measureStarts } from '../src/playback/sequence.ts';
 import { must } from '../src/util.ts';
-import { docId, engraved, say, score } from './state.ts';
+import { docId, engraved, say, score, selection } from './state.ts';
 
 export const playing = signal(false);
 
@@ -210,10 +212,29 @@ export function stop(): void {
   silence();
 }
 
-/** Starts or stops playback. */
+/** The absolute tick of the earliest selected note or rest, or undefined when none is selected. */
+function selectionStart(): number | undefined {
+  const sc = score.peek();
+  let first: number | undefined;
+  for (const r of selection.peek()) {
+    if (r.t !== 'ev') continue;
+    const te = flattenVoice(voiceOf(sc, r) ?? { id: 0, items: [] })[r.idx];
+    if (!te) continue;
+    const tick = measureTick(r.mi) + te.start;
+    if (first === undefined || tick < first) first = tick;
+  }
+  return first;
+}
+
+/** Starts playback from the first selected note (else from the playhead), or stops it. */
 export function toggle(): void {
-  if (playing.peek()) stop();
-  else void play();
+  if (playing.peek()) {
+    stop();
+    return;
+  }
+  const from = selectionStart();
+  if (from !== undefined) playTick.value = from;
+  void play();
 }
 
 /** Stops playback and puts the playhead at the start. */
