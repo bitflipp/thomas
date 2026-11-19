@@ -10,11 +10,6 @@ const SCORE_FILTERS = [
   { name: 'All files', extensions: ['*'] },
 ];
 
-const NOTES_FILTERS = [
-  { name: 'Notes export (JSON)', extensions: ['json'] },
-  { name: 'All files', extensions: ['*'] },
-];
-
 // The one window (null while closed) and whether its document has unsaved changes, as last reported by the page.
 let win: BrowserWindow | null = null;
 
@@ -74,13 +69,13 @@ function handlers() {
     lastDir = dirname(path);
     return { path, name: basename(path), data: await readFile(path, 'utf8') };
   });
-  ipcMain.handle('save', async (_e, data: string, name: string, path: string | null, kind?: string) => {
+  ipcMain.handle('save', async (_e, data: string, name: string, path: string | null) => {
     if (!win) return null;
     let target = path;
     if (!target) {
       const r = await dialog.showSaveDialog(win, {
         defaultPath: lastDir ? join(lastDir, name) : name,
-        filters: kind === 'notes' ? NOTES_FILTERS : SCORE_FILTERS,
+        filters: SCORE_FILTERS,
       });
       if (r.canceled || !r.filePath) return null;
       target = r.filePath;

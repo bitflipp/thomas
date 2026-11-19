@@ -6,7 +6,6 @@ import { signal } from '@preact/signals';
 import { lazy, Suspense } from 'preact/compat';
 import { useEffect } from 'preact/hooks';
 import { importMusicXml } from '../src/musicxml.ts';
-import { exportNotes } from '../src/playback/export-notes.ts';
 import { writeText } from '../src/textformat.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
@@ -58,16 +57,6 @@ async function saveFile(as = false) {
   filePath.value = r.path;
   fileName.value = r.name;
   dirty.value = false;
-}
-
-/** Writes the sounding notes and measure starts as JSON, the file Pianizer's "Compare with score" reads. Always asks where to save: it is a derived file, not the document. */
-async function exportNotesFile() {
-  try {
-    const json = JSON.stringify(exportNotes(score.peek()));
-    await native.save(json, `${fileName.peek().replace(/\.[^.]*$/, '')}.notes.json`, null, 'notes');
-  } catch (e) {
-    say(`Export failed: ${(e as Error).message}`, true);
-  }
 }
 
 /** Opens a score from a file (text format or MusicXML), after asking whether to discard unsaved changes. */
@@ -163,13 +152,6 @@ function Toolbar() {
         </button>
         <button type="button" title="Export as PDF" onClick={exportPdf}>
           Export PDF
-        </button>
-        <button
-          type="button"
-          title="Export the sounding notes as JSON, for Pianizer's “Compare with score”"
-          onClick={exportNotesFile}
-        >
-          Export notes
         </button>
       </div>
       <span class="sep" />

@@ -4,17 +4,9 @@
 // made with the File System Access API where there is one (Chromium), else with a file input and a
 // download, and PDF export is the browser's print dialog.
 
-export type SaveKind = 'score' | 'notes';
-
 type NativeApi = {
   open(): Promise<{ path: string; name: string; data: string } | null>;
-  /** `kind` picks the file type of the dialog: the score text (default) or the JSON notes export, which never keeps a path. */
-  save(
-    data: string,
-    name: string,
-    path: string | null,
-    kind?: SaveKind,
-  ): Promise<{ path: string; name: string } | null>;
+  save(data: string, name: string, path: string | null): Promise<{ path: string; name: string } | null>;
   pdf(name: string): Promise<boolean>;
   setUnsaved(v: boolean): void;
 };
@@ -32,7 +24,6 @@ type Picker = {
 };
 
 const TYPES = [{ description: 'Scores', accept: { 'text/plain': ['.txt'], 'application/xml': ['.musicxml', '.xml'] } }];
-const NOTES_TYPES = [{ description: 'Notes export (JSON)', accept: { 'application/json': ['.json'] } }];
 
 /** The handles of the files opened or saved in this page, by the path the editor keeps for them (the name; there are no real paths in a browser). */
 const handles = new Map<string, FileHandle>();
@@ -68,13 +59,13 @@ const browserApi: NativeApi = {
       throw e;
     }
   },
-  async save(data, name, path, kind = 'score') {
+  async save(data, name, path) {
     const w = window as unknown as Picker;
     try {
       let h = path ? handles.get(path) : undefined;
       if (!h && w.showSaveFilePicker) {
-        h = await w.showSaveFilePicker({ suggestedName: name, types: kind === 'notes' ? NOTES_TYPES : TYPES });
-        if (kind === 'score') handles.set(h.name, h);
+        h = await w.showSaveFilePicker({ suggestedName: name, types: TYPES });
+        handles.set(h.name, h);
       }
       if (h) {
         const out = await h.createWritable();
@@ -83,7 +74,7 @@ const browserApi: NativeApi = {
         return { path: h.name, name: h.name };
       }
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([data], { type: kind === 'notes' ? 'application/json' : 'text/plain' }));
+      a.href = URL.createObjectURL(new Blob([data], { type: 'text/plain' }));
       a.download = name;
       a.click();
       URL.revokeObjectURL(a.href);
