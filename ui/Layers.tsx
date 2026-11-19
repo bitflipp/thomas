@@ -1,29 +1,8 @@
-// The Layers menu of the toolbar: one radio button per layer (see `layers.ts`; one layer or none is chosen) and the
-// settings of the chosen layer.
+// The Layers menu of the toolbar: one radio button per layer (see `layers.ts`; one layer or none is chosen).
 //
 // Layers are analyses that point at places in the score; display options such as voice colors are in the View menu.
 
-import type { JSX } from 'preact';
-import { Dropdown } from './Dropdown.tsx';
-import type { ParallelKindChoice } from './layers.ts';
-
-import { activeLayer, layers, layersOpen, parallelKinds } from './layers.ts';
-
-/** The settings of each layer, shown under its radio button while it is chosen. */
-const SETTINGS: Record<string, () => JSX.Element> = {
-  parallels: () => (
-    <Dropdown<ParallelKindChoice>
-      value={parallelKinds.value}
-      opts={[
-        { value: 'both', label: 'Fifths and octaves' },
-        { value: 'fifths', label: 'Fifths' },
-        { value: 'octaves', label: 'Octaves' },
-      ]}
-      onChange={(v) => (parallelKinds.value = v)}
-      title="Which parallel intervals to mark"
-    />
-  ),
-};
+import { activeLayer, layers, layersOpen } from './layers.ts';
 
 /** The "Layers" button and its popover. */
 export function LayersMenu() {
@@ -51,7 +30,6 @@ export function LayersMenu() {
                 <input type="radio" name="layer" checked={l.on.value} onChange={() => (activeLayer.value = l.id)} />{' '}
                 {l.label}
               </label>
-              {l.on.value && SETTINGS[l.id]?.()}
             </div>
           ))}
         </div>

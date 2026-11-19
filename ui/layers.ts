@@ -1,4 +1,4 @@
-// Layers: analyses that look at the score and point at places in it (consecutive fifths).
+// Layers: analyses that look at the score and point at places in it (consecutive fifths and octaves).
 //
 // One layer or none is chosen in the toolbar's Layers menu (`activeLayer`; the layers are independent analyses, and
 // one at a time lets them share colors). The chosen layer contributes `Finding`s: places in the score with a short
@@ -7,7 +7,7 @@
 // F8 / Shift+F8 (`Findings.tsx`) walk through the findings of the chosen layer, and the Overview strip marks their
 // measures. Display options that do not analyze anything (voice colors, ...) stay in the View menu.
 //
-// The findings of the parallels layer are a pure function of the score and its settings (a computed signal), so
+// The findings of the parallels layer are a pure function of the score (a computed signal), so
 // they follow edits without any bookkeeping. Nothing here touches the engraving or its cache.
 
 import type { ReadonlySignal } from '@preact/signals';
@@ -49,13 +49,7 @@ export interface Layer {
   findings: ReadonlySignal<Finding[]>;
 }
 
-// The parallels layer: consecutive fifths and octaves, with the choice of which of the two to look for.
-
-/** Which intervals the parallels layer looks for. */
-export type ParallelKindChoice = 'both' | 'fifths' | 'octaves';
-
-/** The intervals the parallels layer looks for: both, or only fifths or only octaves. */
-export const parallelKinds = signal<ParallelKindChoice>('both');
+// The parallels layer: consecutive fifths and octaves.
 
 /** The id of the chosen layer, or null for none. */
 export const activeLayer = signal<string | null>(null);
@@ -70,8 +64,7 @@ function countOf(kind: 'fifths' | 'octaves', n: number): string {
 /** The groups of consecutive fifths and octaves of the score as findings. */
 const parallelFindings = computed<Finding[]>(() => {
   if (!parallelsOn.value) return [];
-  const k = parallelKinds.value;
-  return findParallels(score.value, k === 'both' ? ['fifths', 'octaves'] : [k]).map((g) => ({
+  return findParallels(score.value).map((g) => ({
     layer: 'parallels',
     label: g.kinds.map((k) => countOf(k, g.counts[k] ?? 1)).join(' + '),
     voices: voicesOf(g),
