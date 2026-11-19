@@ -9,12 +9,11 @@ import { importMusicXml } from '../src/musicxml.ts';
 import { exportNotes } from '../src/playback/export-notes.ts';
 import { writeText } from '../src/textformat.ts';
 import { Dropdown } from './Dropdown.tsx';
-import { FindingsControl, findingsOpen } from './Findings.tsx';
 import { Ui } from './icons.tsx';
 import { zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
 import { LayersMenu } from './Layers.tsx';
-import { anyLayerOn, layersOpen } from './layers.ts';
+import { layersOpen } from './layers.ts';
 import { chooseInput, midiIn, midiInPorts } from './midiin.ts';
 import { native } from './native.ts';
 import { Overview } from './Overview.tsx';
@@ -111,7 +110,6 @@ function useGlobalHandlers(): void {
       const t = e.target as HTMLElement;
       if (!t.closest?.('.viewmenu')) viewOpen.value = false;
       if (!t.closest?.('.layersmenu')) layersOpen.value = false;
-      if (!t.closest?.('.findingsmenu')) findingsOpen.value = false;
     };
     addEventListener('pointerdown', close, true);
     const unsaved = dirty.subscribe((d) => native.setUnsaved(d));
@@ -264,7 +262,6 @@ function Toolbar() {
         )}
       </div>
       <LayersMenu />
-      {anyLayerOn.value && <FindingsControl />}
       <span class="grow" />
       <span class={`status${engraveError.value ? ' err' : ''}`}>
         {engraveError.value ||

@@ -32,7 +32,7 @@ import {
   zoomBy,
 } from './interact.ts';
 
-import { layerNotes } from './layers.ts';
+import { findings, layerNotes, placeOf } from './layers.ts';
 
 import { playhead, playing } from './player.ts';
 
@@ -296,6 +296,7 @@ function PageView({
           );
         })}
         <NotesSvg page={i} h={h} />
+        <FindingsSvg page={i} h={h} />
         <GhostSvg g={ghost.value} page={i} />
         <PlayheadSvg page={i} />
       </svg>
@@ -329,13 +330,69 @@ function NotesSvg({ page, h }: { page: number; h: HitIndex }) {
           y={b.y0 - pad}
           width={b.x1 - b.x0 + 2 * pad}
           height={b.y1 - b.y0 + 2 * pad}
-          rx="0.4"
           fill="#f59f00"
           fill-opacity="0.3"
           stroke="#f08c00"
           stroke-width="0.12"
         />
       ))}
+    </g>
+  );
+}
+
+let measurer: CanvasRenderingContext2D | null = null;
+
+/** The width of `t` in staff spaces at font size `size`, measured in the same font the overlay uses. */
+function titleWidth(t: string, size: number): number {
+  measurer ??= must(document.createElement('canvas').getContext('2d'));
+  measurer.font = `${size * 100}px ${GHOST_FONT}`;
+  return measurer.measureText(t).width / 100;
+}
+
+/** The titles of the findings on page `page`: a frame round the notes and an opaque tag above them, so that the title stays readable over staff lines and marks. */
+function FindingsSvg({ page, h }: { page: number; h: HitIndex }) {
+  const all = findings.value;
+  if (!all.length) return null;
+  const size = 1.3;
+  return (
+    <g pointer-events="none" font-family={GHOST_FONT} font-size={size}>
+      {all.map((f) => {
+        const boxes = noteBoxes(
+          h,
+          page,
+          f.refs.flatMap((r) => (r.t === 'ev' ? [r] : [])),
+        );
+        if (!boxes.length) return null;
+        const x0 = Math.min(...boxes.map((b) => b.x0)) - 0.5;
+        const x1 = Math.max(...boxes.map((b) => b.x1)) + 0.5;
+        const y1 = Math.max(...boxes.map((b) => b.y1)) + 0.5;
+        const col = f.severity === 'error' ? '#d6361f' : '#e08a00';
+        const text = f.label;
+        const pad = size * 0.4;
+        const w = titleWidth(text, size) + 2 * pad;
+        const th = size + 2 * pad;
+        // The rectangle grows upward by the height of the tag, so that the tag sits above the notes and not over them.
+        const y0 = Math.min(...boxes.map((b) => b.y0)) - 0.5 - th;
+        return (
+          <g>
+            <title>{`${f.label} · ${placeOf(f)} · ${f.voices}`}</title>
+            <rect
+              x={x0}
+              y={y0}
+              width={x1 - x0}
+              height={y1 - y0}
+              fill={col}
+              fill-opacity="0.1"
+              stroke={col}
+              stroke-width="0.12"
+            />
+            <rect x={x0} y={y0} width={w} height={th} fill={col} />
+            <text x={x0 + pad} y={y0 + th - pad - size * 0.2} fill="#fff">
+              {text}
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
 }

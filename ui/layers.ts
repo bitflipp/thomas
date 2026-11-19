@@ -23,7 +23,7 @@ import { score } from './state.ts';
 export interface Finding {
   /** The id of the layer that found it. */
   layer: string;
-  /** What was found, in a few words, such as "fifths + octaves". */
+  /** What was found, in a few words, such as "2 fifths + 1 octave". */
   label: string;
   /** A longer explanation, shown as a tooltip. */
   detail?: string;
@@ -64,13 +64,18 @@ export const activeLayer = signal<string | null>(null);
 
 const parallelsOn = computed(() => activeLayer.value === 'parallels');
 
+/** A count with its noun in the right number: "1 fifth", "2 fifths". */
+function countOf(kind: 'fifths' | 'octaves', n: number): string {
+  return `${n} ${n === 1 ? kind.slice(0, -1) : kind}`;
+}
+
 /** The groups of consecutive fifths and octaves of the score as findings. */
 const parallelFindings = computed<Finding[]>(() => {
   if (!parallelsOn.value) return [];
   const k = parallelKinds.value;
   return findParallels(score.value, k === 'both' ? ['fifths', 'octaves'] : [k]).map((g) => ({
     layer: 'parallels',
-    label: g.kinds.join(' + '),
+    label: g.kinds.map((k) => countOf(k, g.counts[k] ?? 1)).join(' + '),
     voices: voicesOf(g),
     mi: g.mi,
     tick: g.tick,

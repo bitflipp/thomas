@@ -220,7 +220,7 @@ export const Ui = {
   plus: () => S(<path d="M12 5v14M5 12h14" />),
   minus: () => S(<path d="M5 12h14" />),
   play: () => S(<path d="M7 4.5v15l12-7.5z" />, true),
-  stop: () => S(<rect x="6" y="6" width="12" height="12" rx="1" />, true),
+  stop: () => S(<rect x="6" y="6" width="12" height="12" />, true),
   help: () =>
     S(
       <>

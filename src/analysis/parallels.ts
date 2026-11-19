@@ -31,6 +31,8 @@ export interface ParallelGroup {
   /** The position in score order, from 1. */
   number: number;
   kinds: ParallelKind[];
+  /** How many intervals of each kind the group holds (a run of three fifths is 3); kinds that were not looked for are absent. */
+  counts: Partial<Record<ParallelKind, number>>;
   /** The notes by onset, then by voice. */
   notes: ParallelNote[];
   /** The measure and the tick in it of the first note. */
@@ -135,6 +137,7 @@ function collectNotes(score: Score): Note[] {
 class Flags {
   private parent = new Map<number, number>();
   readonly kinds = new Map<number, Set<ParallelKind>>();
+  private intervals = new Map<string, { kind: ParallelKind; id: number }>();
 
   private find(x: number): number {
     let r = x;
@@ -148,8 +151,13 @@ class Flags {
     return r;
   }
 
-  /** Marks the notes as violating and puts them into one group. */
+  /** Marks the notes as violating and puts them into one group. `ids` are two intervals: a, b, then a, b of the next. */
   flag(ids: number[], kind: ParallelKind): void {
+    for (const [x, y] of [
+      [ids[0], ids[1]],
+      [ids[2], ids[3]],
+    ])
+      this.intervals.set(`${kind}:${Math.min(x, y)}:${Math.max(x, y)}`, { kind, id: x });
     for (const id of ids) {
       if (!this.parent.has(id)) this.parent.set(id, id);
       const ks = this.kinds.get(id) ?? new Set();
@@ -158,6 +166,18 @@ class Flags {
     }
     const r = this.find(ids[0]);
     for (const id of ids.slice(1)) this.parent.set(this.find(id), r);
+  }
+
+  /** The number of distinct intervals of each kind by group root. */
+  countsByRoot(): Map<number, Partial<Record<ParallelKind, number>>> {
+    const out = new Map<number, Partial<Record<ParallelKind, number>>>();
+    for (const { kind, id } of this.intervals.values()) {
+      const r = this.find(id);
+      const c = out.get(r) ?? {};
+      c[kind] = (c[kind] ?? 0) + 1;
+      out.set(r, c);
+    }
+    return out;
   }
 
   /** The flagged note ids by group root. */
@@ -310,15 +330,20 @@ export function findParallels(score: Score, kinds: ParallelKind[] = ['fifths', '
         else lookThroughBetween(p, t, semitones, idx, flags, kind);
   }
   const order = (a: Note, b: Note) => a.start - b.start || (a.vk < b.vk ? -1 : a.vk > b.vk ? 1 : 0) || a.pi - b.pi;
-  const groups = [...flags.components().values()].map((ids) => ids.map((id) => notes[id]).sort(order));
-  groups.sort((a, b) => order(a[0], b[0]));
-  return groups.map((g, i) => {
+  const counts = flags.countsByRoot();
+  const groups = [...flags.components()].map(([root, ids]) => ({
+    root,
+    notes: ids.map((id) => notes[id]).sort(order),
+  }));
+  groups.sort((a, b) => order(a.notes[0], b.notes[0]));
+  return groups.map(({ root, notes: g }, i) => {
     const ks = new Set<ParallelKind>();
     for (const n of g) for (const k of must(flags.kinds.get(n.id))) ks.add(k);
     const first = g[0];
     return {
       number: i + 1,
       kinds: kinds.filter((k) => ks.has(k)),
+      counts: counts.get(root) ?? {},
       notes: g.map((n) => ({ ev: n.ev, pi: n.pi, tick: n.start })),
       mi: first.ev.mi,
       tick: first.at,
