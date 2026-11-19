@@ -19,6 +19,7 @@ import type { MeasureGeom } from '../src/engrave/system.ts';
 import type { Event, MarkBody, NoteEvent, Pitch, Score } from '../src/model.ts';
 import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, STEPS, timeAt } from '../src/model.ts';
 import { must } from '../src/util.ts';
+import { hoverFinding } from './layers.ts';
 import { measureTick, seek } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 
@@ -471,6 +472,7 @@ export function onPointerMove(e: PointerEvent): void {
   } // The shortcuts dialog covers the score.
   const w = locate(e.clientX, e.clientY);
   const h = hit.peek();
+  hoverFinding(drag.k === 'none' ? w : undefined);
   if (!(w && h)) {
     if (drag.k === 'none') {
       ghost.value = null;

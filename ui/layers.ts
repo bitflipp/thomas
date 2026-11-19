@@ -1,9 +1,9 @@
 // Layers: analyses that look at the score and point at places in it (consecutive fifths and octaves).
 //
 // One layer or none is chosen in the toolbar's Layers menu (`activeLayer`; the layers are independent analyses, and
-// one at a time lets them share colors). The chosen layer contributes `Finding`s: places in the score with a short
-// label and the notes involved. Everything that shows findings is written against this one shape: the score pane
-// paints the notes in the color of their severity (`layerNotes`) and frames each finding with a titled overlay,
+// one at a time lets them share colors). The chosen layer contributes `Finding`s: places in the score with
+// outlines and the notes involved. Everything that shows findings is written against this one shape: the score pane
+// paints the notes in the color of their severity (`layerNotes`) and draws each finding as outlines,
 // F8 / Shift+F8 (`Findings.tsx`) walk through the findings of the chosen layer, and the Overview strip marks their
 // measures. Display options that do not analyze anything (voice colors, ...) stay in the View menu.
 //
@@ -13,25 +13,24 @@
 import type { ReadonlySignal } from '@preact/signals';
 import { computed, signal } from '@preact/signals';
 
-import { findParallels, voicesOf } from '../src/analysis/parallels.ts';
+import { findParallels } from '../src/analysis/parallels.ts';
 import type { Ref } from '../src/editor/addr.ts';
 import { eventOf, refKey } from '../src/editor/addr.ts';
-import { beatOf } from '../src/model.ts';
-import { score } from './state.ts';
+import { headCenter } from '../src/editor/hit.ts';
+import { must } from '../src/util.ts';
+import { hit, score } from './state.ts';
 
 /** One place a layer points at. */
 export interface Finding {
   /** The id of the layer that found it. */
   layer: string;
-  /** What was found, in a few words, such as "2 fifths + 1 octave". */
-  label: string;
-  /** The voices involved, such as "rh.1 + lh.1". */
-  voices: string;
   /** The measure and the tick in it where the finding starts. */
   mi: number;
   tick: number;
   /** The notes involved, as head refs. */
   refs: Ref[];
+  /** Outlines to draw in the score: the heads at the corners of each, in drawing order. */
+  shapes: Ref[][];
   /** An error is drawn in red, a warning in orange. */
   severity: 'error' | 'warn';
 }
@@ -56,21 +55,15 @@ export const activeLayer = signal<string | null>(null);
 
 const parallelsOn = computed(() => activeLayer.value === 'parallels');
 
-/** A count with its noun in the right number: "1 fifth", "2 fifths". */
-function countOf(kind: 'fifths' | 'octaves', n: number): string {
-  return `${n} ${n === 1 ? kind.slice(0, -1) : kind}`;
-}
-
 /** The groups of consecutive fifths and octaves of the score as findings. */
 const parallelFindings = computed<Finding[]>(() => {
   if (!parallelsOn.value) return [];
   return findParallels(score.value).map((g) => ({
     layer: 'parallels',
-    label: g.kinds.map((k) => countOf(k, g.counts[k] ?? 1)).join(' + '),
-    voices: voicesOf(g),
     mi: g.mi,
     tick: g.tick,
     refs: g.notes.map((n) => ({ t: 'ev', ...n.ev, pi: n.pi })),
+    shapes: g.intervals.map((iv) => iv.notes.map((n) => ({ t: 'ev' as const, ...n.ev, pi: n.pi }))),
     severity: 'error' as const,
   }));
 });
@@ -133,7 +126,117 @@ export const layerNotes = computed(() => {
   return { heads, wholeEvents };
 });
 
-/** Where the finding starts, as a measure and a beat. */
-export function placeOf(f: Finding): string {
-  return `m. ${f.mi + 1}, beat ${beatOf(f.tick)}`;
+// The outlines of the findings on the pages, and which one the pointer is over. The score pane draws the outlines and
+// recolors the notes of the hovered one; hit-testing is done here, from the pointer handler, because the overlay
+// does not take pointer events (it must not get in the way of selecting notes).
+
+/** A point on a page, in staff spaces. */
+type Pt = { x: number; y: number };
+
+/** The part of an outline on one page: four corners, or the two heads of one attack when the outline runs over a system break. */
+export interface ShapePart {
+  /** The outline: the index of the finding and of the shape in it. */
+  id: string;
+  page: number;
+  pts: Pt[];
+  severity: Finding['severity'];
+}
+
+/** The parts of all outlines, where the heads are drawn. */
+export const shapeParts = computed<ShapePart[]>(() => {
+  const h = hit.value;
+  if (!h) return [];
+  const pageOf = (mi: number) => h.layout.measures.find((m) => m.mi === mi)?.page;
+  const systemOf = (mi: number) => h.layout.systems.findIndex((s) => mi >= s.a && mi <= s.b);
+  const out: ShapePart[] = [];
+  findings.value.forEach((f, fi) => {
+    f.shapes.forEach((sh, si) => {
+      const ev = sh.flatMap((r) => (r.t === 'ev' ? [r] : []));
+      if (ev.length !== 4) return;
+      const centers = ev.map((r) => {
+        const page = pageOf(r.mi);
+        return page === undefined ? undefined : { page, at: headCenter(h, page, r, r.pi ?? 0) };
+      });
+      // A shape whose heads are in one system is drawn whole; one that runs over a break is drawn as the segments between the pairs of heads.
+      const whole = ev.every((r) => systemOf(r.mi) === systemOf(ev[0].mi));
+      const groups = whole
+        ? [[0, 1, 2, 3]]
+        : [
+            [0, 1],
+            [2, 3],
+          ];
+      for (const g of groups) {
+        const cs = g.map((i) => centers[i]);
+        const page = cs[0]?.page;
+        if (page === undefined || !cs.every((c) => c?.at && c.page === page)) continue;
+        out.push({ id: `${fi}:${si}`, page, pts: cs.map((c) => must(c?.at)), severity: f.severity });
+      }
+    });
+  });
+  return out;
+});
+
+/** The outline that the hovered position belongs to, as `${finding}:${shape}`, or null. */
+export const hoverShape = signal<string | null>(null);
+
+/** The outline with id `id`. */
+export function shapeById(id: string): Ref[] | undefined {
+  const [fi, si] = id.split(':').map(Number);
+  return findings.peek()[fi]?.shapes[si];
+}
+
+/** The distance from `p` to the segment `a`-`b`. */
+function segmentDistance(p: Pt, a: Pt, b: Pt): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = dx * dx + dy * dy;
+  const t = len === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/** The area of a polygon (shoelace formula); two points have none. */
+function areaOf(pts: Pt[]): number {
+  let s = 0;
+  pts.forEach((p, i) => {
+    const q = pts[(i + 1) % pts.length];
+    s += p.x * q.y - q.x * p.y;
+  });
+  return Math.abs(s) / 2;
+}
+
+/** Whether `p` is inside the polygon (even-odd rule). */
+function inside(p: Pt, pts: Pt[]): boolean {
+  let c = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++)
+    if (
+      pts[i].y > p.y !== pts[j].y > p.y &&
+      p.x < ((pts[j].x - pts[i].x) * (p.y - pts[i].y)) / (pts[j].y - pts[i].y) + pts[i].x
+    )
+      c = !c;
+  return c;
+}
+
+/** How close to an outline (staff spaces) still counts as on it, so that thin outlines can be hit. */
+const REACH = 0.4;
+
+/** The outline under the position, the smallest if several are: the one on top in a stack, since the larger ones around it are what stack under it. */
+export function shapeAt(page: number, x: number, y: number): string | null {
+  const p = { x, y };
+  let best: { id: string; area: number; d: number } | null = null;
+  for (const part of shapeParts.peek()) {
+    if (part.page !== page) continue;
+    const pts = part.pts;
+    const edges = pts.length === 2 ? [[pts[0], pts[1]]] : pts.map((a, i) => [a, pts[(i + 1) % pts.length]]);
+    const d = inside(p, pts) ? 0 : Math.min(...edges.map(([a, b]) => segmentDistance(p, a, b)));
+    if (d > REACH) continue;
+    const area = areaOf(pts);
+    if (!best || area < best.area || (area === best.area && d < best.d)) best = { id: part.id, area, d };
+  }
+  return best?.id ?? null;
+}
+
+/** Updates the hovered outline for a pointer over `at` (undefined when it is over no page). */
+export function hoverFinding(at: { page: number; x: number; y: number } | undefined): void {
+  const id = anyLayerOn.peek() && at ? shapeAt(at.page, at.x, at.y) : null;
+  if (hoverShape.peek() !== id) hoverShape.value = id;
 }

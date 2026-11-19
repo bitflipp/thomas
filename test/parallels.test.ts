@@ -31,6 +31,16 @@ test('parallel fifths between two voices are found, with the notes of both inter
   assert.deepEqual([gs[0].mi, gs[0].tick], [0, 0]);
 });
 
+test('four fifths in a row are three intervals whose corners go round without crossing', () => {
+  const [g] = findParallels(score(['rh.1: g4 a4 b4 c5', 'lh.1: c4 d4 e4 f4']));
+  assert.equal(g.intervals.length, 3);
+  // The corners: one voice then the other at one attack, then the other then the first at the next.
+  assert.deepEqual(
+    g.intervals[0].notes.map((n) => `${n.ev.staff}${n.ev.idx}`),
+    ['rh0', 'lh0', 'lh1', 'rh1'],
+  );
+});
+
 test('other motion is not flagged: oblique, contrary into a fifth, a fifth followed by a sixth', () => {
   assert.deepEqual(findParallels(score(['rh.1: g4:2 g4', 'lh.1: c4:2 e4'])), []);
   assert.equal(findParallels(score(['rh.1: b4:2 a4', 'lh.1: e4:2 d4'])).length, 1); // Descending fifths are parallel too.
@@ -56,6 +66,20 @@ test('an octave inside one voice (a doubling) is allowed, a fifth inside a chord
   const gs = findParallels(score(['rh.1: <c4 g4>:2 <d4 a4>', 'lh.1: R:1']));
   assert.equal(gs.length, 1);
   assert.equal(gs[0].notes.length, 4);
+});
+
+test('the lower note of an octave doubling in a staff is ignored, an octave between the staves is not', () => {
+  // The right hand doubles the line at the octave: both notes are a fifth above the bass, but that is one finding.
+  const doubled = findParallels(score(['rh.1: <g4 g5>:2 <a4 a5>', 'lh.1: c3:2 d3']));
+  assert.equal(doubled.length, 1);
+  assert.equal(doubled[0].notes.length, 4);
+  assert.deepEqual(
+    doubled[0].notes.map((n) => n.pi),
+    [0, 1, 0, 1],
+  );
+  assert.equal(doubled[0].intervals.length, 1);
+  // Octaves between the hands are kept, however the notes are doubled.
+  assert.equal(findParallels(score(['rh.1: g4:2 a4', 'lh.1: g3:2 a3'])).length, 1);
 });
 
 test('a tie continuation is not an attack: a held fifth is one interval, a repeated one is two', () => {

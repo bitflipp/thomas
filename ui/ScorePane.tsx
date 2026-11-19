@@ -32,7 +32,7 @@ import {
   zoomBy,
 } from './interact.ts';
 
-import { findings, LAYER_COLORS, layerNotes, placeOf } from './layers.ts';
+import { hoverShape, LAYER_COLORS, layerNotes, shapeById, shapeParts } from './layers.ts';
 
 import { playhead, playing } from './player.ts';
 
@@ -272,6 +272,36 @@ function PageView({
       for (const f of undo) f();
     };
   }, [hovered, svg]);
+  // While an outline is hovered, the flagged notes that do not belong to it fall back to black, so that the notes of the
+  // outline stand out of a dense stack. Like the hover recoloring, this changes the generated SVG in place.
+  const hs = hoverShape.value;
+  useEffect(() => {
+    const root = wrap.current;
+    const sh = hs ? shapeById(hs) : undefined;
+    if (!(root && sh && near)) return;
+    const keep = new Set<string>();
+    for (const r of sh)
+      if (r.t === 'ev') {
+        keep.add(refKey(r));
+        keep.add(refKey({ ...r, pi: undefined }));
+      }
+    const flagged = new Set(Object.values(LAYER_COLORS));
+    const undo: (() => void)[] = [];
+    for (const el of root.querySelectorAll<SVGElement>('[data-p]')) {
+      const prop = el.tagName === 'line' ? 'stroke' : 'fill';
+      const c = el.getAttribute(prop);
+      if (!(c && flagged.has(c))) continue;
+      const q = p.prims[Number(el.dataset.p)];
+      const r = q && primRef(h.index, q);
+      if (!r || keep.has(refKey(r))) continue;
+      const old = el.style.getPropertyValue(prop);
+      el.style.setProperty(prop, '#000');
+      undo.push(() => el.style.setProperty(prop, old));
+    }
+    return () => {
+      for (const f of undo) f();
+    };
+  }, [hs, svg, p, h, near]);
   const bands = selection.value.filter((r) => r.t === 'measure') as Extract<Ref, { t: 'measure' }>[];
   return (
     <div
@@ -296,7 +326,7 @@ function PageView({
           );
         })}
         <NotesSvg page={i} h={h} />
-        <FindingsSvg page={i} h={h} />
+        <FindingsSvg page={i} />
         <GhostSvg g={ghost.value} page={i} />
         <PlayheadSvg page={i} />
       </svg>
@@ -340,57 +370,26 @@ function NotesSvg({ page, h }: { page: number; h: HitIndex }) {
   );
 }
 
-let measurer: CanvasRenderingContext2D | null = null;
-
-/** The width of `t` in staff spaces at font size `size`, measured in the same font the overlay uses. */
-function titleWidth(t: string, size: number): number {
-  measurer ??= must(document.createElement('canvas').getContext('2d'));
-  measurer.font = `${size * 100}px ${GHOST_FONT}`;
-  return measurer.measureText(t).width / 100;
-}
-
-/** The titles of the findings on page `page`: a frame round the notes and an opaque tag above them, so that the title stays readable over staff lines and marks. */
-function FindingsSvg({ page, h }: { page: number; h: HitIndex }) {
-  const all = findings.value;
-  if (!all.length) return null;
-  const size = 1.3;
+/** The outlines of the findings on page `page`: a translucent quadrilateral through the four heads of each interval, so that findings stack where they overlap. The one under the pointer is drawn last, stronger, and the others fade. */
+function FindingsSvg({ page }: { page: number }) {
+  const hs = hoverShape.value;
+  const parts = shapeParts.value.filter((s) => s.page === page);
+  if (!parts.length) return null;
+  const ordered = hs ? [...parts.filter((s) => s.id !== hs), ...parts.filter((s) => s.id === hs)] : parts;
   return (
-    <g pointer-events="none" font-family={GHOST_FONT} font-size={size}>
-      {all.map((f) => {
-        const boxes = noteBoxes(
-          h,
-          page,
-          f.refs.flatMap((r) => (r.t === 'ev' ? [r] : [])),
-        );
-        if (!boxes.length) return null;
-        const x0 = Math.min(...boxes.map((b) => b.x0)) - 0.5;
-        const x1 = Math.max(...boxes.map((b) => b.x1)) + 0.5;
-        const y1 = Math.max(...boxes.map((b) => b.y1)) + 0.5;
-        const col = LAYER_COLORS[f.severity];
-        const text = f.label;
-        const pad = size * 0.4;
-        const w = titleWidth(text, size) + 2 * pad;
-        const th = size + 2 * pad;
-        // The rectangle grows upward by the height of the tag, so that the tag sits above the notes and not over them.
-        const y0 = Math.min(...boxes.map((b) => b.y0)) - 0.5 - th;
+    <g pointer-events="none" stroke-linejoin="round">
+      {ordered.map((s) => {
+        const col = LAYER_COLORS[s.severity];
+        const on = s.id === hs;
         return (
-          <g>
-            <title>{`${f.label} · ${placeOf(f)} · ${f.voices}`}</title>
-            <rect
-              x={x0}
-              y={y0}
-              width={x1 - x0}
-              height={y1 - y0}
-              fill={col}
-              fill-opacity="0.1"
-              stroke={col}
-              stroke-width="0.12"
-            />
-            <rect x={x0} y={y0} width={w} height={th} fill={col} />
-            <text x={x0 + pad} y={y0 + th - pad - size * 0.2} fill="#fff">
-              {text}
-            </text>
-          </g>
+          <polygon
+            points={s.pts.map((p) => `${p.x},${p.y}`).join(' ')}
+            fill={col}
+            fill-opacity={on ? 0.3 : hs ? 0.04 : 0.1}
+            stroke={col}
+            stroke-width={on ? 0.25 : 0.12}
+            stroke-opacity={hs && !on ? 0.4 : 1}
+          />
         );
       })}
     </g>

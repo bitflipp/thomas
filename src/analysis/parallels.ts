@@ -9,7 +9,8 @@
 // across staves too, as well as the notes of one chord. The same interval between the same two
 // voices at two successive attacks is a violation, also across a rest that both voices share
 // (rest look-through). Tie continuations are not attacks and tied-over notes are not releases, grace
-// notes are not looked at, and an octave between two notes of one voice (a doubling) is allowed.
+// notes are not looked at, and an octave between two notes of one voice (a doubling) is allowed. The lower
+// note of an octave doubling within a staff is left out altogether (`withoutLowerDoublings`).
 // Violations that share a note form one group; groups are numbered in score order.
 
 import type { EvAddr } from '../editor/addr.ts';
@@ -26,6 +27,13 @@ export interface ParallelNote {
   tick: number;
 }
 
+/** One parallel interval: two voices form `kind` at one attack and again at the next. */
+export interface ParallelInterval {
+  kind: ParallelKind;
+  /** The corners in drawing order: the first voice then the second voice at the first attack, the second then the first voice at the next, so that the outline does not cross itself. */
+  notes: [ParallelNote, ParallelNote, ParallelNote, ParallelNote];
+}
+
 /** One independent violation: the notes of all the consecutive intervals that share a note. */
 export interface ParallelGroup {
   /** The position in score order, from 1. */
@@ -35,6 +43,8 @@ export interface ParallelGroup {
   counts: Partial<Record<ParallelKind, number>>;
   /** The notes by onset, then by voice. */
   notes: ParallelNote[];
+  /** The intervals of the group, each with its four notes, by onset. */
+  intervals: ParallelInterval[];
   /** The measure and the tick in it of the first note. */
   mi: number;
   tick: number;
@@ -130,14 +140,49 @@ function collectNotes(score: Score): Note[] {
     tiedInto = next;
     base += measureTicks(timeAt(score, mi));
   });
-  return notes;
+  return withoutLowerDoublings(notes);
+}
+
+/** The part of a note that a result carries. */
+const asNote = (n: Note): ParallelNote => ({ ev: n.ev, pi: n.pi, tick: n.start });
+
+/**
+ * Drops the lower note of an octave doubling: a note with another note on the same staff, attacked at the same
+ * time, one or more octaves above it. A piano setting doubles lines at the octave, and both notes form the same
+ * intervals with any other voice, so keeping both would report every violation twice. Notes of other staves
+ * do not count: an octave between the hands is a real octave. The ids are renumbered, they index the result.
+ */
+function withoutLowerDoublings(notes: Note[]): Note[] {
+  const higher = new Map<string, number[]>();
+  for (const n of notes) {
+    const k = `${n.ev.staff}:${n.start}`;
+    const list = higher.get(k);
+    if (list) list.push(n.midi);
+    else higher.set(k, [n.midi]);
+  }
+  const kept = notes.filter(
+    (n) => !must(higher.get(`${n.ev.staff}:${n.start}`)).some((m) => m > n.midi && (m - n.midi) % 12 === 0),
+  );
+  kept.forEach((n, i) => {
+    n.id = i;
+  });
+  return kept;
 }
 
 /** Union-find over note ids, remembering which notes were flagged and by which kind of interval. */
 class Flags {
   private parent = new Map<number, number>();
+
+  private readonly notes: Note[];
+
+  constructor(notes: Note[]) {
+    this.notes = notes;
+  }
+
   readonly kinds = new Map<number, Set<ParallelKind>>();
   private intervals = new Map<string, { kind: ParallelKind; id: number }>();
+  /** The corners of every interval flagged, by key, so that one found twice counts once. */
+  readonly quads = new Map<string, { kind: ParallelKind; ids: [number, number, number, number] }>();
 
   private find(x: number): number {
     let r = x;
@@ -153,6 +198,13 @@ class Flags {
 
   /** Marks the notes as violating and puts them into one group. `ids` are two intervals: a, b, then a, b of the next. */
   flag(ids: number[], kind: ParallelKind): void {
+    const notes = this.notes;
+    // The second interval's notes in the order of the first's (same voice, else same side), so that the corners go around.
+    const [a1, b1] = [notes[ids[0]], notes[ids[1]]];
+    let [a2, b2] = [notes[ids[2]], notes[ids[3]]];
+    const swap = a1.vk === b1.vk ? a1.midi < b1.midi !== a2.midi < b2.midi : a2.vk !== a1.vk;
+    if (swap) [a2, b2] = [b2, a2];
+    this.quads.set(`${kind}:${[a1.id, b1.id, a2.id, b2.id].join(':')}`, { kind, ids: [a1.id, b1.id, b2.id, a2.id] });
     for (const [x, y] of [
       [ids[0], ids[1]],
       [ids[2], ids[3]],
@@ -166,6 +218,11 @@ class Flags {
     }
     const r = this.find(ids[0]);
     for (const id of ids.slice(1)) this.parent.set(this.find(id), r);
+  }
+
+  /** The root of the group that note `id` belongs to. */
+  rootOf(id: number): number {
+    return this.find(id);
   }
 
   /** The number of distinct intervals of each kind by group root. */
@@ -312,7 +369,7 @@ function lookThroughInside(p: Pair, t: number, semitones: number, idx: VoiceInde
 export function findParallels(score: Score, kinds: ParallelKind[] = ['fifths', 'octaves']): ParallelGroup[] {
   const notes = collectNotes(score);
   const idx = new VoiceIndex(notes);
-  const flags = new Flags();
+  const flags = new Flags(notes);
   for (const kind of kinds) {
     const semitones = SEMITONES[kind];
     const ending = pairsByTime(idx.byEnd, semitones);
@@ -336,6 +393,13 @@ export function findParallels(score: Score, kinds: ParallelKind[] = ['fifths', '
     notes: ids.map((id) => notes[id]).sort(order),
   }));
   groups.sort((a, b) => order(a.notes[0], b.notes[0]));
+  const intervalsByRoot = new Map<number, ParallelInterval[]>();
+  for (const q of flags.quads.values()) {
+    const r = flags.rootOf(q.ids[0]);
+    const list = intervalsByRoot.get(r) ?? [];
+    intervalsByRoot.set(r, list);
+    list.push({ kind: q.kind, notes: q.ids.map((id) => asNote(notes[id])) as ParallelInterval['notes'] });
+  }
   return groups.map(({ root, notes: g }, i) => {
     const ks = new Set<ParallelKind>();
     for (const n of g) for (const k of must(flags.kinds.get(n.id))) ks.add(k);
@@ -344,7 +408,8 @@ export function findParallels(score: Score, kinds: ParallelKind[] = ['fifths', '
       number: i + 1,
       kinds: kinds.filter((k) => ks.has(k)),
       counts: counts.get(root) ?? {},
-      notes: g.map((n) => ({ ev: n.ev, pi: n.pi, tick: n.start })),
+      notes: g.map(asNote),
+      intervals: (intervalsByRoot.get(root) ?? []).sort((a, b) => a.notes[0].tick - b.notes[0].tick),
       mi: first.ev.mi,
       tick: first.at,
     };

@@ -569,6 +569,22 @@ export function noteBoxes(h: HitIndex, page: number, want: EvAddr[]): Box[] {
   return out;
 }
 
+/** Where the head `pi` of event `a` is on a page: the center of its notehead, or undefined when it is not drawn there. A unison head shared with another voice is found as in `noteBoxes`. */
+export function headCenter(h: HitIndex, page: number, a: EvAddr, pi: number): { x: number; y: number } | undefined {
+  const own = (h.byPage[page] ?? []).find(
+    (t) =>
+      t.k === 'head' &&
+      t.ref.t === 'ev' &&
+      t.ref.mi === a.mi &&
+      t.ref.staff === a.staff &&
+      t.ref.voice === a.voice &&
+      t.ref.idx === a.idx &&
+      (t.ref.pi ?? 0) === pi,
+  );
+  const b = own ? (own.core ?? own.bbox) : noteBoxes(h, page, [a])[0];
+  return b && { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 };
+}
+
 /**
  * The event a position on a staff-measure stands for: the one at the nearest column (a mark hangs on it), in voice `prefer`
  * if it has an event there, else in the first voice that does. Undefined when the staff-measure has no events.
