@@ -27,6 +27,7 @@ npm install
 node src/cli.ts render test/fixtures/study.txt out/study --pdf     # out/study-N.svg and out/study.pdf
 node src/cli.ts import piece.musicxml out/piece.txt                # MusicXML to the text format
 node src/cli.ts check test/fixtures/study.txt --collisions --parallels
+node src/cli.ts export-notes my-piece.txt my-piece.notes.json   # sounding notes + measure starts, for Pianizer's "Compare with score"
 ```
 
 Run `node src/cli.ts` without arguments for all options.

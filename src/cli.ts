@@ -12,6 +12,7 @@ import { engrave } from './engrave/system.ts';
 import type { Score } from './model.ts';
 import { beatOf, validate } from './model.ts';
 import { importMusicXml } from './musicxml.ts';
+import { exportNotes } from './playback/export-notes.ts';
 import { pageToSvg } from './render.ts';
 import { parseText, writeText } from './textformat.ts';
 import { must } from './util.ts';
@@ -44,6 +45,8 @@ const USAGE = `usage:
                                                   validate; with --collisions also engrave and list overlapping
                                                   elements (see src/engrave/collide.ts); --mark writes <out-base>-<page>.svg
                                                   with every collision boxed in red
+  thomas export-notes <in.txt|in.musicxml> <out.json>
+                                                  the sounding notes and measure starts as JSON, for Pianizer's "Compare with score"
   --space <mm> (render, check) overrides the staff space, the global engraving scale (default: the file's page line)`;
 
 const [cmd, ...rawArgs] = process.argv.slice(2);
@@ -78,6 +81,9 @@ try {
     const flags = new Set(args.filter((a) => a.startsWith('--')));
     const [inp, out] = args.filter((a) => !a.startsWith('--'));
     writeFileSync(out, writeText(loadScore(inp, flags)));
+  } else if (cmd === 'export-notes') {
+    const [inp, out] = args;
+    writeFileSync(out, JSON.stringify(exportNotes(loadScore(inp))));
   } else if (cmd === 'check') {
     const s = withSpace(loadScore(must(args.find((a) => !a.startsWith('--')))));
     console.log(`ok: ${s.measures.length} measures, ${s.staves.length} staves`);
