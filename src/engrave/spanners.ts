@@ -222,7 +222,7 @@ function linkUnits(systems: SysCtx[], sysOf: number[]): SpannerUnit[] {
         for (const e of v.evs) {
           const at = { mi: e.mi, tick: e.start, ord: e.home * 1000 + e.voice, ref: e };
           for (const st of e.ev.lineStart ?? []) ends.push({ ...at, role: 'start', id: st.id });
-          for (const id of e.ev.lineStop ?? []) ends.push({ ...at, role: 'stop', id });
+          for (const x of e.ev.lineStop ?? []) ends.push({ ...at, role: 'stop', id: x.id });
         }
   if (!ends.length) return [];
   const out: SpannerUnit[] = [];
@@ -235,10 +235,25 @@ function linkUnits(systems: SysCtx[], sysOf: number[]): SpannerUnit[] {
       sys: [sysOf[a.mi]],
       key: `l${a.id}>${b.id}.${start.id}${dashed ? 'd' : ''}`,
       cross: a.staff !== b.staff,
-      draw: () => drawLink(systems[sysOf[a.mi]], a, b, start.id, dashed),
+      draw: () =>
+        drawLink(
+          systems[sysOf[a.mi]],
+          a,
+          b,
+          start.id,
+          dashed,
+          headOf(a, start.id, 'start'),
+          headOf(b, stop.id, 'stop'),
+        ),
     });
   }
   return out;
+}
+
+/** The chord pitch a line end is attached to, or `undefined` for the chord as a whole (or a head the note does not have). */
+function headOf(e: EvL, id: number, role: 'start' | 'stop'): number | undefined {
+  const x = (role === 'start' ? e.ev.lineStart : e.ev.lineStop)?.find((l) => l.id === id);
+  return x && x.head !== undefined && x.head < e.heads.length ? x.head : undefined;
 }
 
 const linkOwners = new WeakMap<EvL, Map<number, number>>();
@@ -258,55 +273,90 @@ function linkOwner(a: EvL, id: number): number {
   return o;
 }
 
+/** The clearance a line keeps from the heads, stem and accidentals of the notes it joins. */
+const LINK_CLEAR = 0.6;
+
 /**
- * A straight line from a head of note `a` to a head of note `b`, in the coordinates of `a`'s staff. Of a chord the head
- * nearest to the other end is used; the line stops a little short of each head. Nothing is recorded in the skyline.
+ * A straight line between notes `a` and `b`, in the coordinates of `a`'s staff. Each end is the point nearest to the
+ * centroid of that note's heads (all of them, so the line points at the chord as a whole, or the one head `ha`/`hb` it is
+ * attached to) that keeps `LINK_CLEAR` from the
+ * note's heads, stem and accidentals and is reached from the other end without crossing them. Where the stem or an
+ * accidental is in the way the end therefore moves only as far from the centroid as it has to. Nothing is recorded in the
+ * skyline.
  */
-function drawLink(ctx: SysCtx, a: EvL, b: EvL, id: number, dashed: boolean): void {
+function drawLink(ctx: SysCtx, a: EvL, b: EvL, id: number, dashed: boolean, ha?: number, hb?: number): void {
   if (a.ev.kind !== 'note' || b.ev.kind !== 'note') return;
-  const ga = must(geomOf.get(a));
-  const gb = must(geomOf.get(b));
   const yOf = (e: EvL, pos: number) => posToY(pos) + staffOffset(ctx, a.staff, e.staff);
-  const mean = (e: EvL) => e.heads.reduce((t, h) => t + yOf(e, h.pos), 0) / e.heads.length;
-  const nearest = (e: EvL, y: number) =>
-    e.heads.reduce((best, h) => (Math.abs(yOf(e, h.pos) - y) < Math.abs(yOf(e, best.pos) - y) ? h : best));
-  const ha = nearest(a, mean(b));
-  const hb = nearest(b, mean(a));
-  const x0 = a.x + ha.dx + ga.hw / 2;
-  const y0 = yOf(a, ha.pos);
-  const x1 = b.x + hb.dx + gb.hw / 2;
-  const y1 = yOf(b, hb.pos);
-  const len = Math.hypot(x1 - x0, y1 - y0);
-  if (len < 1e-6) return;
-  const ux = (x1 - x0) / len;
-  const uy = (y1 - y0) / len;
-  /** Distance from a head's center to its outline along the line (an ellipse), plus clearance. */
-  const reach = (hw: number) => 1 / Math.hypot(ux / (hw / 2), uy / 0.5) + 0.6;
-  // The end keeps the same clearance from the note's own stem as from the head: it is pushed along the line until it is
-  // out of the stem's neighborhood (which may mean past the stem).
-  const CLEAR = 0.6;
-  const pastStem = (e: EvL, g: typeof ga, cx: number, cy: number, dir: number, r: number): number => {
-    if (!e.stem) return r;
-    const [lo, hi] = [Math.min(g.stemTip, g.stemBase), Math.max(g.stemTip, g.stemBase)];
+  /** What a line must keep away from at one note: signed distance to the nearest obstacle (negative inside). */
+  const obstacles = (e: EvL) => {
+    const g = must(geomOf.get(e));
     const off = staffOffset(ctx, a.staff, e.staff);
-    const near = (q: number) => {
-      const px = cx + ux * dir * q;
-      const py = cy + uy * dir * q;
-      return Math.abs(px - g.stemX) < CLEAR + STEM_T / 2 && py > lo + off - CLEAR && py < hi + off + CLEAR;
+    const heads = e.heads.map((h) => ({ x: e.x + h.dx + g.hw / 2, y: yOf(e, h.pos), acc: h.accX }));
+    const [lo, hi] = [Math.min(g.stemTip, g.stemBase) + off, Math.max(g.stemTip, g.stemBase) + off];
+    const box = (px: number, py: number, x0: number, x1: number, y0: number, y1: number) => {
+      const qx = Math.max(x0 - px, 0, px - x1);
+      const qy = Math.max(y0 - py, 0, py - y1);
+      const inside = qx === 0 && qy === 0 ? -Math.min(px - x0, x1 - px, py - y0, y1 - py) : 0;
+      return qx || qy ? Math.hypot(qx, qy) : inside;
     };
-    let q = r;
-    while (near(q) && q < len) q += 0.05;
-    return q < len ? q : r;
+    return {
+      heads,
+      dist: (px: number, py: number): number => {
+        let d = Number.POSITIVE_INFINITY;
+        for (const h of heads) {
+          d = Math.min(d, (Math.hypot((px - h.x) / (g.hw / 2), (py - h.y) / 0.5) - 1) * 0.5);
+          if (h.acc !== undefined) d = Math.min(d, box(px, py, e.x + h.acc, e.x + h.acc + 1.1, h.y - 1, h.y + 1));
+        }
+        if (e.stem) d = Math.min(d, box(px, py, g.stemX - STEM_T / 2, g.stemX + STEM_T / 2, lo, hi));
+        return d;
+      },
+    };
   };
-  const ra = pastStem(a, ga, x0, y0, 1, reach(ga.hw));
-  const rb = pastStem(b, gb, x1, y1, -1, reach(gb.hw));
-  if (len - ra - rb < 0.5) return;
+  const oa = obstacles(a);
+  const ob = obstacles(b);
+  /** The centroid of the heads of a note, or the position of its one chosen head. */
+  const centroid = (o: ReturnType<typeof obstacles>, only?: number) => {
+    const hs = only === undefined ? o.heads : [o.heads[only]];
+    return { x: hs.reduce((t, h) => t + h.x, 0) / hs.length, y: hs.reduce((t, h) => t + h.y, 0) / hs.length };
+  };
+  const ca = centroid(oa, ha);
+  const cb = centroid(ob, hb);
+  /** The end at one note for a line coming from `from`: the free point nearest to the centroid that `from` sees. */
+  const endAt = (o: ReturnType<typeof obstacles>, c: { x: number; y: number }, from: { x: number; y: number }) => {
+    const toward = Math.atan2(from.y - c.y, from.x - c.x);
+    const free = (px: number, py: number) => {
+      if (o.dist(px, py) < LINK_CLEAR) return false;
+      const n = Math.ceil(Math.hypot(px - from.x, py - from.y) / 0.1);
+      for (let i = 0; i < n; i++) {
+        const t = i / n;
+        if (o.dist(from.x + (px - from.x) * t, from.y + (py - from.y) * t) < LINK_CLEAR * 0.85) return false;
+      }
+      return true;
+    };
+    for (let r = 0; r <= 5; r += 0.1)
+      for (let k = 0; k < 24; k++) {
+        // The angles are tried from the direction of `from` outward to both sides.
+        const turn = (Math.ceil(k / 2) * (k % 2 ? 1 : -1) * 2 * Math.PI) / 24;
+        const px = c.x + r * Math.cos(toward + turn);
+        const py = c.y + r * Math.sin(toward + turn);
+        if (free(px, py)) return { x: px, y: py };
+      }
+    return c;
+  };
+  let pb = endAt(ob, cb, ca);
+  const pa = endAt(oa, ca, pb);
+  pb = endAt(ob, cb, pa);
+  const x0 = pa.x;
+  const y0 = pa.y;
+  const x1 = pb.x;
+  const y1 = pb.y;
+  if (Math.hypot(x1 - x0, y1 - y0) < 0.5) return;
   ctx.prims[a.staff].push({
     t: 'line',
-    x1: x0 + ux * ra,
-    y1: y0 + uy * ra,
-    x2: x1 - ux * rb,
-    y2: y1 - uy * rb,
+    x1: x0,
+    y1: y0,
+    x2: x1,
+    y2: y1,
     w: 0.12,
     ...(dashed ? { dash: [0.45, 0.3] as [number, number] } : {}),
     k: 'link',

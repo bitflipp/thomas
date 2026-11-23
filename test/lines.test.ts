@@ -110,3 +110,27 @@ test('lines: drawn only when both notes are in one system; incremental engraving
   assert.equal(links(after).length, 1);
   assert.equal(engrave(after, { cache }).pages[0].prims.filter((x) => x.k === 'link').length, 1);
 });
+
+test('lines: an end can be attached to one pitch of a chord', () => {
+  const chords = base.replace('lh.1: c3:2 e3', 'lh.1: <c3 g3>:2 e3');
+  const s = load(chords.replace('rh.1: c5:4', 'rh.1: <c5& e5>:4'));
+  const first = s.measures[0].staves.rh.voices[0].items[0] as { lineStart?: unknown };
+  assert.deepEqual(first.lineStart, [{ id: 1, head: 0 }]);
+  const text = writeText(s);
+  assert.match(text, /<c5& e5>/);
+  assert.equal(writeText(parseText(text)), text);
+  assert.deepEqual(parseText(text), s);
+  // Through the editor: only a chord records a head, a single note does not.
+  const e = C.addLine(load(chords), { ...a('rh', 1, 0), pi: 0 }, { ...a('lh', 1, 0), pi: 1 });
+  assert.deepEqual(validate(e), []);
+  assert.match(writeText(e), /<c3 g3;>/);
+  assert.match(writeText(e), /rh\.1: &c5:4/);
+  assert.deepEqual(parseText(writeText(e)), e);
+  // The line points at the chosen pitch, not at the middle of the chord.
+  const end = (pi: number) => {
+    const p = links(C.addLine(load(chords), a('rh', 1, 0), { ...a('lh', 1, 0), pi }))[0];
+    assert.equal(p.t, 'line');
+    return p.t === 'line' ? p.y2 : 0;
+  };
+  assert.ok(end(0) > end(1));
+});

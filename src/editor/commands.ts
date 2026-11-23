@@ -163,7 +163,11 @@ function lineTokensOf(v: Voice): { tick: number; starts: number[]; stops: number
     for (const te of flattenVoice(v)) {
       const e = te.ev;
       if (e.lineStart || e.lineStop)
-        t.push({ tick: te.start, starts: (e.lineStart ?? []).map((x) => x.id), stops: e.lineStop ?? [] });
+        t.push({
+          tick: te.start,
+          starts: (e.lineStart ?? []).map((x) => x.id),
+          stops: (e.lineStop ?? []).map((x) => x.id),
+        });
     }
     lineTokens.set(v, t);
   }
@@ -195,7 +199,7 @@ function dropLooseLines(d: Score): void {
       if (keep.length) e.lineStart = keep;
       else delete e.lineStart;
     } else {
-      const keep = (e.lineStop ?? []).filter((x) => x !== l.id);
+      const keep = (e.lineStop ?? []).filter((x) => x.id !== l.id);
       if (keep.length) e.lineStop = keep;
       else delete e.lineStop;
     }
@@ -865,7 +869,12 @@ export function addSlur(score: Score, from: EvAddr, to: EvAddr, side?: 'above' |
 // score-wide by id, unlike slurs, which are matched per voice.
 
 /** A line between two notes, which may be in different voices or staves (it is drawn only when they are in one system, which the engraver decides). */
-export function addLine(score: Score, from: EvAddr, to: EvAddr, dashed = false): Score {
+export function addLine(
+  score: Score,
+  from: EvAddr & { pi?: number },
+  to: EvAddr & { pi?: number },
+  dashed = false,
+): Score {
   if (from.mi === to.mi && from.staff === to.staff && from.voice === to.voice && from.idx === to.idx)
     throw new EditError('A line needs two different notes');
   return edit(score, (d) => {
@@ -883,9 +892,12 @@ export function addLine(score: Score, from: EvAddr, to: EvAddr, dashed = false):
     let id = 1;
     while (spans.some((s) => s.id === id && s.t0 <= t1 && s.t1 >= t0)) id++;
     a.lineStart ??= [];
-    a.lineStart.push(dashed ? { id, dashed } : { id });
+    // A head is recorded only for a chord, and only when the end was given one.
+    const headOf = (e: typeof a, pi: number | undefined) =>
+      e.kind === 'note' && e.pitches.length > 1 && pi !== undefined && pi < e.pitches.length ? { head: pi } : {};
+    a.lineStart.push({ id, ...(dashed ? { dashed } : {}), ...headOf(a, from.pi) });
     b.lineStop ??= [];
-    b.lineStop.push(id);
+    b.lineStop.push({ id, ...headOf(b, to.pi) });
   });
 }
 

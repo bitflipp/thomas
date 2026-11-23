@@ -16,6 +16,8 @@ import type {
   Event,
   Grace,
   Item,
+  LineStart,
+  LineStop,
   MarkBody,
   MarkPlacement,
   Measure,
@@ -208,7 +210,7 @@ class VoiceWriter {
       pre.push(`\\staff ${this.curStaff}`);
     }
     for (const s of e.slurStart ?? []) pre.push(`(${idStr(s.id)}${sideStr(s.side)}${s.skewed ? '/' : ''}`);
-    for (const s of e.lineStart ?? []) pre.push(`&${idStr(s.id)}${s.dashed ? '.' : ''}`);
+    for (const s of e.lineStart ?? []) if (s.head === undefined) pre.push(`&${idStr(s.id)}${s.dashed ? '.' : ''}`);
     if (e.stem) pre.push(e.stem === 'up' ? '\\stemup' : '\\stemdown');
     if (e.kind === 'note') {
       if (e.graces?.length) pre.push(...graceStrs(e.graces));
@@ -231,7 +233,16 @@ class VoiceWriter {
       };
     const ps = e.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : ''));
     if (e.pitches.length === 1) return { core: ps[0], tie: tieStr(e.pitches[0]) };
-    return { core: `<${ps.map((x, i) => x + tieStr(e.pitches[i])).join(' ')}>`, tie: '' };
+    const heads = (i: number) =>
+      (e.lineStart ?? [])
+        .filter((s) => s.head === i)
+        .map((s) => `&${idStr(s.id)}${s.dashed ? '.' : ''}`)
+        .join('') +
+      (e.lineStop ?? [])
+        .filter((s) => s.head === i)
+        .map((s) => `;${idStr(s.id)}`)
+        .join('');
+    return { core: `<${ps.map((x, i) => x + tieStr(e.pitches[i]) + heads(i)).join(' ')}>`, tie: '' };
   }
 
   eventStr(e: Event): string {
@@ -254,7 +265,8 @@ class VoiceWriter {
     const d = e.dur.base !== this.lastBase || e.dur.dots ? `:${durStr(e.dur)}` : '';
     this.lastBase = e.dur.base;
     const slurEnd =
-      (e.slurStop ?? []).map((i) => `)${idStr(i)}`).join('') + (e.lineStop ?? []).map((i) => `;${idStr(i)}`).join('');
+      (e.slurStop ?? []).map((i) => `)${idStr(i)}`).join('') +
+      (e.lineStop ?? []).map((x) => (x.head === undefined ? `;${idStr(x.id)}` : '')).join('');
     const toks = [...pre, tagged(this.tags, refKey({ t: 'ev', ...loc }), core + d + tie + arts + slurEnd)];
     // A slur start is glued to the token after it: `(f#2:16 ... d#2)`. Nothing that follows starts with
     // a digit, so an id like in `(2` cannot be mistaken for part of the next token.
@@ -510,7 +522,9 @@ class VoiceLineParser {
   private at: number | null;
   private pending: MarkBody[] = [];
   private pendingSlurs: { id: number; side?: Side }[] = [];
-  private pendingLines: { id: number; dashed?: boolean }[] = [];
+  private pendingLines: LineStart[] = [];
+  /** Line ends written on the pitches of the chord being read (`<c4&1 e4;2>`), which go to the event with their pitch index. */
+  private headLines: { starts: LineStart[]; stops: LineStop[] } = { starts: [], stops: [] };
   private pendingEv: PendingEv = {};
   private lastEv: Event | null = null;
   /** Set by \staff, sticky within the line. */
@@ -663,7 +677,7 @@ class VoiceLineParser {
     if (!this.lastEv) this.sc.fail('; without event');
     const ev = must(this.lastEv);
     ev.lineStop ??= [];
-    ev.lineStop.push(id);
+    ev.lineStop.push({ id });
   }
 
   /** A mark belongs to the next event (or the end of the measure), or in a mark line to its position. */
@@ -785,6 +799,14 @@ class VoiceLineParser {
         break;
       }
       pitches.push(this.readNotePitch());
+      const head = pitches.length - 1;
+      for (;;) {
+        if (sc.take(/&/y)) {
+          const id = this.num();
+          this.headLines.starts.push({ id, ...(sc.take(/\./y) ? { dashed: true } : {}), head });
+        } else if (sc.take(/;/y)) this.headLines.stops.push({ id: this.num(), head });
+        else break;
+      }
     }
     if (!pitches.length) sc.fail('empty chord');
     return pitches;
@@ -897,8 +919,11 @@ class VoiceLineParser {
     const ev: Event = c === 'r' || c === 's' || c === 'R' ? this.readRest(c) : this.readNoteEvent();
     if (this.pendingSlurs.length) ev.slurStart = this.pendingSlurs;
     this.pendingSlurs = [];
-    if (this.pendingLines.length) ev.lineStart = this.pendingLines;
+    if (this.pendingLines.length || this.headLines.starts.length)
+      ev.lineStart = [...this.pendingLines, ...this.headLines.starts];
+    if (this.headLines.stops.length) ev.lineStop = this.headLines.stops;
     this.pendingLines = [];
+    this.headLines = { starts: [], stops: [] };
     if (this.pendingEv.stem) ev.stem = this.pendingEv.stem;
     if (this.curStaff !== this.home) ev.staff = this.curStaff;
     this.pendingEv = {};

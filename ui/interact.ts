@@ -293,7 +293,8 @@ function startSpan(e: PointerEvent, w: Where, tool: SpanTool, target: Target | u
     start: w,
     cx: e.clientX,
     cy: e.clientY,
-    from: { ...target.ref, pi: undefined } as never,
+    // A line may be attached to one head of a chord; the other spans always take the whole event.
+    from: (tool === 'line' ? target.ref : { ...target.ref, pi: undefined }) as never,
   };
   select([target.ref]);
 }

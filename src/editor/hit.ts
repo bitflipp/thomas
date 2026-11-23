@@ -457,14 +457,24 @@ function endNoteOf(score: Score, ref: Extract<Ref, { t: 'slur' | 'tie' }>): EvAd
   return undefined;
 }
 
+/** An event address that may name one head of a chord (`pi`) instead of the whole event. */
+export type HeadAddr = EvAddr & { pi?: number };
+
 /** The two notes of a line: the one it starts at and the one carrying the matching stop. */
-function lineNotes(score: Score, ref: Extract<Ref, { t: 'line' }>): EvAddr[] {
-  const at = (x: { mi: number; staff: string; voice: number; idx: number }): EvAddr => ({
-    mi: x.mi,
-    staff: x.staff,
-    voice: x.voice,
-    idx: x.idx,
-  });
+function lineNotes(score: Score, ref: Extract<Ref, { t: 'line' }>): HeadAddr[] {
+  const at = (
+    x: { mi: number; staff: string; voice: number; idx: number },
+    list?: readonly { id: number; head?: number }[],
+  ): HeadAddr => {
+    const head = list?.find((l) => l.id === ref.id)?.head;
+    return {
+      mi: x.mi,
+      staff: x.staff,
+      voice: x.voice,
+      idx: x.idx,
+      ...(head === undefined ? {} : { pi: head }),
+    };
+  };
   const pair = pairLines(lineEnds(score)).pairs.find(
     ({ start }) =>
       start.id === ref.id &&
@@ -473,11 +483,13 @@ function lineNotes(score: Score, ref: Extract<Ref, { t: 'line' }>): EvAddr[] {
       start.ref.voice === ref.voice &&
       start.ref.idx === ref.idx,
   );
-  return pair ? [at(pair.start.ref), at(pair.stop.ref)] : [at(ref)];
+  return pair
+    ? [at(pair.start.ref, pair.start.ref.ev.lineStart), at(pair.stop.ref, pair.stop.ref.ev.lineStop)]
+    : [at(ref)];
 }
 
 /** The notes a selected slur, tie or tuplet belongs to (its start and end notes; all notes of a tuplet). */
-export function dependentNotes(score: Score, ref: Ref): EvAddr[] {
+export function dependentNotes(score: Score, ref: Ref): HeadAddr[] {
   if (ref.t === 'mark') return markNotes(score, ref);
   if (ref.t === 'grace') return [{ mi: ref.mi, staff: ref.staff, voice: ref.voice, idx: ref.idx }];
   if (ref.t === 'tuplet') return tupletMembers(score, ref);
@@ -542,15 +554,21 @@ function markNotes(score: Score, ref: Extract<Ref, { t: 'mark' }>): EvAddr[] {
  * Where the notes `want` sit on a page. A note whose head is shared with a note of another voice (a unison) has no head of its own
  * in the drawing: it is found as the head touching the end of its stem.
  */
-export function noteBoxes(h: HitIndex, page: number, want: EvAddr[]): Box[] {
+export function noteBoxes(h: HitIndex, page: number, want: HeadAddr[]): Box[] {
   const keys = new Set(want.map((a) => `${a.mi}:${a.staff}:${a.voice}:${a.idx}`));
+  // A note that is wanted by head only has its other heads left out.
+  const whole = new Set(want.filter((a) => a.pi === undefined).map((a) => `${a.mi}:${a.staff}:${a.voice}:${a.idx}`));
+  const heads1 = new Set(
+    want.filter((a) => a.pi !== undefined).map((a) => `${a.mi}:${a.staff}:${a.voice}:${a.idx}:${a.pi}`),
+  );
   const key = (r: Ref) => (r.t === 'ev' ? `${r.mi}:${r.staff}:${r.voice}:${r.idx}` : '');
+  const wanted = (r: Ref) => whole.has(key(r)) || heads1.has(`${key(r)}:${r.t === 'ev' ? (r.pi ?? 0) : 0}`);
   const ts = h.byPage[page] ?? [];
   const heads = ts.filter((t) => t.ref.t === 'ev' && (t.k === 'head' || t.k === 'rest'));
   const out: Box[] = [];
   const own = new Set<string>();
   for (const t of heads)
-    if (keys.has(key(t.ref))) {
+    if (wanted(t.ref)) {
       out.push(t.bbox);
       own.add(key(t.ref));
     }

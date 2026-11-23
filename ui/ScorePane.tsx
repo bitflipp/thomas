@@ -339,17 +339,8 @@ function NotesSvg({ page, h }: { page: number; h: HitIndex }) {
   const sel = selection.value;
   const sc = score.value;
   const boxes = useMemo(() => {
-    const want = new Set<string>();
-    for (const r of sel) for (const a of dependentNotes(sc, r)) want.add(`${a.mi}:${a.staff}:${a.voice}:${a.idx}`);
-    if (!want.size) return [];
-    return noteBoxes(
-      h,
-      page,
-      [...want].map((k) => {
-        const [mi, staff, voice, idx] = k.split(':');
-        return { mi: Number(mi), staff, voice: Number(voice), idx: Number(idx) };
-      }),
-    );
+    const want = sel.flatMap((r) => dependentNotes(sc, r));
+    return want.length ? noteBoxes(h, page, want) : [];
   }, [sel, sc, h, page]);
   const pad = 0.25;
   return (

@@ -56,6 +56,12 @@ export interface SlurStart {
 export interface LineStart {
   id: number;
   dashed?: boolean;
+  head?: number; // The index of the chord pitch the line is attached to; absent: the chord as a whole (always absent for a single note).
+}
+
+export interface LineStop {
+  id: number;
+  head?: number; // The index of the chord pitch the line is attached to; absent: the chord as a whole (always absent for a single note).
 }
 
 /** A grace note (or chord) played just before the note it is attached to; takes no time in the measure. */
@@ -72,7 +78,7 @@ export interface EventBase {
   slurStart?: SlurStart[];
   slurStop?: number[];
   lineStart?: LineStart[];
-  lineStop?: number[];
+  lineStop?: LineStop[];
   fermata?: boolean; // A fermata sits above the event (a note, chord or rest).
   fermataShape?: FermataShape; // The fermata's shape; absent: the normal round one. Only with `fermata`.
   fermataBelow?: true; // The fermata sits below the event, upside down. Only with `fermata`.
@@ -460,7 +466,7 @@ export function lineEnds(score: Score): LineEnd<LineAt>[] {
             ref: { ev: te.ev, mi, staff: st.id, voice: v.id, idx: te.index },
           };
           for (const x of te.ev.lineStart ?? []) out.push({ ...at, role: 'start', id: x.id });
-          for (const id of te.ev.lineStop ?? []) out.push({ ...at, role: 'stop', id });
+          for (const x of te.ev.lineStop ?? []) out.push({ ...at, role: 'stop', id: x.id });
         }
     });
   });

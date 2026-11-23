@@ -45,7 +45,7 @@ Voice numbers are local to a staff (`s1.1`, `s1.2`, `s2.1`, ...). Every voice of
 | Chord | `<pitches>` then duration | `<c4 e4 g4>:2` |
 | Tie | `~` after the duration of a single note; inside a chord after each tied pitch. A trailing `^` or `_` forces it above/below | `c4:2~ c4:4` `<c4~ e4>:2` `c4:2~_` |
 | Slur | `(` before the first note, `)` after the last. Optional number (overlap), side `^` `_` and `/` to let the engraver skew the arc (by default it is symmetric unless something under it forces a skew) | `(c5:8 d5 e5)` `(2^c5 ... d5)2` `(^/c5 ... d5)` |
-| Line | `&` before the first note, `;` after the second (any two notes of one system, also in other voices or staves; `&` and `;` pair by number). Optional number (lines that overlap in time need different ones), `&.` dashed | `&c5:4 ... e3;` `&2.g4 ... c3;2` |
+| Line | `&` before the first note, `;` after the second (any two notes of one system, also in other voices or staves; `&` and `;` pair by number). Optional number (lines that overlap in time need different ones), `&.` dashed. In a chord the end can sit on one pitch, written after it like a tie: `<c3 g3;>`, `<c5&2. e5>` (without it the line points at the chord as a whole) | `&c5:4 ... e3;` `&2.g4 ... c3;2` |
 | Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |
 | Accidental override | `!` force, `?` cautionary (after the pitch) | `c#4!` `e4?` |
 | Mordent, turn | `+mo` mordent (with line: main, lower neighbor, main), `+mi` inverted mordent (upper neighbor), `+tu` turn, `+ti` inverted turn; notes only, after any trill and before `+fm` | `e5:4+tu` |
