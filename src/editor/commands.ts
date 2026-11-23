@@ -1545,14 +1545,19 @@ export function setConnection(score: Score, boundary: number, kind: Connection):
 }
 
 /** A new staff (empty: rests throughout) at position `at` (default: last). */
-export function addStaff(score: Score, o: { clef: Clef; name?: string; at?: number }): Score {
+export function addStaff(score: Score, o: { clef: Clef; name?: string; abbr?: string; at?: number }): Score {
   return edit(score, (d) => {
     let n = d.staves.length + 1;
     while (d.staves.some((s) => s.id === `s${n}`)) n++;
     const id = `s${n}`;
     const at = Math.max(0, Math.min(o.at ?? d.staves.length, d.staves.length));
     const conn = connections(score);
-    d.staves.splice(at, 0, { id, clef: { ...o.clef }, ...(o.name ? { name: o.name } : {}) });
+    d.staves.splice(at, 0, {
+      id,
+      clef: { ...o.clef },
+      ...(o.name ? { name: o.name } : {}),
+      ...(o.abbr ? { abbr: o.abbr } : {}),
+    });
     // Inserting between two joined staves splits the join: both neighboring connections become
     // unconnected (`nc` lists the connection after each staff).
     const nc = [
@@ -1638,7 +1643,12 @@ export function duplicateStaff(score: Score, id: string): Score {
   const i = score.staves.findIndex((s) => s.id === id);
   if (i < 0) throw new EditError('No such staff');
   const src = score.staves[i];
-  const withNew = addStaff(score, { clef: src.clef, ...(src.name ? { name: src.name } : {}), at: i + 1 });
+  const withNew = addStaff(score, {
+    clef: src.clef,
+    ...(src.name ? { name: src.name } : {}),
+    ...(src.abbr ? { abbr: src.abbr } : {}),
+    at: i + 1,
+  });
   const nid = withNew.staves[i + 1].id;
   return edit(withNew, (d) => {
     d.measures.forEach((m, mi) => {
@@ -1656,7 +1666,7 @@ const G8: Clef = { sign: 'G', line: 2, octave: -1 };
 export interface InstrumentPreset {
   key: string;
   label: string;
-  staves: { clef: Clef; name?: string }[];
+  staves: { clef: Clef; name?: string; abbr?: string }[];
   join?: 'brace' | 'bracket';
 }
 
@@ -1666,24 +1676,21 @@ export const INSTRUMENTS: InstrumentPreset[] = [
   {
     key: 'piano',
     label: 'Piano (grand staff)',
-    staves: [
-      { clef: G, name: 'Piano' },
-      { clef: F, name: 'Piano' },
-    ],
+    staves: [{ clef: G, name: 'Piano', abbr: 'Pno.' }, { clef: F }],
     join: 'brace',
   },
-  { key: 'voice', label: 'Voice', staves: [{ clef: G, name: 'Voice' }] },
-  { key: 'violin', label: 'Violin', staves: [{ clef: G, name: 'Violin' }] },
-  { key: 'viola', label: 'Viola', staves: [{ clef: C3, name: 'Viola' }] },
-  { key: 'cello', label: 'Cello', staves: [{ clef: F, name: 'Cello' }] },
+  { key: 'voice', label: 'Voice', staves: [{ clef: G, name: 'Voice', abbr: 'Vo.' }] },
+  { key: 'violin', label: 'Violin', staves: [{ clef: G, name: 'Violin', abbr: 'Vl.' }] },
+  { key: 'viola', label: 'Viola', staves: [{ clef: C3, name: 'Viola', abbr: 'Va.' }] },
+  { key: 'cello', label: 'Cello', staves: [{ clef: F, name: 'Cello', abbr: 'Vc.' }] },
   {
     key: 'satb',
     label: 'SATB choir',
     staves: [
-      { clef: G, name: 'Soprano' },
-      { clef: G, name: 'Alto' },
-      { clef: G8, name: 'Tenor' },
-      { clef: F, name: 'Bass' },
+      { clef: G, name: 'Soprano', abbr: 'S.' },
+      { clef: G, name: 'Alto', abbr: 'A.' },
+      { clef: G8, name: 'Tenor', abbr: 'T.' },
+      { clef: F, name: 'Bass', abbr: 'B.' },
     ],
     join: 'bracket',
   },
@@ -1691,10 +1698,10 @@ export const INSTRUMENTS: InstrumentPreset[] = [
     key: 'quartet',
     label: 'String quartet',
     staves: [
-      { clef: G, name: 'Violin I' },
-      { clef: G, name: 'Violin II' },
-      { clef: C3, name: 'Viola' },
-      { clef: F, name: 'Cello' },
+      { clef: G, name: 'Violin I', abbr: 'Vl. I' },
+      { clef: G, name: 'Violin II', abbr: 'Vl. II' },
+      { clef: C3, name: 'Viola', abbr: 'Va.' },
+      { clef: F, name: 'Cello', abbr: 'Vc.' },
     ],
     join: 'bracket',
   },
@@ -1709,7 +1716,7 @@ export function addInstrument(score: Score, key: string, at?: number): Score {
   const base = Math.max(0, Math.min(at ?? score.staves.length, score.staves.length));
   let sc = score;
   p.staves.forEach((st, k) => {
-    sc = addStaff(sc, { clef: st.clef, name: st.name, at: base + k });
+    sc = addStaff(sc, { clef: st.clef, name: st.name, abbr: st.abbr, at: base + k });
   });
   if (p.join) for (let k = 0; k + 1 < p.staves.length; k++) sc = setConnection(sc, base + k, p.join);
   return sc;
@@ -1723,6 +1730,33 @@ export function setStaffName(score: Score, id: string, name: string): Score {
       if (name) s.name = name;
       else delete s.name;
     }
+  });
+}
+
+/** Sets the abbreviation printed at the start of the later systems of a staff; an empty one removes it. */
+export function setStaffAbbr(score: Score, id: string, abbr: string): Score {
+  return edit(score, (d) => {
+    const s = d.staves.find((x) => x.id === id);
+    if (s) {
+      if (abbr) s.abbr = abbr;
+      else delete s.abbr;
+    }
+  });
+}
+
+/** Sets what the first and the other systems show before their staves (`undefined`: nothing) and the label size. */
+export function setStaffLabels(
+  score: Score,
+  o: { first?: 'full' | 'abbr' | undefined; later?: 'full' | 'abbr' | undefined; size?: number | undefined },
+): Score {
+  return edit(score, (d) => {
+    const set = <K extends 'labelsFirst' | 'labelsLater' | 'labelSize'>(k: K, v: Score['page'][K] | undefined) => {
+      if (v === undefined) delete d.page[k];
+      else d.page[k] = v;
+    };
+    if ('first' in o) set('labelsFirst', o.first);
+    if ('later' in o) set('labelsLater', o.later);
+    if ('size' in o) set('labelSize', o.size);
   });
 }
 

@@ -207,3 +207,16 @@ test('incremental engraving with multi-measure rests equals a fresh one after ra
   }
   assert.ok(applied > 30, `only ${applied} edits applied`);
 });
+
+test('incremental: changing staff labels (names, modes) gives what a fresh engraving gives', () => {
+  const head =
+    'page 120x160 margin=10 space=1.75 labels=full,abbr\nstaff a clef=G2 name="Piano" abbr="Pno."\nstaff b clef=F4\nbrace a b\n';
+  const body = Array.from({ length: 12 }, (_, i) => `m${i + 1}\n  a.1: c5:1\n  b.1: c3:1`).join('\n');
+  const s = parseText(`${head}\n${body}\n`);
+  const cache = createEngraveCache();
+  same(s, cache, 'start');
+  same(C.setStaffName(s, 'a', 'Grand piano'), cache, 'longer name');
+  same(C.setStaffAbbr(s, 'a', 'Pianoforte'), cache, 'longer abbreviation');
+  same(C.setStaffLabels(s, { first: 'abbr', later: 'full' }), cache, 'modes swapped');
+  same(C.setStaffLabels(s, { first: undefined, later: undefined }), cache, 'off');
+});

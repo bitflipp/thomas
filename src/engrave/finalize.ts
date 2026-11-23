@@ -1,7 +1,8 @@
 // Finalizing a system once the spanners are placed: staff lines, the notes shifted onto their staves,
 // clefs and signatures, measure numbers, barlines and the brace or bracket. All in system coordinates.
 
-import type { Score, StaffGroup } from '../model.ts';
+import type { Score } from '../model.ts';
+import { groupStaffIndices } from '../model.ts';
 
 import { loadSmufl } from '../smufl.ts';
 import type { SysCtx } from './draw.ts';
@@ -11,6 +12,7 @@ import type { Prim } from './scene.ts';
 import { oid, tagFrom } from './scene.ts';
 import { clefGlyph, drawMidSystemChanges, drawSystemStart } from './signatures.ts';
 import { placeStaves, STAFF_HEIGHT } from './staffgap.ts';
+import { drawStaffLabels } from './stafflabels.ts';
 
 const sm = loadSmufl();
 
@@ -38,6 +40,7 @@ export function finalizeSystem(ctx: SysCtx, numbering: MeasureNumbering): Finali
   placeStaves(ctx);
   const P: Prim[] = [];
   for (let s = 0; s < nStaves; s++) drawStaff(P, ctx, s);
+  drawStaffLabels(P, ctx);
   drawMeasureNumbers(P, ctx, numbering);
   drawBarlines(P, ctx);
   drawGroupBrackets(P, ctx);
@@ -96,20 +99,12 @@ function drawMeasureNumbers(P: Prim[], ctx: SysCtx, numbering: MeasureNumbering)
   }
 }
 
-/** Indices (into `score.staves`) of the staves of a group, ascending; staves that do not exist are skipped. */
-function groupStaves(score: Score, g: StaffGroup): number[] {
-  return g.staves
-    .map((id) => score.staves.findIndex((s) => s.id === id))
-    .filter((i) => i >= 0)
-    .sort((x, y) => x - y);
-}
-
 /** First and last staff of each barline run: one per staff group (a braced pair shares one), one per ungrouped staff. */
 function barlineRuns(score: Score): [number, number][] {
   const runs: [number, number][] = [];
   const grouped = new Set<number>();
   for (const g of score.groups) {
-    const idx = groupStaves(score, g);
+    const idx = groupStaffIndices(score, g);
     if (!idx.length) continue;
     runs.push([idx[0], idx[idx.length - 1]]);
     for (const i of idx) grouped.add(i);
@@ -215,7 +210,7 @@ function drawBarlines(P: Prim[], ctx: SysCtx): void {
 function drawGroupBrackets(P: Prim[], ctx: SysCtx): void {
   const { score } = ctx.prep;
   for (const g of score.groups) {
-    const idx = groupStaves(score, g);
+    const idx = groupStaffIndices(score, g);
     if (!idx.length) continue;
     const y0 = ctx.staffY[idx[0]];
     const y1 = ctx.staffY[idx[idx.length - 1]] + STAFF_HEIGHT;

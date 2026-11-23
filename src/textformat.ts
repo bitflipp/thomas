@@ -359,6 +359,23 @@ function writeStaffMeasure(sm: StaffMeasure, sid: string, mi: number, lines: str
   }
 }
 
+/** ` labels=full,abbr labelsize=2`: the staff label settings of the page statement (nothing when they are off). */
+function labelsStr(page: Score['page']): string {
+  if (!(page.labelsFirst || page.labelsLater)) return '';
+  return ` labels=${page.labelsFirst ?? 'none'},${page.labelsLater ?? 'none'}${page.labelSize ? ` labelsize=${page.labelSize}` : ''}`;
+}
+
+/** The staff label fields of a `page` statement's attributes: `labels=<first>,<later>` (full, abbr or none) and `labelsize=<n>`. */
+function parseLabels(o: Record<string, string>): Partial<Score['page']> {
+  const mode = (v: string | undefined) => (v === 'full' || v === 'abbr' ? v : undefined);
+  const [first, later] = (o.labels ?? '').split(',');
+  const out: Partial<Score['page']> = {};
+  if (mode(first)) out.labelsFirst = mode(first);
+  if (mode(later)) out.labelsLater = mode(later);
+  if (o.labelsize) out.labelSize = Number(o.labelsize);
+  return out;
+}
+
 /**
  * Writes the whole score; with `tags` the output also carries the markers from which `writeTextMap` derives the
  * places of the model objects.
@@ -370,10 +387,12 @@ function write(score: Score, tags?: Tags): string {
   for (const k of ['title', 'subtitle', 'composer', 'rights'] as const)
     if (meta[k]) L.push(`${k} ${quote(must(meta[k]))}`);
   L.push(
-    `page ${page.width}x${page.height} margin=${page.margin} space=${page.staffSpace}${page.measureNumbers ? ` numbers=${page.measureNumbers}` : ''}${page.multiRests ? ' multirests=on' : ''}`,
+    `page ${page.width}x${page.height} margin=${page.margin} space=${page.staffSpace}${page.measureNumbers ? ` numbers=${page.measureNumbers}` : ''}${page.multiRests ? ' multirests=on' : ''}${labelsStr(page)}`,
   );
   for (const s of score.staves)
-    L.push(`staff ${s.id} clef=${clefStr(s.clef)}${s.name ? ` name=${quote(s.name)}` : ''}`);
+    L.push(
+      `staff ${s.id} clef=${clefStr(s.clef)}${s.name ? ` name=${quote(s.name)}` : ''}${s.abbr ? ` abbr=${quote(s.abbr)}` : ''}`,
+    );
   for (const g of score.groups) L.push(`${g.kind} ${g.staves.join(' ')}`);
   L.push('');
   score.measures.forEach((m, mi) => {
@@ -1034,6 +1053,7 @@ function parseStatement(st: TextState, t: string[]): void {
       staffSpace: Number(o.space ?? 1.91),
       ...(o.numbers === 'all' || o.numbers === 'none' ? { measureNumbers: o.numbers } : {}),
       ...(o.multirests === 'on' ? { multiRests: true } : {}),
+      ...parseLabels(o),
     };
   } else if (head === 'staff') {
     const o = kv(t.slice(2));
@@ -1041,6 +1061,7 @@ function parseStatement(st: TextState, t: string[]): void {
       id: t[1],
       clef: parseClef(o.clef ?? 'G2'),
       ...(o.name ? { name: JSON.parse(o.name) } : {}),
+      ...(o.abbr ? { abbr: JSON.parse(o.abbr) } : {}),
     });
   } else if (head === 'brace' || head === 'bracket') score.groups.push({ kind: head, staves: t.slice(1) });
   else if (/^m\d+$/.test(head)) parseMeasureStatement(st, t);

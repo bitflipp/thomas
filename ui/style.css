@@ -782,9 +782,12 @@ kbd {
   min-width: 0;
   margin: 0;
 }
+.staffrow input.narrow {
+  flex: 0 1 5em;
+}
 .staffrow .dd {
   flex: none;
-  max-width: var(--w-btn);
+  max-width: calc(var(--w-btn) * 1.6);
   margin: 0;
 }
 .staffrow .mini {
@@ -796,17 +799,6 @@ kbd {
   user-select: none;
   width: var(--sp-3);
   text-align: center;
-}
-.staffrow .sname {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: text;
-}
-.staffrow .sname.empty {
-  color: var(--muted);
 }
 .staffrow.dragging {
   opacity: 0.4;

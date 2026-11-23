@@ -22,6 +22,7 @@ import type { Page, Prim } from './scene.ts';
 import type { MeasureSpacing } from './spacing.ts';
 import { spaceMeasure } from './spacing.ts';
 import { drawNotesAndSpanners } from './staffgap.ts';
+import { leftRooms } from './stafflabels.ts';
 
 export type { Layout, MeasureGeom, SystemGeom } from './paginate.ts';
 export { clefGlyph } from './signatures.ts';
@@ -123,11 +124,6 @@ export interface Engraved {
   placed: PlacedSystem[];
 }
 
-/** Width of the brace area left of the systems, with and without a braced staff group. */
-const BRACE_ROOM = 2.4;
-
-const NO_BRACE_ROOM = 0.8;
-
 /** Engraves the whole score. Vertical sizes are only known after the spanners are placed, so the staff distances come last. */
 export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const respectBreaks = opts.respectBreaks ?? true;
@@ -135,8 +131,11 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const prep = prepare(score, cache?.prep);
   prep.ghostRests = opts.ghostRests;
   const S = score.page.staffSpace;
-  const braceRoom = score.groups.some((g) => g.kind === 'brace') ? BRACE_ROOM : NO_BRACE_ROOM;
-  const lineWidth = (score.page.width - 2 * score.page.margin) / S - braceRoom;
+  const rooms = leftRooms(score);
+  const lineWidth = (score.page.width - 2 * score.page.margin) / S - rooms.brace - rooms.later;
+  // The first system is indented (or, with shorter labels than the others, pulled out) by the difference of the label rooms.
+  const indent = rooms.first - rooms.later;
+  const widthOf = (plan: SysPlan) => (plan.a === 0 ? lineWidth - indent : lineWidth);
 
   /**
    * Both variants of a measure's spacing are made together (they write onto the same records), and kept with its cache entry.
@@ -170,7 +169,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   }
   const spacingNormal = spacings.map((s) => s[0]);
   const spacingFirstInSystem = spacings.map((s) => s[1]);
-  const plans = planSystems(prep, spacingNormal, spacingFirstInSystem, lineWidth, forcedBreaks);
+  const plans = planSystems(prep, spacingNormal, spacingFirstInSystem, lineWidth, forcedBreaks, indent);
 
   const warn = opts.warn ?? (() => undefined);
   const justifyOpts = { fillLast: opts.fillLast, warn };
@@ -180,15 +179,15 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const kept = new Set<SysCtx>();
   const systems: SysCtx[] = plans.map((plan, index) => {
     const old = cache?.systems.find((c) => c.ctx.a === plan.a);
-    if (old && prep.entries && reusable(old, plan, prep.entries, lineWidth, fillLast)) {
+    if (old && prep.entries && reusable(old, plan, prep.entries, widthOf(plan), fillLast)) {
       const ctx = old.ctx;
       ctx.prep = prep;
       ctx.index = index;
-      if (ctx.overflow) warn(`system ${index + 1}: content exceeds width ${lineWidth.toFixed(1)}`);
+      if (ctx.overflow) warn(`system ${index + 1}: content exceeds width ${widthOf(plan).toFixed(1)}`);
       kept.add(ctx);
       return ctx;
     }
-    return justifySystem(prep, plan, index, spacingNormal, spacingFirstInSystem, lineWidth, justifyOpts);
+    return justifySystem(prep, plan, index, spacingNormal, spacingFirstInSystem, widthOf(plan), justifyOpts);
   });
   drawNotesAndSpanners(systems, kept);
 
@@ -217,7 +216,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
       final: finals[i],
       ctx,
       last: plans[i].last,
-      width: lineWidth,
+      width: widthOf(plans[i]),
       fillLast,
       entries: entries.slice(ctx.a, ctx.b + 1),
     }));
@@ -225,7 +224,8 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const { pages, layout, placed } = paginate(score, systems, done, {
     respectBreaks,
     justifyVertical: opts.justifyVertical ?? true,
-    braceRoom,
+    braceRoom: rooms.brace + rooms.later,
+    firstIndent: indent,
   });
   return { pages, systems: systems.length, staffSpace: S, layout, placed };
 }

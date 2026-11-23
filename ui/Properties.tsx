@@ -47,6 +47,44 @@ function Pick<T extends string | number | boolean | undefined>({
   );
 }
 
+/** A text input that commits its value when it loses focus or on Enter (and reverts on Escape). */
+function LabelField({
+  value,
+  placeholder,
+  title,
+  narrow,
+  onCommit,
+}: {
+  value: string;
+  placeholder: string;
+  title: string;
+  narrow?: boolean;
+  onCommit: (v: string) => void;
+}) {
+  return (
+    <input
+      type="text"
+      class={narrow ? 'narrow' : undefined}
+      key={value}
+      value={value}
+      placeholder={placeholder}
+      title={title}
+      onBlur={(e) => {
+        const v = (e.target as HTMLInputElement).value;
+        if (v !== value) onCommit(v);
+      }}
+      onKeyDown={(e) => {
+        const el = e.target as HTMLInputElement;
+        if (e.key === 'Enter') el.blur();
+        else if (e.key === 'Escape') {
+          el.value = value;
+          el.blur();
+        }
+      }}
+    />
+  );
+}
+
 /** A number input that commits a finite value on change. */
 function Num({
   value,
@@ -165,6 +203,38 @@ function ScoreSection() {
             onChange={(v) => run((x) => C.setMultiRests(x, v))}
           />
         </Row>
+        <Row label="Labels, first">
+          <Pick
+            value={s.page.labelsFirst}
+            opts={[
+              [undefined, 'none'],
+              ['full', 'full names'],
+              ['abbr', 'abbreviations'],
+            ]}
+            onChange={(v) => run((x) => C.setStaffLabels(x, { first: v }))}
+          />
+        </Row>
+        <Row label="Labels, others">
+          <Pick
+            value={s.page.labelsLater}
+            opts={[
+              [undefined, 'none'],
+              ['full', 'full names'],
+              ['abbr', 'abbreviations'],
+            ]}
+            onChange={(v) => run((x) => C.setStaffLabels(x, { later: v }))}
+          />
+        </Row>
+        <Row label="Label size">
+          <Num
+            value={s.page.labelSize ?? 2}
+            step={0.1}
+            min={0.8}
+            max={5}
+            onChange={(n) => run((x) => C.setStaffLabels(x, { size: n === 2 ? undefined : n }))}
+          />{' '}
+          sp
+        </Row>
         <Row label="Numbering">
           <Pick
             value={s.page.measureNumbers ?? 'system'}
@@ -188,16 +258,19 @@ const CLEF_OPTS: [string, { sign: 'G' | 'F' | 'C'; line: number; octave?: number
   ['C3', { sign: 'C', line: 3 }, 'Alto'],
   ['C4', { sign: 'C', line: 4 }, 'Tenor'],
   ['G2-1', { sign: 'G', line: 2, octave: -1 }, 'Treble 8vb'],
+  ['G2+1', { sign: 'G', line: 2, octave: 1 }, 'Treble 8va'],
+  ['F4-1', { sign: 'F', line: 4, octave: -1 }, 'Bass 8vb'],
+  ['F4+1', { sign: 'F', line: 4, octave: 1 }, 'Bass 8va'],
 ];
 
 /** A string that identifies a clef for the clef picker. */
-const clefKey = (c: { sign: string; line: number; octave?: number }) => `${c.sign}${c.line}${c.octave ? '-1' : ''}`;
+const clefKey = (c: { sign: string; line: number; octave?: number }) =>
+  `${c.sign}${c.line}${c.octave ? (c.octave < 0 ? '-1' : '+1') : ''}`;
 
 /** The staves list: names, clefs, order, instrument presets and how neighboring staves are joined. */
 function StavesSection() {
   const s = score.value;
   const conn = C.connections(s);
-  const [editing, setEditing] = useState<string | undefined>();
   const [acts, setActs] = useState<string | undefined>();
   const [drag, setDrag] = useState<string | undefined>();
   const [over, setOver] = useState<number | undefined>();
@@ -248,33 +321,19 @@ function StavesSection() {
               >
                 ⠿
               </span>
-              {editing === st.id ? (
-                <input
-                  type="text"
-                  autofocus
-                  value={st.name ?? ''}
-                  placeholder={st.id}
-                  onBlur={(e) => {
-                    setEditing(undefined);
-                    const v = (e.target as HTMLInputElement).value;
-                    if (v !== (st.name ?? '')) run((x) => C.setStaffName(x, st.id, v));
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                    else if (e.key === 'Escape') {
-                      setEditing(undefined);
-                    }
-                  }}
-                />
-              ) : (
-                <span
-                  class={`sname${st.name ? '' : ' empty'}`}
-                  title="Click to rename (the name is kept in the file; not drawn yet)"
-                  onClick={() => setEditing(st.id)}
-                >
-                  {st.name || st.id}
-                </span>
-              )}
+              <LabelField
+                value={st.name ?? ''}
+                placeholder={st.id}
+                title="Full name, printed before the first system"
+                onCommit={(v) => run((x) => C.setStaffName(x, st.id, v))}
+              />
+              <LabelField
+                value={st.abbr ?? ''}
+                placeholder="abbr."
+                title="Abbreviation, printed before the other systems"
+                narrow
+                onCommit={(v) => run((x) => C.setStaffAbbr(x, st.id, v))}
+              />
               {clefSel(st)}
               <button
                 type="button"
@@ -296,9 +355,6 @@ function StavesSection() {
                 </button>
                 <button type="button" onClick={() => run((c) => C.duplicateStaff(c, st.id))}>
                   Duplicate
-                </button>
-                <button type="button" onClick={() => setEditing(st.id)}>
-                  Rename
                 </button>
                 <button
                   type="button"

@@ -109,7 +109,10 @@ function readParts(root: XNode): { staves: StaffDef[]; groups: Score['groups']; 
     for (let k = 0; k < staffCount; k++) {
       const id = `s${staves.length + 1}`;
       staffIds.push(id);
-      staves.push({ id, clef: { sign: 'G', line: 2 }, name: text(scorePart, 'part-name') });
+      // Only the first staff of a part carries its name, so that a labelled pair is one label (see `labelMiddle`).
+      const name = k === 0 ? text(scorePart, 'part-name') : undefined;
+      const abbr = k === 0 ? text(scorePart, 'part-abbreviation') : undefined;
+      staves.push({ id, clef: { sign: 'G', line: 2 }, ...(name ? { name } : {}), ...(abbr ? { abbr } : {}) });
     }
     if (staffCount > 1)
       groups.push({ kind: sound.startsWith('keyboard') || /harp/.test(sound) ? 'brace' : 'bracket', staves: staffIds });

@@ -40,8 +40,10 @@ export interface Layout {
 export interface PaginateOptions {
   respectBreaks: boolean;
   justifyVertical: boolean;
-  /** Width reserved left of the systems for the brace. */
+  /** Width reserved left of the systems for the brace and the abbreviated staff labels. */
   braceRoom: number;
+  /** How far the first system starts to the right of the others (negative: to the left). */
+  firstIndent: number;
 }
 
 /** Page geometry in staff spaces. */
@@ -232,11 +234,13 @@ export function paginate(
   const pages = place.pageSystems.map((list, pi) => {
     const page = pi === 0 ? firstPage : { width: frame.width, height: frame.height, prims: [] };
     for (const si of list) {
-      const prims = placedPrims(done[si], x0, place.placeY[si]);
+      const sx0 = si === 0 ? x0 + opts.firstIndent : x0;
+      const prims = placedPrims(done[si], sx0, place.placeY[si]);
       for (const p of prims) page.prims.push(p);
       placed.push({ page: pi, prims });
     }
-    for (const si of list) recordLayout(layout, systems[si], pi, x0, place.placeY[si]);
+    for (const si of list)
+      recordLayout(layout, systems[si], pi, si === 0 ? x0 + opts.firstIndent : x0, place.placeY[si]);
     drawFooter(page, score, frame, pi);
     return page;
   });

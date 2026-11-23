@@ -73,7 +73,8 @@ function cheapestCuts(
 /**
  * Chooses the line breaks by dynamic programming over the measures (see `lineCost` for what makes a
  * line good). Forced breaks split the piece into independent segments first. The first measure of a
- * system uses its "first in system" spacing `spF`, the others `spN`.
+ * system uses its "first in system" spacing `spF`, the others `spN`. `firstIndent` is how much narrower
+ * the first system is than the others (the room of its staff labels).
  */
 export function planSystems(
   prep: Prepared,
@@ -81,10 +82,11 @@ export function planSystems(
   spF: MeasureSpacing[],
   W: number,
   forced: Set<number>,
+  firstIndent = 0,
 ): SysPlan[] {
   const n = spN.length;
   // Width of measures a..b as the first of a system is a's own variant, the rest the normal ones: prefix sums make a range O(1).
-  const prefixOf = Array.from({ length: n }, (_, a) => prefixWidth(prep, a, a === 0));
+  const prefixOf = Array.from({ length: n }, (_, a) => prefixWidth(prep, a, a === 0) + (a === 0 ? firstIndent : 0));
   const sums = (pick: (sp: MeasureSpacing) => number): number[] => {
     const out = [0];
     for (let k = 0; k < n; k++) out.push(out[k] + pick(spN[k]));

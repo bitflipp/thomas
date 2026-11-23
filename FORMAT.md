@@ -12,8 +12,8 @@ title    "Gewitter"
 subtitle "임윤찬 gewidmet"
 composer "Philipp Naumann (2026)"
 rights   "© Philipp Naumann, licensed under CC BY-SA 4.0"
-page 210.1x296.9 margin=10 space=1.91         # mm: width x height, margin, staff space (= the global scale); optional numbers=all|none (measure numbers; default: per system) and multirests=on (draw runs of two or more empty measures, all staves `R`, as one multi-measure rest)
-staff s1 clef=F4 name="Piano"                 # clef: G2, F4, C3, G2_8 (8 below), G2^8 (8 above)
+page 210.1x296.9 margin=10 space=1.91         # mm: width x height, margin, staff space (= the global scale); optional numbers=all|none (measure numbers; default: per system) and multirests=on (draw runs of two or more empty measures, all staves `R`, as one multi-measure rest) and labels=<first>,<later> (staff labels: what the first system and the other systems show before their staves, `full` names, `abbr` abbreviations or `none`; e.g. labels=full,abbr) with labelsize=<staff spaces> (default 2)
+staff s1 clef=F4 name="Piano" abbr="Pno."    # clef: G2, F4, C3, G2_8 (8 below), G2^8 (8 above); name and abbr are the staff labels (a name on the first staff of a brace or bracket is centered on the group when the others have none)
 staff s2 clef=F4
 brace s1 s2                                   # or: bracket a b c
 

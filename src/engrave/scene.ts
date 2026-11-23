@@ -35,6 +35,7 @@ export type Kind =
   | 'timesig'
   | 'barline'
   | 'measurenum'
+  | 'stafflabel'
   | 'arpeggio'
   | 'brace';
 

@@ -229,7 +229,10 @@ export interface Measure {
 export interface StaffDef {
   id: string;
   clef: Clef;
+  /** The full name printed before the first system (`labelsFirst`), e.g. "Violin I". */
   name?: string;
+  /** The abbreviated name printed before the other systems, e.g. "Vl. I". */
+  abbr?: string;
 }
 
 export interface StaffGroup {
@@ -255,6 +258,12 @@ export interface PageSetup {
   measureNumbers?: 'all' | 'none';
   /** Collapse runs of two or more empty measures into one multi-measure rest (engraving only; the measures stay in the model). */
   multiRests?: boolean;
+  /** What the first system shows before its staves: the full names or the abbreviations (undefined: nothing). */
+  labelsFirst?: 'full' | 'abbr';
+  /** What every other system shows before its staves (undefined: nothing). */
+  labelsLater?: 'full' | 'abbr';
+  /** Font size of the staff labels in staff spaces (undefined: the default, 2). */
+  labelSize?: number;
 }
 
 export interface Score {
@@ -263,6 +272,14 @@ export interface Score {
   staves: StaffDef[];
   groups: StaffGroup[];
   measures: Measure[];
+}
+
+/** Indices (into `score.staves`) of the staves of a group, ascending; staves that do not exist are skipped. */
+export function groupStaffIndices(score: Score, g: StaffGroup): number[] {
+  return g.staves
+    .map((id) => score.staves.findIndex((s) => s.id === id))
+    .filter((i) => i >= 0)
+    .sort((x, y) => x - y);
 }
 
 // Helpers on the model: conversions between durations and ticks, flattening a voice's item tree
