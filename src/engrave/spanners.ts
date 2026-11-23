@@ -278,11 +278,10 @@ const LINK_CLEAR = 0.6;
 
 /**
  * A straight line between notes `a` and `b`, in the coordinates of `a`'s staff. Each end is the point nearest to the
- * centroid of that note's heads (all of them, so the line points at the chord as a whole, or the one head `ha`/`hb` it is
- * attached to) that keeps `LINK_CLEAR` from the
- * note's heads, stem and accidentals and is reached from the other end without crossing them. Where the stem or an
- * accidental is in the way the end therefore moves only as far from the centroid as it has to. Nothing is recorded in the
- * skyline.
+ * centroid of that note's heads (all of them, so the line points at the chord as a whole, or the one head `ha`/`hb` it
+ * is attached to) that keeps `LINK_CLEAR` from the note's heads, stem and accidentals and is reached from the other
+ * end without crossing them. Where the stem or an accidental is in the way the end therefore moves only as far from
+ * the centroid as it has to. Nothing is recorded in the skyline.
  */
 function drawLink(ctx: SysCtx, a: EvL, b: EvL, id: number, dashed: boolean, ha?: number, hb?: number): void {
   if (a.ev.kind !== 'note' || b.ev.kind !== 'note') return;

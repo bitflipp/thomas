@@ -83,7 +83,7 @@ npm run lint:fix
 npm test
 ```
 
-Architecture notes are in [CLAUDE.md](CLAUDE.md), planned work in [ROADMAP.md](ROADMAP.md).
+Architecture notes are in [AGENTS.md](AGENTS.md), planned work in [ROADMAP.md](ROADMAP.md).
 
 ## AI assistance
 

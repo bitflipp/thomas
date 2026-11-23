@@ -220,7 +220,7 @@ function inside(p: Pt, pts: Pt[]): boolean {
 const REACH = 0.4;
 
 /** The outline under the position, the smallest if several are: the one on top in a stack, since the larger ones around it are what stack under it. */
-export function shapeAt(page: number, x: number, y: number): string | null {
+function shapeAt(page: number, x: number, y: number): string | null {
   const p = { x, y };
   let best: { id: string; area: number; d: number } | null = null;
   for (const part of shapeParts.peek()) {

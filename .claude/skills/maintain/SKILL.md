@@ -7,7 +7,7 @@ description: Run a maintainability pass over this repository (module headers, ex
 
 A maintainability pass changes how the code reads, never what it does. It is modeled on the pass in the Git history: `fb0f629` (the pass itself), `c4a68ad` (split `tidy()`), `61c113e` (Biome) and `f87734d` + `d0f8cb7` + `a3350ec` (comment and blank-line style, `tools/blanklines.ts`, CLAUDE.md). Read `CLAUDE.md` first; its "Comment and blank-line style" section is the rule set.
 
-Optional argument: a path or area to limit the pass (default: all of `src/`, `ui/`, `electron/`, `tools/`, `test/`). Before starting, run `git log --oneline -n 30 | grep -iE "maintain|style pass"` and `git diff <last pass>..HEAD --stat` to see what changed since the previous pass; spend effort there first.
+Optional argument: a path or area to limit the pass. Without one, the scope is everything since the last maintenance pass, as if the argument were "Everything since last maintenance": the files changed in `git diff <last pass>..HEAD --stat` (within `src/`, `ui/`, `electron/`, `tools/`, `test/`), not the whole repository. Before starting, run `git log --oneline -n 30 | grep -iE "maintain|style pass"` to find the last pass and that diff to see what changed; spend effort there. Only a request for the whole repository (for example "everything" or "all files") widens the scope to all of those directories.
 
 ## Steps
 
