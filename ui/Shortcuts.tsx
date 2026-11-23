@@ -39,6 +39,7 @@ const ROWS: [string, string][] = [
     'Select everything the Properties panel would edit together with the selection (marks of one type, all notes (or all rests), all slurs, ties or tuplets)',
   ],
   ['Ctrl + / −  (wheel)', 'Zoom'],
+  ['Alt + wheel over findings', 'Step through stacked findings'],
   ['Ctrl G', 'Go to a measure: asks for its number, Enter selects it and shows it'],
   ['Ctrl E', 'Show the score as text, editable'],
   ['Ctrl I', 'Properties panel'],

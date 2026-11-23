@@ -32,7 +32,7 @@ import {
   zoomBy,
 } from './interact.ts';
 
-import { hoverShape, LAYER_COLORS, layerNotes, shapeById, shapeParts } from './layers.ts';
+import { hoverShape, LAYER_COLORS, layerNotes, shapeById, shapeParts, wheelFinding } from './layers.ts';
 
 import { playhead, playing } from './player.ts';
 
@@ -481,6 +481,10 @@ export function ScorePane() {
   useEffect(() => {
     const el = must(box.current);
     const w = (e: WheelEvent) => {
+      if (e.altKey && wheelFinding((e.deltaY || e.deltaX) * (e.deltaMode === 1 ? 33 : 1), e.timeStamp)) {
+        e.preventDefault();
+        return;
+      }
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1, { x: e.clientX, y: e.clientY });

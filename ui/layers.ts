@@ -219,24 +219,67 @@ function inside(p: Pt, pts: Pt[]): boolean {
 /** How close to an outline (staff spaces) still counts as on it, so that thin outlines can be hit. */
 const REACH = 0.4;
 
-/** The outline under the position, the smallest if several are: the one on top in a stack, since the larger ones around it are what stack under it. */
-function shapeAt(page: number, x: number, y: number): string | null {
+/** The outlines under the position, the smallest first: the one on top in a stack, since the larger ones around it are what stack under it. */
+function shapesAt(page: number, x: number, y: number): string[] {
   const p = { x, y };
-  let best: { id: string; area: number; d: number } | null = null;
+  const found: { id: string; area: number; d: number }[] = [];
   for (const part of shapeParts.peek()) {
     if (part.page !== page) continue;
     const pts = part.pts;
     const edges = pts.length === 2 ? [[pts[0], pts[1]]] : pts.map((a, i) => [a, pts[(i + 1) % pts.length]]);
     const d = inside(p, pts) ? 0 : Math.min(...edges.map(([a, b]) => segmentDistance(p, a, b)));
-    if (d > REACH) continue;
-    const area = areaOf(pts);
-    if (!best || area < best.area || (area === best.area && d < best.d)) best = { id: part.id, area, d };
+    if (d <= REACH) found.push({ id: part.id, area: areaOf(pts), d });
   }
-  return best?.id ?? null;
+  found.sort((a, b) => a.area - b.area || a.d - b.d);
+  return found.map((f) => f.id);
+}
+
+// The outlines under the pointer and which of them is the hovered one. The smallest is chosen first; Alt + wheel
+// steps through the others, so that an outline covered by smaller ones can still be reached. The choice is
+// forgotten when the set of outlines under the pointer changes.
+
+let under: string[] = [];
+let cycle = 0;
+
+/** Sets the hovered outline from `under` and `cycle`. */
+function chooseHover(): void {
+  const id = under.length ? under[cycle % under.length] : null;
+  if (hoverShape.peek() !== id) hoverShape.value = id;
+}
+
+// A wheel gesture sends many events (high-resolution wheels and trackpads send several per notch), so the movement
+// is added up and one step is taken per `WHEEL_STEP`, with a short pause after each step.
+
+const WHEEL_STEP = 100;
+const WHEEL_PAUSE = 150;
+let wheelSum = 0;
+let wheelLast = 0;
+
+/** Takes a wheel movement `delta` (pixels) of a cycling gesture; returns false when there is no choice to cycle. */
+export function wheelFinding(delta: number, now: number): boolean {
+  if (under.length < 2) return false;
+  if (now - wheelLast < WHEEL_PAUSE) return true;
+  wheelSum += delta;
+  if (Math.abs(wheelSum) >= WHEEL_STEP) {
+    cycleFinding(wheelSum);
+    wheelSum = 0;
+    wheelLast = now;
+  }
+  return true;
+}
+
+/** Steps the hovered outline to the next (`dir` > 0) or previous one under the pointer; false when there is no choice. */
+export function cycleFinding(dir: number): boolean {
+  if (under.length < 2) return false;
+  cycle = (cycle + (dir > 0 ? 1 : -1) + under.length) % under.length;
+  chooseHover();
+  return true;
 }
 
 /** Updates the hovered outline for a pointer over `at` (undefined when it is over no page). */
 export function hoverFinding(at: { page: number; x: number; y: number } | undefined): void {
-  const id = anyLayerOn.peek() && at ? shapeAt(at.page, at.x, at.y) : null;
-  if (hoverShape.peek() !== id) hoverShape.value = id;
+  const next = anyLayerOn.peek() && at ? shapesAt(at.page, at.x, at.y) : [];
+  if (next.join() !== under.join()) cycle = 0;
+  under = next;
+  chooseHover();
 }
