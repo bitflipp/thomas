@@ -153,8 +153,19 @@ function collectNotes(score: Score): Note[] {
     tiedInto = next;
     base += measureTicks(timeAt(score, mi));
   });
+  dropDanglingTies(notes);
   markDoublings(notes);
   return notes;
+}
+
+/**
+ * Clears `tieStart` on notes whose tie leads nowhere: the voice goes on with other pitches (or ends), so the note is
+ * released at its end like an untied one.
+ */
+function dropDanglingTies(notes: Note[]): void {
+  const continued = new Set<string>();
+  for (const n of notes) if (n.tieStop) continued.add(`${n.vk}|${n.start}|${n.midi}`);
+  for (const n of notes) if (n.tieStart && !continued.has(`${n.vk}|${n.end}|${n.midi}`)) n.tieStart = false;
 }
 
 /** The part of a note that a result carries. */
@@ -214,6 +225,8 @@ class Flags {
     let [a2, b2] = [notes[ids[2]], notes[ids[3]]];
     const swap = a1.vk === b1.vk ? a1.midi < b1.midi !== a2.midi < b2.midi : a2.vk !== a1.vk;
     if (swap) [a2, b2] = [b2, a2];
+    // Both lines stand still on the same pitches: a repetition, not parallel motion.
+    if (a1.midi === a2.midi && b1.midi === b2.midi) return;
     this.quads.set(`${kind}:${[a1.id, b1.id, a2.id, b2.id].join(':')}`, { kind, ids: [a1.id, b1.id, b2.id, a2.id] });
     for (const [x, y] of [
       [ids[0], ids[1]],

@@ -82,11 +82,10 @@ test('the lower note of an octave doubling in a staff is ignored, an octave betw
   assert.equal(findParallels(score(['rh.1: g4:2 a4', 'lh.1: g3:2 a3'])).length, 1);
 });
 
-test('a tie continuation is not an attack: a held fifth is one interval, a repeated one is two', () => {
+test('a tie continuation is not an attack: a held fifth is one interval, a repeated one is none', () => {
   assert.deepEqual(findParallels(score(['rh.1: g4:2~ g4', 'lh.1: c4:2~ c4'])), []);
   assert.deepEqual(findParallels(score(['rh.1: g4:2~ g4', 'lh.1: c4:2 c4'])), []);
-  const repeated = findParallels(score(['rh.1: g4:2 g4', 'lh.1: c4:2 c4']));
-  assert.equal(repeated.length, 1);
+  assert.deepEqual(findParallels(score(['rh.1: g4:2 g4', 'lh.1: c4:2 c4'])), []);
   // The second fifth sounds again after a tie-free repeat; a tie from the previous measure counts as held.
   const across = score(['rh.1: g4:1~', 'lh.1: c4:1~'], ['rh.1: g4:2 a4', 'lh.1: c4:2 d4']);
   assert.equal(findParallels(across).length, 1); // The held fifth leads into a4/d4 in measure 2.
@@ -177,4 +176,21 @@ test('a pair that the voice-leading of equal chords does not lead into the inter
 
 test('a doubled octave still counts as a line: b-e-b going to c#-e-g# is contrary motion, not a fifth', () => {
   assert.deepEqual(findParallels(score(['rh.1: <b4 e5 b5>:2 <c#5 e5 g#5>', 'lh.1: R:1'])), []);
+});
+
+test('a repeated interval on the same pitches is no parallel motion, a step after it or an octave leap is', () => {
+  assert.deepEqual(findParallels(score(['rh.1: <c4 g4>:2 <c4 g4>', 'lh.1: R:1'])), []);
+  assert.deepEqual(findParallels(score(['rh.1: g4:4 g4 g4 g4', 'lh.1: c4:4 c4 c4 c4'])), []);
+  const gs = findParallels(score(['rh.1: g4:4 g4 a4 a4', 'lh.1: c4:4 c4 d4 d4']));
+  assert.equal(gs.length, 1);
+  assert.equal(gs[0].intervals.length, 1);
+  assert.equal(findParallels(score(['rh.1: g4:2 g5', 'lh.1: c4:2 c5'])).length, 1);
+});
+
+test('a tie that leads nowhere releases its note, so the fifth after it is still consecutive', () => {
+  const dangling = findParallels(score(['rh.1: g4:4 a4~ b4:2', 'lh.1: c4:4 d4~ e4:2']));
+  assert.equal(dangling.length, 1);
+  assert.equal(dangling[0].intervals.length, 2);
+  const tied = findParallels(score(['rh.1: g4:4 a4~ a4:2', 'lh.1: c4:4 d4~ d4:2']));
+  assert.equal(tied[0].intervals.length, 1);
 });
