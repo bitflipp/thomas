@@ -263,6 +263,7 @@ function PageView({
     for (const n of hovered) {
       const el = root.querySelector<SVGElement>(`[data-p="${n}"]`);
       if (!el || el.getAttribute('fill') === SEL || el.getAttribute('stroke') === SEL) continue; // A selected element keeps its color.
+      if (el.getAttribute('fill') === '#fff') continue; // A white mask (the disc behind a circled tuplet number) stays white.
       const prop = el.tagName === 'line' ? 'stroke' : 'fill';
       const old = el.style.getPropertyValue(prop);
       el.style.setProperty(prop, HOVER);

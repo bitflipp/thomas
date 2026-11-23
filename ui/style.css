@@ -171,6 +171,12 @@ button.mini {
 .seg > :first-child {
   margin-left: 0;
 }
+.seg.apart {
+  gap: var(--sp-2);
+}
+.seg.apart > button {
+  margin-left: 0;
+}
 .seg > button:hover:not(:disabled),
 .seg > button[aria-pressed="true"] {
   z-index: 1;

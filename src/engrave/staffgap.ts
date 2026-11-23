@@ -305,7 +305,11 @@ function planCenter(
       const by1 = ctx.staffY[k] + b.y1;
       if (by1 <= top + 0.01) lo = Math.max(lo, by1);
       else if (by0 >= bottom - 0.01) hi = Math.min(hi, by0);
-      else if (by1 > lo && by0 < hi) return; // A mark that overlaps the mark itself is left where it is.
+      else if (by1 > lo && by0 < hi) {
+        // The box overlaps the mark where it is now: it limits the move from the side it lies on.
+        if ((by0 + by1) / 2 < (top + bottom) / 2) lo = Math.max(lo, by1);
+        else hi = Math.min(hi, by0);
+      }
     }
   const clearance = 0.3;
   const dyMin = lo + clearance - top;

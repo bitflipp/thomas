@@ -132,7 +132,7 @@ function sampleQuad(out: number[], x0: number, y0: number, x1: number, y1: numbe
  * Flattens SVG path data (M, L, H, V, C, Q, Z, absolute and relative) into one polygon ring per subpath, as flat
  * [x, y, ...] arrays.
  */
-function flattenPath(d: string): number[][] {
+export function flattenPath(d: string): number[][] {
   const tok = d.match(/[MLHVCQZmlhvcqz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
   const rings: number[][] = [];
   let cur: number[] = [];

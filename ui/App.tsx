@@ -132,7 +132,7 @@ function Toolbar() {
   const h = histLen.value;
   return (
     <header class="toolbar">
-      <div class="seg">
+      <div class="seg apart">
         <button
           type="button"
           title="New score"

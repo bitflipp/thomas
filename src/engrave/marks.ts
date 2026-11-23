@@ -8,6 +8,7 @@ import type { Mark, MarkPlacement } from '../model.ts';
 
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
+import { flattenPath } from './collide.ts';
 import type { SysCtx } from './draw.ts';
 import { D, geomOf, xAtTick } from './draw.ts';
 import type { EvL, Prepared } from './prep.ts';
@@ -74,8 +75,65 @@ interface StaffMarks {
   staff: number;
 }
 
+/** The smallest distance between the outlines of two neighboring letters of a dynamic, in staff spaces. */
+const DYN_GAP = 0.08;
+
+/** Height of the slices in which the outlines of dynamic letters are compared, in staff spaces. */
+const DYN_SLICE = 0.04;
+
+/** Per glyph name: the leftmost and rightmost x of its outline in each horizontal slice (`Infinity`/`-Infinity` where it has none). */
+const dynProfiles = new Map<string, { min: Map<number, number>; max: Map<number, number> }>();
+
+/** The outline profile of a glyph, by slice index. */
+function dynProfile(name: string): { min: Map<number, number>; max: Map<number, number> } {
+  let prof = dynProfiles.get(name);
+  if (prof) return prof;
+  const min = new Map<number, number>();
+  const max = new Map<number, number>();
+  for (const ring of flattenPath(sm.path(name))) {
+    for (let i = 0; i < ring.length; i += 2) {
+      const j = (i + 2) % ring.length;
+      const [x0, y0, x1, y1] = [ring[i], ring[i + 1], ring[j], ring[j + 1]];
+      const k0 = Math.floor(Math.min(y0, y1) / DYN_SLICE);
+      const k1 = Math.floor(Math.max(y0, y1) / DYN_SLICE);
+      for (let k = k0; k <= k1; k++) {
+        // The edge's x at the middle of the slice (or at its own end for a slice it only touches).
+        const y = Math.min(Math.max((k + 0.5) * DYN_SLICE, Math.min(y0, y1)), Math.max(y0, y1));
+        const x = y1 === y0 ? undefined : x0 + ((x1 - x0) * (y - y0)) / (y1 - y0);
+        for (const v of x === undefined ? [x0, x1] : [x]) {
+          min.set(k, Math.min(min.get(k) ?? Number.POSITIVE_INFINITY, v));
+          max.set(k, Math.max(max.get(k) ?? Number.NEGATIVE_INFINITY, v));
+        }
+      }
+    }
+  }
+  prof = { min, max };
+  dynProfiles.set(name, prof);
+  return prof;
+}
+
+/** The distance from the origin of glyph `left` at which glyph `right` can start so that their outlines keep `DYN_GAP` apart. */
+function dynSpacing(left: string, right: string): number {
+  const l = dynProfile(left);
+  const r = dynProfile(right);
+  let d = Number.NEGATIVE_INFINITY;
+  for (const [k, lx] of l.max) {
+    const rx = r.min.get(k);
+    if (rx !== undefined) d = Math.max(d, lx - rx + DYN_GAP);
+  }
+  return d === Number.NEGATIVE_INFINITY ? sm.adv(left) : d;
+}
+
 /** Glyphs of a dynamic like `mf`, its advance width, its extent above and below the baseline, and where its ink starts and ends (for centring on the notehead). */
-function dynRun(text: string): { names: string[]; w: number; up: number; down: number; ink0: number; ink1: number } {
+function dynRun(text: string): {
+  names: string[];
+  xs: number[];
+  w: number;
+  up: number;
+  down: number;
+  ink0: number;
+  ink1: number;
+} {
   const map: Record<string, string> = {
     p: 'dynamicPiano',
     m: 'dynamicMezzo',
@@ -89,6 +147,8 @@ function dynRun(text: string): { names: string[]; w: number; up: number; down: n
     .split('')
     .map((c) => map[c])
     .filter(Boolean);
+  // The letters stick together: each starts as close to the previous one as their outlines allow.
+  const xs: number[] = [];
   let w = 0;
   let up = 0;
   let down = 0;
@@ -96,13 +156,15 @@ function dynRun(text: string): { names: string[]; w: number; up: number; down: n
   let ink1 = 0;
   names.forEach((n, i) => {
     const b = sm.bbox(n);
+    const x = i === 0 ? 0 : xs[i - 1] + dynSpacing(names[i - 1], n);
+    xs.push(x);
     if (i === 0) ink0 = b.x0;
-    ink1 = w + b.x1;
-    w += sm.adv(n);
+    ink1 = x + b.x1;
+    w = x + sm.adv(n);
     up = Math.max(up, b.y1);
     down = Math.max(down, -b.y0);
   });
-  return { names, w, up, down, ink0, ink1 };
+  return { names, xs, w, up, down, ink0, ink1 };
 }
 
 /** Center of the notehead(s) sounding at `tick` (falls back to the column x plus half a head). */
@@ -162,12 +224,7 @@ function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' })
     row: 0,
     order: 0,
     draw: (ref) => {
-      let px = left;
-      return run.names.map((n) => {
-        const p: Prim = { t: 'glyph', name: n, x: px, y: ref };
-        px += sm.adv(n);
-        return p;
-      });
+      return run.names.map((n, i): Prim => ({ t: 'glyph', name: n, x: left + run.xs[i], y: ref }));
     },
   };
 }
