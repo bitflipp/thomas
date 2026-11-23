@@ -1,4 +1,4 @@
-// The parallel fifths and octaves check: the rules of the conseq tool on small scores.
+// The parallel fifths and octaves check: the rules on small scores.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
