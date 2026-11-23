@@ -153,3 +153,28 @@ test('the study fixture can be checked', () => {
   const s = parseText(readFileSync(new URL('./fixtures/study.txt', import.meta.url), 'utf8'));
   for (const g of findParallels(s)) assert.ok(g.notes.length >= 4);
 });
+
+test('a chord of four going on to a chord of three: the fifth is possible when only some mergers give it', () => {
+  // C-E-G-B to D-F#-A: G may go to F# (no fifth above the bass) or to A (C-G becomes D-A).
+  const gs = findParallels(score(['rh.1: <c4 e4 g4 b4>:2 <d4 f#4 a4>', 'lh.1: R:1']));
+  assert.equal(gs.length, 1);
+  assert.equal(gs[0].level, 'possible');
+  assert.deepEqual(gs[0].kinds, ['fifths']);
+});
+
+test('chords of equal size and separate voices are certain, the outer notes of a chord always are', () => {
+  assert.equal(findParallels(score(['rh.1: <c4 e4 g4>:2 <d4 f4 a4>', 'lh.1: R:1']))[0].level, 'certain');
+  assert.equal(findParallels(score(['rh.1: <c4 e4 g4>:2 <d4 a4>', 'lh.1: R:1']))[0].level, 'certain');
+  assert.equal(findParallels(score(['rh.1: <e4 f4 g4>:2 <f4 a4>', 'lh.1: c3:2 d3']))[0].level, 'certain');
+});
+
+test('a pair that the voice-leading of equal chords does not lead into the interval is no violation', () => {
+  // Note by note c-g-b goes to b-d-a, so the fifth c-g goes to a third, and d-a is reached from g-b.
+  assert.deepEqual(findParallels(score(['rh.1: <c4 g4 b4>:2 <b3 d4 a4>', 'lh.1: R:1'])), []);
+  // A chord that splits may lead g to either of the new notes: possible, not certain.
+  assert.equal(findParallels(score(['rh.1: <c4 g4>:2 <d4 f4 a4 e5>', 'lh.1: R:1']))[0].level, 'possible');
+});
+
+test('a doubled octave still counts as a line: b-e-b going to c#-e-g# is contrary motion, not a fifth', () => {
+  assert.deepEqual(findParallels(score(['rh.1: <b4 e5 b5>:2 <c#5 e5 g#5>', 'lh.1: R:1'])), []);
+});

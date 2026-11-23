@@ -31,7 +31,7 @@ export interface Finding {
   refs: Ref[];
   /** Outlines to draw in the score: the heads at the corners of each, in drawing order. */
   shapes: Ref[][];
-  /** An error is drawn in red, a warning in orange. */
+  /** An error is drawn in red, a warning in orange (for the parallels: a certain violation, and one that only some readings of the voice-leading give). */
   severity: 'error' | 'warn';
 }
 
@@ -64,7 +64,7 @@ const parallelFindings = computed<Finding[]>(() => {
     tick: g.tick,
     refs: g.notes.map((n) => ({ t: 'ev', ...n.ev, pi: n.pi })),
     shapes: g.intervals.map((iv) => iv.notes.map((n) => ({ t: 'ev' as const, ...n.ev, pi: n.pi }))),
-    severity: 'error' as const,
+    severity: g.level === 'certain' ? ('error' as const) : ('warn' as const),
   }));
 });
 
