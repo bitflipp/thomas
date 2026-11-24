@@ -10,14 +10,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import type { RampShape } from '../src/editor/expression.ts';
 import { RAMP_SHAPES } from '../src/editor/expression.ts';
 import { must } from '../src/util.ts';
-import type { DropdownOpt } from './Dropdown.tsx';
 import { Dropdown } from './Dropdown.tsx';
 import type { Frame } from './exprDraw.ts';
-import { paint, RAMP_GRADIENT, readColors, velocityColor } from './exprDraw.ts';
+import { paint, readColors, velocityColor } from './exprDraw.ts';
 import * as E from './expression.ts';
 import { reveal } from './interact.ts';
 import { playing, playTick } from './player.ts';
-import { exprView, selection, showHints } from './state.ts';
+import { exprView, selection } from './state.ts';
 
 /** A labeled number field. It shows `'mixed'` (an empty box) when the selected notes differ, and commits on Enter or when it loses focus. */
 function Field({
@@ -39,54 +38,40 @@ function Field({
   disabled?: boolean;
   onChange: (n: number) => void;
 }) {
+  const input = useRef<HTMLInputElement>(null);
+  const shown = value === 'mixed' || value === undefined ? '' : String(value);
+  const commit = useRef(onChange);
+  commit.current = onChange;
+  // The box follows the value of the notes without being replaced, so that it keeps the focus while it is typed in.
+  useEffect(() => {
+    if (input.current) input.current.value = shown;
+  }, [shown]);
+  // Preact turns `onChange` into the `input` event (a commit per keystroke), so the native `change` event, which comes on
+  // Enter, on losing the focus and from the spinner, is listened to directly.
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    const done = () => {
+      const n = Number(el.value);
+      if (el.value !== '' && Number.isFinite(n)) commit.current(n);
+    };
+    el.addEventListener('change', done);
+    return () => el.removeEventListener('change', done);
+  }, []);
   return (
     <label class="xf" title={title}>
       <span>{label}</span>
       <input
+        ref={input}
         type="number"
-        key={String(value)}
         min={min}
         max={max}
         step={step}
         disabled={disabled}
-        value={value === 'mixed' || value === undefined ? '' : value}
+        defaultValue={shown}
         placeholder={value === 'mixed' ? 'mixed' : '–'}
-        onChange={(e) => {
-          const text = (e.target as HTMLInputElement).value;
-          const n = Number(text);
-          if (text !== '' && Number.isFinite(n)) onChange(n);
-        }}
       />
     </label>
-  );
-}
-
-/** A small group of buttons that change a value by fixed amounts. */
-function Steps({
-  steps,
-  label,
-  disabled,
-  onStep,
-}: {
-  steps: number[];
-  label: string;
-  disabled: boolean;
-  onStep: (d: number) => void;
-}) {
-  return (
-    <div class="seg">
-      {steps.map((d) => (
-        <button
-          type="button"
-          disabled={disabled}
-          title={`${label} ${d > 0 ? '+' : '−'}${Math.abs(d)}`}
-          onClick={() => onStep(d)}
-        >
-          {d > 0 ? '+' : '−'}
-          {Math.abs(d)}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -95,16 +80,6 @@ const SHAPES: { value: RampShape; label: string; title: string }[] = [
   { value: 'ease-in', label: 'Ease in', title: 'Slowly at first, then faster' },
   { value: 'ease-out', label: 'Ease out', title: 'Quickly at first, then slower' },
   { value: 's-curve', label: 'S-curve', title: 'Slowly at both ends' },
-];
-
-const ROLL_DIRS: DropdownOpt<'up' | 'down'>[] = [
-  { value: 'up', label: 'Up from lowest' },
-  { value: 'down', label: 'Down from highest' },
-];
-
-const ROLL_ANCHORS: DropdownOpt<'first' | 'last'>[] = [
-  { value: 'first', label: 'First on the beat' },
-  { value: 'last', label: 'Last on the beat' },
 ];
 
 /** The velocity presets of the tools, grouped by the dynamic they stand for (loud to soft, as in Pianizer). */
@@ -121,7 +96,18 @@ const VEL_GROUPS: [string, number[]][] = [
 /** The changes the delta tool offers. */
 const DELTAS = [-10, -5, -1, 1, 5, 10];
 
-type Tool = 'set' | 'curve' | 'delta';
+/** The changes the shift tool offers (milliseconds). */
+const SHIFT_STEPS = [-100, -10, -1, 1, 10, 100];
+
+/** The gates the gate tool sets, and the changes it offers. */
+const GATE_SETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+
+const GATE_STEPS = [-0.1, -0.05, 0.05, 0.1];
+
+type Tool = 'set' | 'curve' | 'delta' | 'shift' | 'gate' | 'roll';
+
+/** A signed number as button text. */
+const signed = (d: number): string => (d > 0 ? `+${d}` : `−${-d}`);
 
 /** The grid of velocity buttons, each in its velocity's color; `from` marks the first pick of a ramp. */
 function VelocityGrid({ from, onPick }: { from?: number; onPick: (v: number) => void }) {
@@ -172,19 +158,15 @@ type Place = { anchor: HTMLElement; point?: undefined } | { point: { x: number; 
 /** The last place the pointer was seen, so that a key can open a tool window under it. */
 const pointer = { x: 200, y: 200 };
 
-/** The help text at the bottom of a tool window; for the ramp it follows the step the person is at. */
-const toolHelp = (tool: Tool, first: number | undefined): string => {
-  switch (tool) {
-    case 'set':
-      return 'Note velocity: click a value to give every selected note exactly that velocity (1–127). The buttons are grouped by the dynamic they stand for, from ff at the top to ppp at the bottom. Escape closes the window without a change.';
-    case 'curve':
-      return first === undefined
-        ? 'Ramp, step 1 of 2: choose a shape above (how the change is spread over time), then click the velocity the first selected note should get. The selected notes are ordered by their onset.'
-        : `Ramp, step 2 of 2: the first note gets ${first}. Click the velocity the last selected note should get; the notes between follow the chosen shape. Picking ${first} again does nothing, Escape cancels.`;
-    case 'delta':
-      return 'Velocity delta: raise or lower the velocity of every selected note by a fixed amount, keeping the differences between them. Notes without a velocity of their own start from the one their dynamic gives. Escape closes the window without a change.';
-  }
-};
+const ROLL_DIRS: ['up' | 'down', string][] = [
+  ['up', 'Up from lowest'],
+  ['down', 'Down from highest'],
+];
+
+const ROLL_ANCHORS: ['first' | 'last', string][] = [
+  ['first', 'First on the beat'],
+  ['last', 'Last on the beat'],
+];
 
 /** The window of the open tool: it opens under its button or at the pointer and closes on a pick, Escape or a click elsewhere. */
 function ToolWindow({ tool, place, onClose }: { tool: Tool; place: Place; onClose: () => void }) {
@@ -270,18 +252,118 @@ function ToolWindow({ tool, place, onClose }: { tool: Tool; place: Place; onClos
                 onClose();
               }}
             >
-              {d > 0 ? `+${d}` : `−${-d}`}
+              {signed(d)}
             </button>
           ))}
         </div>
       )}
-      {showHints.value && <p class="vhelp">{toolHelp(tool, first)}</p>}
+      {tool === 'shift' && (
+        <div class="vshapes">
+          {SHIFT_STEPS.map((d) => (
+            <button
+              type="button"
+              title={`${signed(d)} ms`}
+              onClick={() => {
+                E.nudgeShift(d);
+                onClose();
+              }}
+            >
+              {signed(d)}
+            </button>
+          ))}
+        </div>
+      )}
+      {tool === 'gate' && (
+        <>
+          <div class="vshapes">
+            {GATE_SETS.map((v) => (
+              <button
+                type="button"
+                onClick={() => {
+                  E.setGate(v);
+                  onClose();
+                }}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+          <div class="vshapes">
+            {GATE_STEPS.map((d) => (
+              <button
+                type="button"
+                onClick={() => {
+                  E.nudgeGate(d);
+                  onClose();
+                }}
+              >
+                {signed(d)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {tool === 'roll' && (
+        <>
+          <div class="vshapes">
+            {ROLL_DIRS.map(([v, label]) => (
+              <button type="button" class={E.rollDir.value === v ? 'on' : ''} onClick={() => (E.rollDir.value = v)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div class="vshapes">
+            {ROLL_ANCHORS.map(([v, label]) => (
+              <button
+                type="button"
+                class={E.rollAnchor.value === v ? 'on' : ''}
+                onClick={() => (E.rollAnchor.value = v)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div class="vshapes">
+            <Field
+              label="over"
+              title="Milliseconds from the first note of the chord to the last"
+              value={E.rollSpan.value}
+              min={1}
+              max={2000}
+              onChange={(n) => (E.rollSpan.value = n)}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                E.applyRoll();
+                onClose();
+              }}
+            >
+              Roll
+            </button>
+          </div>
+        </>
+      )}
+      {(tool === 'set' || tool === 'shift' || tool === 'gate') && (
+        <div class="vshapes">
+          <button
+            type="button"
+            title="Take it off the selected notes, so that the notation decides again"
+            onClick={() => {
+              E.resetHeads(tool === 'set' ? 'vel' : tool);
+              onClose();
+            }}
+          >
+            {tool === 'set' ? 'From the dynamics' : 'As notated'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-/** The controls of the velocity lane: the three tools (1, 2, 3 on the canvas) and the exact value. */
-function VelocityBar({ none }: { none: boolean }) {
+/** The tools of the selected notes (keys 1 to 6 in the view) and the exact values. */
+function NoteBar({ none }: { none: boolean }) {
   const [open, setOpen] = useState<({ tool: Tool } & Place) | null>(null);
   const tools: { tool: Tool; key: string; label: string; title: string }[] = [
     {
@@ -302,8 +384,11 @@ function VelocityBar({ none }: { none: boolean }) {
       label: 'Delta',
       title: 'Raise or lower the velocities of the selected notes by a fixed amount (3)',
     },
+    { tool: 'shift', key: '4', label: 'Shift', title: 'Strike the selected notes earlier or later than written (4)' },
+    { tool: 'gate', key: '5', label: 'Gate', title: 'Make the selected notes sound shorter or longer (5)' },
+    { tool: 'roll', key: '6', label: 'Roll', title: 'Spread the attacks of each chord among the selected notes (6)' },
   ];
-  // The keys 1, 2 and 3 open the tools (as in Pianizer) wherever the focus is in the Expression view, also with a tool
+  // The keys 1 to 6 open the tools (as in Pianizer) wherever the focus is in the Expression view, also with a tool
   // window open (it then switches to that tool), except while a text field is being typed in.
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -325,24 +410,22 @@ function VelocityBar({ none }: { none: boolean }) {
       document.removeEventListener('pointermove', move, true);
     };
   });
+  const button = (t: (typeof tools)[number]) => (
+    <button
+      type="button"
+      data-tool={t.tool}
+      disabled={none}
+      aria-pressed={open?.tool === t.tool}
+      title={t.title}
+      onClick={(e) => setOpen(open?.tool === t.tool ? null : { tool: t.tool, anchor: e.currentTarget as HTMLElement })}
+    >
+      {t.label}
+    </button>
+  );
   return (
     <>
-      <div class="seg">
-        {tools.map((t) => (
-          <button
-            type="button"
-            data-tool={t.tool}
-            disabled={none}
-            aria-pressed={open?.tool === t.tool}
-            title={t.title}
-            onClick={(e) =>
-              setOpen(open?.tool === t.tool ? null : { tool: t.tool, anchor: e.currentTarget as HTMLElement })
-            }
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <div class="seg">{tools.slice(0, 3).map(button)}</div>
+      <div class="seg">{tools.slice(3).map(button)}</div>
       {open && (
         <ToolWindow
           key={open.tool}
@@ -363,17 +446,6 @@ function VelocityBar({ none }: { none: boolean }) {
         disabled={none}
         onChange={E.setVelocity}
       />
-      <span class="xramp" title="The colors of the notes in the roll: soft (blue) to loud (red), 1 to 127">
-        <i style={{ background: RAMP_GRADIENT }} />
-      </span>
-    </>
-  );
-}
-
-/** The controls of the shift lane: set, nudge, roll a chord. */
-function ShiftBar({ none }: { none: boolean }) {
-  return (
-    <>
       <Field
         label="Shift"
         title="Milliseconds the selected notes are struck later (negative: earlier) than written"
@@ -383,45 +455,6 @@ function ShiftBar({ none }: { none: boolean }) {
         disabled={none}
         onChange={E.setShift}
       />
-      <Steps steps={[-10, -1, 1, 10]} label="Shift" disabled={none} onStep={E.nudgeShift} />
-      <span class="sep" />
-      <span class="lbl">Roll</span>
-      <Dropdown
-        title="Which note of the chord is struck first"
-        value={E.rollDir.value}
-        opts={ROLL_DIRS}
-        onChange={(v) => (E.rollDir.value = v)}
-      />
-      <Field
-        label="over"
-        title="Milliseconds from the first note of the chord to the last"
-        value={E.rollSpan.value}
-        min={1}
-        max={2000}
-        onChange={(n) => (E.rollSpan.value = n)}
-      />
-      <Dropdown
-        title="Which note stays on the beat"
-        value={E.rollAnchor.value}
-        opts={ROLL_ANCHORS}
-        onChange={(v) => (E.rollAnchor.value = v)}
-      />
-      <button
-        type="button"
-        disabled={none}
-        title="Spread the attacks of each chord among the selected notes over this time"
-        onClick={E.applyRoll}
-      >
-        Roll
-      </button>
-    </>
-  );
-}
-
-/** The controls of the gate lane. */
-function GateBar({ none }: { none: boolean }) {
-  return (
-    <>
       <Field
         label="Gate"
         title="How long the selected notes sound, as a factor of the length the notation gives (below 1 shorter, above 1 held on)"
@@ -432,106 +465,52 @@ function GateBar({ none }: { none: boolean }) {
         disabled={none}
         onChange={E.setGate}
       />
-      <Steps steps={[-0.1, -0.05, 0.05, 0.1]} label="Gate" disabled={none} onStep={E.nudgeGate} />
     </>
   );
 }
 
-/** The hints of the lanes that hold curves. */
-const CURVE_HINTS: Record<'tempo' | 'sustain' | 'soft', string> = {
-  tempo:
-    'Click to add a point, drag to move it (Alt: any value, not only the usual ones), Delete removes it. 100% is the notated tempo.',
-  sustain:
-    'Click to add a point, drag to move it (Alt: any value, not only the usual ones), Delete removes it. The pedal is up before the first point.',
-  soft: 'Drag to put the soft pedal down, drag an edge or the body of a region to change it, Delete removes it.',
-};
-
-/** The controls of a curve lane: the value of the selected point, and clearing the lane. */
-function CurveBar({ which }: { which: 'tempo' | 'sustain' | 'soft' }) {
+/** The controls of the curve lanes: the value of the selected point and the snap grid. */
+function CurveBar() {
   const value = E.pointValue();
+  const sel = pointSelLane();
   return (
     <>
-      {which !== 'soft' && (
-        <Field
-          label="Point"
-          title="The value of the selected point"
-          value={
-            value === undefined
-              ? undefined
-              : which === 'tempo'
-                ? Math.round(value * 1000) / 10
-                : Math.round(value * 100)
-          }
-          min={which === 'tempo' ? 10 : 0}
-          max={which === 'tempo' ? 1000 : 100}
-          disabled={value === undefined}
-          onChange={(n) => E.setPointValue(n / (which === 'tempo' ? 100 : 100))}
-        />
-      )}
-      {showHints.value && <span class="hint">{CURVE_HINTS[which]}</span>}
+      <Field
+        label="Point"
+        title="The value of the selected tempo or sustain point"
+        value={
+          value === undefined || sel === 'soft'
+            ? undefined
+            : sel === 'tempo'
+              ? Math.round(value * 1000) / 10
+              : Math.round(value * 100)
+        }
+        min={sel === 'tempo' ? 10 : 0}
+        max={sel === 'tempo' ? 1000 : 100}
+        disabled={value === undefined}
+        onChange={(n) => E.setPointValue(n / 100)}
+      />
+      <Dropdown
+        title="Snap grid for curve points and regions (Alt while dragging: none)"
+        value={E.snap.value}
+        opts={E.SNAPS.map((n) => ({ value: n.value, label: `Snap ${n.label}` }))}
+        onChange={(n) => (E.snap.value = n)}
+      />
     </>
   );
 }
 
-/** The row of controls for the open lane. */
-function LaneBar() {
-  const l = E.lane.value;
+/** The lane of the selected curve point or region. */
+const pointSelLane = () => E.pointSel.value?.lane;
+
+/** The row of controls: the tools and values of the selected notes, and those of the curves. */
+function Toolbar() {
   const none = E.selected.value.size === 0;
-  const curve = l === 'tempo' || l === 'sustain' || l === 'soft';
   return (
     <div class="xbar">
-      {l === 'velocity' && <VelocityBar none={none} />}
-      {l === 'shift' && <ShiftBar none={none} />}
-      {l === 'gate' && <GateBar none={none} />}
-      {curve && <CurveBar which={l} />}
-      <span class="grow" />
-      {curve ? (
-        <button type="button" class="danger" title="Remove everything in this lane" onClick={E.clearLane}>
-          Clear
-        </button>
-      ) : (
-        <>
-          <button
-            type="button"
-            disabled={none}
-            title={`Take ${l === 'velocity' ? 'the velocity' : l === 'shift' ? 'the shift' : 'the gate'} off the selected notes (Delete); the notation decides again. ${none ? 'No notes are selected.' : `${E.selected.value.size} selected.`}`}
-            onClick={() => E.resetHeads()}
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            disabled={none}
-            title="Take velocity, shift and gate all off the selected notes"
-            onClick={() => E.resetHeads(true)}
-          >
-            Clear
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** The tabs of the lanes. */
-function Head() {
-  return (
-    <div class="tabs" role="tablist">
-      {E.LANES.map((l) => (
-        <button
-          type="button"
-          role="tab"
-          aria-selected={E.lane.value === l.id}
-          class={E.lane.value === l.id ? 'on' : ''}
-          title={l.title}
-          onClick={() => {
-            E.lane.value = l.id;
-            E.pointSel.value = null;
-          }}
-        >
-          {l.label}
-        </button>
-      ))}
+      <NoteBar none={none} />
+      <span class="sep" />
+      <CurveBar />
     </div>
   );
 }
@@ -544,11 +523,8 @@ function frameOf(g: E.Geo): Frame {
     g,
     view: exprView.value,
     roll: E.roll.value,
-    stems: E.stems.value,
     measures: E.measures.value,
     curves: E.curves.value,
-    lane: E.lane.value,
-    scale: E.laneScale(),
     selected: E.selected.value,
     hover: E.hover.value,
     pointSel: E.pointSel.value,
@@ -591,7 +567,7 @@ export function Expression() {
       const f = frameOf(g);
       raf = requestAnimationFrame(() => {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        paint(ctx, f, colors, E.LANES.find((l) => l.id === f.lane)?.label ?? '');
+        paint(ctx, f, colors);
       });
     };
     const recolor = () => {
@@ -647,14 +623,13 @@ export function Expression() {
   const tip = E.tip.value;
   return (
     <section class="expression" aria-label="Expression">
-      <Head />
-      <LaneBar />
+      <Toolbar />
       <div class="xcanvas" ref={wrap}>
         <canvas
           ref={canvas}
           tabIndex={0}
           style={{ width: `${size.w}px`, height: `${size.h}px`, cursor: E.cursor.value }}
-          aria-label="Expression lanes"
+          aria-label="Expression roll and lanes"
           onContextMenu={(e) => e.preventDefault()}
           onPointerDown={(e) => {
             canvas.current?.focus({ preventScroll: true });
@@ -667,7 +642,7 @@ export function Expression() {
           }}
           onPointerMove={(e) => {
             const { x, y } = at(e);
-            E.onMove(g, x, y, e.buttons, e.altKey, e.altKey);
+            E.onMove(g, x, y, e.buttons, e.altKey);
           }}
           onPointerUp={(e) => {
             const { x, y } = at(e);
@@ -696,11 +671,11 @@ export function Expression() {
         {tip && (
           <div
             class="xtip"
-            style={
-              tip.x > size.w / 2
-                ? { right: `${size.w - tip.x + E.SP2}px`, top: `${tip.y + E.SP2}px` }
-                : { left: `${tip.x + E.SP2}px`, top: `${tip.y + E.SP2}px` }
-            }
+            style={{
+              // The tip keeps inside the canvas: left of the pointer in the right half, above it near the bottom.
+              ...(tip.x > size.w / 2 ? { right: `${size.w - tip.x + E.SP2}px` } : { left: `${tip.x + E.SP2}px` }),
+              ...(tip.y > size.h - 48 ? { bottom: `${size.h - tip.y + E.SP2}px` } : { top: `${tip.y + E.SP2}px` }),
+            }}
           >
             {tip.text}
           </div>

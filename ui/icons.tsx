@@ -229,13 +229,6 @@ export const Ui = {
         <path d="M12 17h.01" />
       </>,
     ),
-  hint: () =>
-    S(
-      <>
-        <path d="M4 5h16v11H10l-4 4v-4H4z" />
-        <path d="M8 9h8M8 12h5" />
-      </>,
-    ),
   up: () => S(<path d="M12 19V5M6 11l6-6 6 6" />),
   down: () => S(<path d="M12 5v14M6 13l6 6 6-6" />),
   barSingle: () => S(<path d="M12 4v16" />),

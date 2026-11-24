@@ -49,17 +49,33 @@ const ROWS: [string, string][] = [
   ],
   [
     '↑ ↓ (Expression pane)',
-    'Change the value of the selected notes (or of the selected curve point) in the open lane; Shift: ten times as much',
+    'Change the velocity of the selected notes (or the value of the selected curve point); Shift: ten times as much',
   ],
   [
-    'Delete (Expression pane)',
-    "Take the open lane's value off the selected notes, or remove the selected curve point or region",
+    '1 to 6 (Expression pane)',
+    'Open the tools of the selected notes at the pointer: Set, Ramp, Delta (velocity), Shift (ms), Gate (factor of the notated length), Roll (spread the attacks of chords). Ramp: pick a shape, then the first and the last velocity. Escape closes a window',
   ],
+  [
+    'Click, drag (tempo and sustain lanes)',
+    'Click adds a point, drag moves it; time snaps to the grid of the toolbar, the value to 10% (tempo) or 25% (sustain). Right-click or Delete removes it',
+  ],
+  [
+    'Drag (una corda lane)',
+    'Paint a region where the soft pedal is down; drag its edges or its body to change it, right-click or Delete removes it',
+  ],
+  ['Delete (Expression pane)', 'Remove the selected curve point or region'],
   [
     'Right-drag, wheel (Expression pane)',
     'Pan the roll in both directions; the wheel pans sideways, Alt + wheel up and down, Ctrl + wheel zooms the time axis',
   ],
-  ['Alt (Expression pane)', 'While dragging: any curve value (not only the usual ones), finer steps'],
+  [
+    'Right-click (Expression pane)',
+    'On a tempo or sustain lane, remove the point nearest to the pointer; on the una corda lane, the region under it',
+  ],
+  [
+    'Alt (Expression pane)',
+    'While dragging: no snapping, any curve value (not only steps of 25% for the sustain and 10% for the tempo), finer steps',
+  ],
   ['Ctrl S', 'Save'],
   ['Alt + click (note input)', 'Replace a tuplet as a whole instead of entering into it'],
   ['Shift / Ctrl + click', 'Add to the selection'],

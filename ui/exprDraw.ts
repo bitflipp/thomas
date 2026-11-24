@@ -6,20 +6,23 @@
 import { PPQ } from '../src/model.ts';
 import { linearAt, ratioFunction } from '../src/playback/curves.ts';
 import { must } from '../src/util.ts';
-import type { Geo, Hover, Lane, MeasureSpan, RollData, Scale, Stem } from './expression.ts';
+import type { Geo, Hover, MeasureSpan, Rect, RollData, Scale } from './expression.ts';
 
 import {
   BOX_GAP,
   BOX_TOP,
+  CURVE_LANES,
   GUTTER,
   LABEL_FONT,
   LABEL_PAD,
-  LANE_PAD,
+  laneRects,
+  padOf,
   pitchName,
   ROW_H,
   rollRow,
   SP1,
   SP2,
+  scaleOf,
   visiblePitches,
   xOf,
   yOfValue,
@@ -80,9 +83,6 @@ const VELOCITY_RAMP: [number, number, number][] = [
   [214, 44, 38],
 ];
 
-/** The ramp as a CSS gradient, for the legend in the toolbar. */
-export const RAMP_GRADIENT = `linear-gradient(to right, ${VELOCITY_RAMP.map((c) => `rgb(${c.join(',')})`).join(', ')})`;
-
 /** The color of a velocity (1 to 127) on the ramp, with how light it is (0 to 1) for choosing the text color on it. */
 export function velocityColor(vel: number): { css: string; light: number } {
   const t = Math.max(0, Math.min(1, (vel - 1) / 126)) * (VELOCITY_RAMP.length - 1);
@@ -97,15 +97,12 @@ export interface Frame {
   g: Geo;
   view: { left: number; ppq: number; top: number };
   roll: RollData;
-  stems: Stem[];
   measures: MeasureSpan[];
   curves: {
     tempo: { tick: number; value: number }[];
     sustain: { tick: number; value: number }[];
     soft: { from: number; to: number }[];
   };
-  lane: Lane;
-  scale: Scale;
   selected: Set<string>;
   hover: Hover | null;
   pointSel: { lane: string; index: number } | null;
@@ -204,10 +201,7 @@ function drawRuler(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, ms: Numbe
 /** The measure lines and beat lines through the roll and the lane. */
 function drawGrid(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, ms: NumberedMeasure[]): void {
   const { g } = f;
-  for (const [y, h] of [
-    [g.roll.y, g.roll.h],
-    [g.lane.y, g.lane.h],
-  ]) {
+  for (const { y, h } of [g.roll, g.tempo, g.sustain, g.soft]) {
     clipped(ctx, f, y, h, () => {
       for (const m of ms) {
         ctx.fillStyle = mix(c.bg, c.muted, 0.35);
@@ -315,47 +309,14 @@ function drawRoll(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: 
   });
 }
 
-/** The axis of the lane: a line at each mark of the scale (the value at the base a little stronger). */
-function drawAxis(ctx: CanvasRenderingContext2D, f: Frame, c: Colors): void {
-  const { g, scale } = f;
-  clipped(ctx, f, g.lane.y, g.lane.h, () => {
+/** The axis of a lane: a line at each mark of the scale (the value at the base a little stronger). */
+function drawAxis(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, r: Rect, scale: Scale): void {
+  const { g } = f;
+  clipped(ctx, f, r.y, r.h, () => {
     for (const v of scale.marks) {
-      const y = Math.round(yOfValue(g, scale, v));
+      const y = Math.round(yOfValue(r, scale, v));
       ctx.fillStyle = mix(c.bg, c.muted, v === scale.base ? 0.5 : 0.2);
       ctx.fillRect(GUTTER, y, g.w - GUTTER, 1);
-    }
-  });
-}
-
-/** The stems of the heads in the velocity, shift or gate lane: a line from the base to the value with a handle on top. */
-function drawStems(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: number, rightTick: number): void {
-  const { g, scale, lane } = f;
-  const which = lane === 'velocity' ? 'vel' : (lane as 'shift' | 'gate');
-  const base = yOfValue(g, scale, scale.base);
-  clipped(ctx, f, g.lane.y, g.lane.h, () => {
-    for (const s of f.stems) {
-      const t = lane === 'shift' ? s.info.note.start : s.heard;
-      if (t < leftTick - PPQ || t > rightTick + PPQ) continue;
-      const x = Math.round(xOf(t, f.view)) + 0.5;
-      const v = s.info[which];
-      const y = yOfValue(g, scale, Math.max(scale.min, Math.min(scale.max, v)));
-      const sel = f.selected.has(s.info.key);
-      const hot = f.hover?.kind === 'stem' && f.hover.key === s.info.key;
-      const set = s.info.has[which];
-      const ramp = lane === 'velocity' ? velocityColor(v).css : undefined;
-      const color = sel || hot ? c.accent : (ramp ?? (set ? c.fg : c.muted));
-      ctx.strokeStyle = color;
-      ctx.globalAlpha = sel || set ? 1 : 0.55;
-      ctx.lineWidth = sel ? 2 : 1;
-      ctx.beginPath();
-      ctx.moveTo(x, base);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-      ctx.fillStyle = set || sel ? color : c.bg;
-      ctx.fillRect(x - 3, y - 3, 6, 6);
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x - 2.5, y - 2.5, 5, 5);
-      ctx.globalAlpha = 1;
     }
   });
 }
@@ -365,17 +326,19 @@ function drawCurveLine(
   ctx: CanvasRenderingContext2D,
   f: Frame,
   c: Colors,
+  r: Rect,
+  scale: Scale,
   at: (tick: number) => number,
   fill: boolean,
 ): void {
-  const { g, scale } = f;
-  clipped(ctx, f, g.lane.y, g.lane.h, () => {
+  const { g } = f;
+  clipped(ctx, f, r.y, r.h, () => {
     ctx.beginPath();
-    const base = yOfValue(g, scale, scale.base);
+    const base = yOfValue(r, scale, scale.base);
     let first = true;
     for (let x = GUTTER; x <= g.w; x += 2) {
       const tick = f.view.left + ((x - GUTTER) * PPQ) / f.view.ppq;
-      const y = yOfValue(g, scale, Math.max(scale.min, Math.min(scale.max, at(tick))));
+      const y = yOfValue(r, scale, Math.max(scale.min, Math.min(scale.max, at(tick))));
       if (first) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
       first = false;
@@ -397,14 +360,16 @@ function drawCurveLine(
 
 /** The tempo or sustain curve with its points. */
 function drawCurve(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, name: 'tempo' | 'sustain'): void {
-  const { g, scale } = f;
+  const r = f.g[name];
+  const scale = scaleOf(name);
   const pts = f.curves[name];
-  if (name === 'tempo') drawCurveLine(ctx, f, c, ratioFunction(pts), false);
-  else drawCurveLine(ctx, f, c, (t) => (pts.length && t >= pts[0].tick ? linearAt(pts, t, 0) : 0), true);
-  clipped(ctx, f, g.lane.y, g.lane.h, () => {
+  drawAxis(ctx, f, c, r, scale);
+  if (name === 'tempo') drawCurveLine(ctx, f, c, r, scale, ratioFunction(pts), false);
+  else drawCurveLine(ctx, f, c, r, scale, (t) => (pts.length && t >= pts[0].tick ? linearAt(pts, t, 0) : 0), true);
+  clipped(ctx, f, r.y, r.h, () => {
     pts.forEach((p, i) => {
       const x = xOf(p.tick, f.view);
-      const y = yOfValue(g, scale, Math.max(scale.min, Math.min(scale.max, p.value)));
+      const y = yOfValue(r, scale, Math.max(scale.min, Math.min(scale.max, p.value)));
       const sel = f.pointSel?.lane === name && f.pointSel.index === i;
       const hot = f.hover?.kind === 'point' && f.hover.lane === name && f.hover.index === i;
       ctx.beginPath();
@@ -420,15 +385,15 @@ function drawCurve(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, name: 'te
 
 /** The una corda regions as bands across the lane. */
 function drawSoft(ctx: CanvasRenderingContext2D, f: Frame, c: Colors): void {
-  const { g } = f;
-  clipped(ctx, f, g.lane.y, g.lane.h, () => {
-    f.curves.soft.forEach((r, i) => {
-      const x0 = xOf(r.from, f.view);
-      const x1 = xOf(r.to, f.view);
+  const r = f.g.soft;
+  clipped(ctx, f, r.y, r.h, () => {
+    f.curves.soft.forEach((reg, i) => {
+      const x0 = xOf(reg.from, f.view);
+      const x1 = xOf(reg.to, f.view);
       const sel = f.pointSel?.lane === 'soft' && f.pointSel.index === i;
       const hot = f.hover?.kind === 'region' && f.hover.index === i;
-      const y = g.lane.y + LANE_PAD;
-      const h = g.lane.h - 2 * LANE_PAD;
+      const y = r.y + padOf(r);
+      const h = r.h - 2 * padOf(r);
       ctx.fillStyle = sel ? c.accent : c.accentSoft;
       ctx.globalAlpha = sel ? 0.55 : 1;
       ctx.fillRect(x0, y, Math.max(2, x1 - x0), h);
@@ -440,20 +405,26 @@ function drawSoft(ctx: CanvasRenderingContext2D, f: Frame, c: Colors): void {
   });
 }
 
-/** The lane under the roll. */
-function drawLane(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: number, rightTick: number): void {
+/** The lanes under the roll: tempo, sustain and una corda. */
+function drawLanes(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: number, rightTick: number): void {
   const { g } = f;
-  ctx.fillStyle = c.bg;
-  ctx.fillRect(GUTTER, g.lane.y, g.w - GUTTER, g.lane.h);
+  for (const { r } of laneRects(g)) {
+    ctx.fillStyle = c.bg;
+    ctx.fillRect(GUTTER, r.y, g.w - GUTTER, r.h);
+  }
   drawGrid(ctx, f, c, visibleMeasures(f, leftTick, rightTick));
-  drawAxis(ctx, f, c);
-  if (f.lane === 'soft') drawSoft(ctx, f, c);
-  else if (f.lane === 'tempo' || f.lane === 'sustain') drawCurve(ctx, f, c, f.lane);
-  else drawStems(ctx, f, c, leftTick, rightTick);
+  drawCurve(ctx, f, c, 'tempo');
+  drawCurve(ctx, f, c, 'sustain');
+  drawSoft(ctx, f, c);
+  // A line at the top of each lane, as between the canvases of Pianizer.
+  for (const { r } of laneRects(g)) {
+    ctx.fillStyle = c.line;
+    ctx.fillRect(0, r.y - 1, g.w, 1);
+  }
 }
 
-/** The gutter: the pitch of each C in the roll and the marks of the lane's axis, with the lane's name. */
-function drawGutter(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, laneName: string): void {
+/** The gutter: the pitch of each C in the roll, and for each lane its name and the marks of its axis. */
+function drawGutter(ctx: CanvasRenderingContext2D, f: Frame, c: Colors): void {
   const { g, roll } = f;
   ctx.fillStyle = c.panel;
   ctx.fillRect(0, g.ruler.h, GUTTER, g.h - g.ruler.h);
@@ -476,17 +447,21 @@ function drawGutter(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, laneName
     );
   }
   ctx.restore();
-  ctx.save();
-  ctx.translate(SP2, g.lane.y + g.lane.h / 2);
-  ctx.rotate(-Math.PI / 2);
-  centeredText(ctx, laneName.toUpperCase(), 0, 0, c.muted, 'center');
-  ctx.restore();
-  for (const v of f.scale.marks)
-    centeredText(ctx, f.scale.fmt(v), GUTTER - SP2, yOfValue(g, f.scale, v), c.muted, 'right');
+  const lanes = CURVE_LANES.map((l) => ({ r: g[l.id], name: l.label, scale: scaleOf(l.id) }));
+  for (const { r, name, scale } of lanes) {
+    if (r.h >= 44) {
+      ctx.save();
+      ctx.translate(SP1 + c.fsXs / 2, r.y + r.h / 2);
+      ctx.rotate(-Math.PI / 2);
+      centeredText(ctx, name.toUpperCase(), 0, 0, c.muted, 'center');
+      ctx.restore();
+    } else centeredText(ctx, name, SP1, r.y + r.h / 2, c.muted);
+    for (const v of scale.marks) centeredText(ctx, scale.fmt(v), GUTTER - SP2, yOfValue(r, scale, v), c.muted, 'right');
+  }
 }
 
-/** Paints the whole canvas for `f`. `laneName` is the label of the open lane. */
-export function paint(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, laneName: string): void {
+/** Paints the whole canvas for `f`. */
+export function paint(ctx: CanvasRenderingContext2D, f: Frame, c: Colors): void {
   const { g } = f;
   ctx.clearRect(0, 0, g.w, g.h);
   ctx.fillStyle = c.panel;
@@ -496,9 +471,9 @@ export function paint(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, laneNa
   const leftTick = f.view.left;
   const rightTick = f.view.left + ((g.w - GUTTER) * PPQ) / f.view.ppq;
   drawRoll(ctx, f, c, leftTick, rightTick);
-  drawLane(ctx, f, c, leftTick, rightTick);
+  drawLanes(ctx, f, c, leftTick, rightTick);
   drawRuler(ctx, f, c, visibleMeasures(f, leftTick, rightTick));
-  drawGutter(ctx, f, c, laneName);
+  drawGutter(ctx, f, c);
   if (f.playTick !== null) {
     const x = Math.round(xOf(f.playTick, f.view));
     if (x >= GUTTER) {

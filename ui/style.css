@@ -901,8 +901,8 @@ button.dd {
   color: var(--accent);
 }
 
-/* The Expression pane (ui/Expression.tsx): tabs for the lanes with the snap and zoom controls, a row of controls for the
-   open lane, and the canvas with the roll and the lane. */
+/* The Expression pane (ui/Expression.tsx): a row of controls (the tools and values of the selected notes, the curve point and
+   the snap grid), and the canvas with the roll and the three curve lanes. */
 .expression {
   flex: 1;
   min-height: 0;
@@ -910,11 +910,6 @@ button.dd {
   display: flex;
   flex-direction: column;
   background: var(--panel);
-}
-.expression .tabs {
-  position: static;
-  margin: 0;
-  flex: none;
 }
 .expression .xbar {
   flex: none;
@@ -941,12 +936,7 @@ button.dd {
   gap: var(--sp-1);
 }
 .expression .xf input {
-  width: 6em;
-}
-.expression .xbar .hint {
-  margin: 0;
-  width: auto;
-  min-width: 0;
+  width: 5.5em;
 }
 .expression .xcanvas {
   position: relative;
@@ -971,19 +961,6 @@ button.dd {
   white-space: nowrap;
 }
 
-/* The legend of the velocity colors in the Expression pane's toolbar. */
-.expression .xramp {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  color: var(--muted);
-  font-size: var(--fs-xs);
-}
-.expression .xramp i {
-  width: calc(var(--h) * 1.5);
-  height: var(--sp-2);
-}
-
 /* The velocity tools of the Expression pane (a window under the button that opened it). */
 .vtool {
   min-width: 20em;
@@ -996,15 +973,6 @@ button.dd {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-}
-.vtool .vhelp {
-  margin: 0;
-  contain: inline-size; /* The text wraps at the width the buttons give the window, and the rule spans all of it. */
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  line-height: 1.4;
-  border-top: 1px solid var(--line);
-  padding-top: var(--sp-3);
 }
 .vtool .vgrid {
   display: grid;

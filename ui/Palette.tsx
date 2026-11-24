@@ -14,7 +14,6 @@ import {
   dots,
   dur,
   dynText,
-  showHints,
   tempoArg,
   textArg,
   tool,
@@ -153,7 +152,6 @@ function PaletteArgs() {
 
 /** The tool palette: input and selection tools, durations, accidentals, marks and spans. */
 export function Palette() {
-  const t = tool.value;
   return (
     <nav class="palette" aria-label="Tools">
       <h4>Tools</h4>
@@ -241,28 +239,6 @@ export function Palette() {
         </ToolBtn>
       </div>
       <PaletteArgs />
-      {showHints.value && <p class="hint">{HINTS[t]}</p>}
     </nav>
   );
 }
-
-const HINTS: Record<Tool, string> = {
-  select: 'Click to select, drag a note up or down to change its pitch, drag a box to select several.',
-  note: 'Click on a staff: the note lands where the ghost shows. Click an existing note to add or remove a chord tone. Alt replaces tuplets.',
-  rest: 'Click on a staff to put a rest of the chosen duration.',
-  slur: 'Drag from the first note to the last.',
-  line: 'Drag from one note to another in the same system (any voice or staff).',
-  cresc: 'Drag from the first note to the last.',
-  dim: 'Drag from the first note to the last.',
-  pedal: 'Drag from the note where the pedal goes down to the last note under it.',
-  trill: 'Drag from the first note to the last to trill them with a wavy line.',
-  '8va': 'Drag from the first note to the last to shift.',
-  '8vb': 'Drag from the first note to the last to shift.',
-  dynamic: 'Click a note or rest: the mark hangs on it (above the staff center puts it above).',
-  text: 'Click a note or rest to hang the text on it.',
-  tempo: 'Click a note or rest to hang the tempo on it.',
-  clef: 'Click a note or rest: the clef changes from it.',
-  tuplet: 'Click a note or rest: it becomes a tuplet of that length.',
-  grace:
-    'Click on the staff at the note the grace note belongs to: it goes in front of it, on the pitch you click (slashed; the value is the chosen one up to a 32nd).',
-};
