@@ -18,7 +18,7 @@ import { docId, engraved, say, score, selection } from './state.ts';
 export const playing = signal(false);
 
 /** Where playback resumes, and where the playhead is drawn. Absolute ticks from the start of the score. */
-const playTick = signal(0);
+export const playTick = signal(0);
 
 export const midiPorts = signal<{ id: string; name: string }[]>([]);
 export const midiOut = signal<string | null>(null);

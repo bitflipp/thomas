@@ -175,6 +175,13 @@ export const shownZoom = signal(1); // This is the zoom the pages are displayed 
 export const fit = signal(true); // When set, the pages are fitted to the pane width.
 export const showText = signal(false);
 export const showProperties = signal(true);
+
+/** Whether the Expression pane (under the score) is shown. */
+export const showExpression = signal(false);
+
+/** The part of the piece the Expression pane shows: the tick at its left edge and the width of a quarter note in pixels. */
+export const exprView = signal({ left: 0, ppq: 56 });
+
 export const space = signal<number | null>(null);
 
 /** True while the PDF print dialog is being prepared: every page then generates its SVG, whether near the viewport or not. */

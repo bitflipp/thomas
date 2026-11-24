@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { deleteMeasures, insertMeasures, setTimeSig } from '../src/editor/commands.ts';
+
 import {
   headInfos,
   nudgeShift,
@@ -16,6 +17,7 @@ import {
   setShift,
   setVelocity,
 } from '../src/editor/expression.ts';
+
 import {
   addSoftRegion,
   clearCurve,
@@ -27,6 +29,7 @@ import {
   setSoftRegion,
   softTicks,
 } from '../src/editor/performance.ts';
+
 import { PPQ, validate } from '../src/model.ts';
 import { buildSequence } from '../src/playback/sequence.ts';
 import { parseText, writeText } from '../src/textformat.ts';
@@ -152,6 +155,14 @@ test('rolling a chord spreads the attacks over the span, from the top or the bot
   assert.ok(Math.abs(at(arp, 64, 1) - t0 - 0.02) < 1e-6);
   assert.ok(Math.abs(at(arp, 67, 1) - t0 - 0.04) < 1e-6);
   assert.throws(() => rollChord(s0, heads(0, 0), { span: 40, dir: 'up', anchor: 'first' }), /chord/);
+});
+
+test('a tremolo is not part of a rolled chord', () => {
+  const text = `${HEAD}\nm1 time=4/4 key=0\n  rh.1: trem1{c4:2 e4:2}\n`;
+  const s0 = parseText(text);
+  const all = selectedHeads(s0, [{ t: 'measure', mi: 0 }]);
+  assert.equal(all.length, 2);
+  assert.throws(() => rollChord(s0, all, { span: 40, dir: 'up', anchor: 'first' }), /chord/);
 });
 
 test('setHeadValues refuses a head that does not exist', () => {

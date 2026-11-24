@@ -25,7 +25,21 @@ import { focusGoto } from './Overview.tsx';
 import { rewind, toggle } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
-import { dots, redo, run, say, score, selection, showProperties, showText, tool, undo, voice } from './state.ts';
+
+import {
+  dots,
+  redo,
+  run,
+  say,
+  score,
+  selection,
+  showExpression,
+  showProperties,
+  showText,
+  tool,
+  undo,
+  voice,
+} from './state.ts';
 
 /** What Ctrl+C took: events with their complete marks, or point marks to hang on the selected events. */
 let clip: { events: C.Clip } | { marks: MarkBody[] } | { measures: C.MeasureClip } | undefined;
@@ -159,6 +173,9 @@ function onViewShortcut(e: KeyboardEvent): boolean {
       break;
     case 'i':
       toggleSignal(showProperties);
+      break;
+    case 'm':
+      toggleSignal(showExpression);
       break;
     case 'g':
       focusGoto();

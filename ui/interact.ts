@@ -31,12 +31,14 @@ import {
   dur,
   dynText,
   engraved,
+  exprView,
   fit,
   hit,
   run,
   say,
   score,
   selection,
+  showExpression,
   tempoArg,
   textArg,
   tool,
@@ -156,6 +158,7 @@ export function revealMeasure(mi: number): void {
   const k = pg.clientWidth / res.pages[g.page].width;
   const y = pg.getBoundingClientRect().top - box.getBoundingClientRect().top + sys.staffY[0] * k;
   box.scrollTo({ top: Math.max(0, box.scrollTop + y - box.clientHeight / 3), behavior: 'instant' });
+  if (showExpression.peek()) exprView.value = { ...exprView.peek(), left: measureTick(mi) - PPQ };
 }
 
 // Small helpers shared by the pointer handling and the commands: staff ids, measure lengths, the

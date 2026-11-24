@@ -8,6 +8,7 @@ import { useEffect } from 'preact/hooks';
 import { importMusicXml } from '../src/musicxml.ts';
 import { writeText } from '../src/textformat.ts';
 import { Dropdown } from './Dropdown.tsx';
+import { Expression } from './Expression.tsx';
 import { Ui } from './icons.tsx';
 import { zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
@@ -37,6 +38,7 @@ import {
   redo,
   say,
   score,
+  showExpression,
   shownZoom,
   showProperties,
   showText,
@@ -260,6 +262,14 @@ function Toolbar() {
         </button>
         <button
           type="button"
+          aria-pressed={showExpression.value}
+          title="Expression: velocity, timing and pedals (Ctrl M)"
+          onClick={() => (showExpression.value = !showExpression.value)}
+        >
+          Expression
+        </button>
+        <button
+          type="button"
           aria-pressed={showText.value}
           title="Text view (Ctrl E)"
           onClick={() => (showText.value = !showText.value)}
@@ -291,6 +301,7 @@ export function App() {
         <Palette />
         <div class="scorecol">
           <ScorePane />
+          {showExpression.value && <Expression />}
           <Overview />
         </div>
         {showProperties.value && <Properties />}

@@ -13,7 +13,8 @@ Scores are plain text (or imported from MusicXML) and are engraved with the Lela
 - **Engraver**: spacing, line and page breaking, beams, ties, slurs, tuplets, cross-staff notes, multi-measure rests, repeats and voltas, lyrics, grace notes, fermatas, trills and ornaments, with collision checking
 - **Editor**: note and rest input, selection and marquee, drag to change pitch, a Properties panel, undo/redo, copy and paste of notes and measures, and the score as editable text next to the engraving
 - **Overview strip**: one bar per measure with landmarks, the visible part of the score, and a hover preview of any system
-- **Playback and MIDI input**: plays over Web MIDI with dynamics, hairpins and pedal; notes can be entered from a MIDI keyboard
+- **Playback and MIDI input**: plays over Web MIDI with dynamics and hairpins; notes can be entered from a MIDI keyboard
+- **Expression**: a pane under the score for how the piece is played: the velocity, attack timing (rolled chords) and length of each note, a tempo curve, and the sustain and una corda pedals, which are independent of the notated pedal marks; `thomas import-rendition` takes over a rendition made with Pianizer
 - **Parallels check**: consecutive fifths and octaves are marked in the score, with a stepper to jump between them
 - **Output**: SVG per page, PDF through `rsvg-convert`, or print from the editor
 - **Desktop app**: the same editor in an Electron window with native file dialogs
@@ -64,7 +65,7 @@ Press `?` in the editor for the full list.
 | `Space` / `Home` | Play or pause / rewind |
 | `F8` / `Shift+F8` | Next / previous parallels finding |
 | `Ctrl+Z`, `Ctrl+Shift+Z` | Undo / redo |
-| `Ctrl+E` / `Ctrl+I` | Show or hide the text / Properties panel |
+| `Ctrl+E` / `Ctrl+I` / `Ctrl+M` | Show or hide the text / Properties / Expression pane |
 | `Ctrl+G` | Go to measure |
 | `Ctrl` `+` / `-` | Zoom in / out |
 | `Esc` | Cancel / deselect |

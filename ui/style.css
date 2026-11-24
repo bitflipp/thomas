@@ -29,6 +29,8 @@
   /* Widths: a standard button, and the side panes. */
   --w-btn: calc(var(--h) * 3);
   --w-pane: 372px;
+  /* Height of the Expression pane under the score. */
+  --h-expr: 400px;
   --shadow-sm: 0 1px 6px rgba(0, 0, 0, 0.3);
   --shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.4);
@@ -654,6 +656,7 @@ button.mini {
   .palette,
   .properties,
   .textpane,
+  .expression,
   .toast,
   .overlay {
     display: none !important;
@@ -888,4 +891,93 @@ button.dd {
 }
 .dd-list [role="option"][aria-selected="true"] {
   color: var(--accent);
+}
+
+/* The Expression pane (ui/Expression.tsx): tabs for the lanes with the snap and zoom controls, a row of controls for the
+   open lane, and the canvas with the roll and the lane. */
+.expression {
+  flex: none;
+  height: var(--h-expr);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+.expression .xhead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-right: var(--sp-2);
+  border-bottom: 1px solid var(--line);
+}
+.expression .tabs {
+  position: static;
+  margin: 0;
+  border-bottom: 0;
+  flex: none;
+}
+.expression .tabs button {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+}
+.expression .grow {
+  flex: 1;
+}
+.expression .xbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--line);
+}
+.expression .xbar .sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 0 var(--sp-1);
+}
+.expression .xbar .lbl,
+.expression .xf > span {
+  color: var(--muted);
+}
+.expression .xf {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.expression .xf input {
+  width: 4.5em;
+}
+.expression .xbar .hint {
+  margin: 0;
+  width: auto;
+  min-width: 0;
+}
+.expression .xcanvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.expression canvas {
+  display: block;
+  touch-action: none;
+  outline: none;
+}
+.expression canvas:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.xtip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
 }

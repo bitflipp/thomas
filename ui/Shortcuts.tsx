@@ -43,6 +43,16 @@ const ROWS: [string, string][] = [
   ['Ctrl G', 'Go to a measure: asks for its number, Enter selects it and shows it'],
   ['Ctrl E', 'Show the score as text, editable'],
   ['Ctrl I', 'Properties panel'],
+  ['Ctrl M', 'Expression pane: velocity, timing and pedals of the performance'],
+  [
+    '↑ ↓ (Expression pane)',
+    'Change the value of the selected notes (or of the selected curve point) in the open lane; Shift: ten times as much',
+  ],
+  [
+    'Delete (Expression pane)',
+    "Take the open lane's value off the selected notes, or remove the selected curve point or region",
+  ],
+  ['Alt (Expression pane)', 'While dragging: no snapping, finer steps'],
   ['Ctrl S', 'Save'],
   ['Alt + click (note input)', 'Replace a tuplet as a whole instead of entering into it'],
   ['Shift / Ctrl + click', 'Add to the selection'],

@@ -24,6 +24,7 @@ export const headKey = (h: HeadAt | HeadRef): string => `${h.mi}/${h.staff}/${h.
 
 /** The limits of the expression values. */
 export const VEL_MIN = 1;
+
 export const VEL_MAX = 127;
 export const SHIFT_MAX = 2000;
 export const GATE_MIN = 0.05;
@@ -38,6 +39,8 @@ export interface HeadInfo {
   note: Note;
   /** The absolute tick the event starts at in the notation. */
   at: number;
+  /** How many sounding notes the head makes (more than one for a tremolo, a trill or an ornament). */
+  strokes: number;
   vel: number;
   /** The attack displacement in milliseconds (0 when unset). */
   shift: number;
@@ -81,9 +84,11 @@ export function selectedHeads(score: Score, refs: readonly Ref[]): HeadRef[] {
 /** What every head of the score sounds like, in score order of its first note. Pass the playback sequence of `score` if it is at hand. */
 export function headInfos(score: Score, seq: Sequence = buildSequence(score)): HeadInfo[] {
   const first = new Map<string, Note>();
+  const strokes = new Map<string, number>();
   for (const n of seq.notes) {
     if (!n.head) continue;
     const k = headKey(n.head);
+    strokes.set(k, (strokes.get(k) ?? 0) + 1);
     const old = first.get(k);
     if (!old || n.start < old.start) first.set(k, n);
   }
@@ -107,6 +112,7 @@ export function headInfos(score: Score, seq: Sequence = buildSequence(score)): H
       midi: note.midi,
       note,
       at: (seq.measureStart[h.mi] ?? 0) + te.start,
+      strokes: strokes.get(key) ?? 1,
       vel: note.vel,
       shift: np.shift ?? 0,
       gate: np.gate ?? 1,
@@ -265,7 +271,7 @@ export interface Roll {
 }
 
 /**
- * Rolls the chords among `heads`: the heads that start together (also in other voices or staves, as when one hand's chord
+ * Rolls the chords among `heads` (a note that sounds as several, in a tremolo, trill or ornament, is not part of one): the heads that start together (also in other voices or staves, as when one hand's chord
  * continues the other's) get attack shifts that spread them evenly over `span` milliseconds, from the lowest note up (or
  * from the highest down). The shifts are worked out from where the notation puts the notes now, so a notated arpeggio
  * is not rolled twice.
@@ -277,7 +283,7 @@ export function rollChord(
   seq: Sequence = buildSequence(score),
 ): Score {
   const groups = new Map<number, HeadInfo[]>();
-  for (const i of infosOf(score, heads, seq)) groups.set(i.at, [...(groups.get(i.at) ?? []), i]);
+  for (const i of infosOf(score, heads, seq)) if (i.strokes === 1) groups.set(i.at, [...(groups.get(i.at) ?? []), i]);
   const entries: { head: HeadRef; values: HeadValues }[] = [];
   for (const [at, group] of groups) {
     if (group.length < 2) continue;
