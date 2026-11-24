@@ -154,6 +154,9 @@ export const SP1 = 6;
 
 export const SP2 = 10;
 
+/** The room between the lanes. */
+const LANE_GAP = SP1;
+
 /** The room between the parts of the canvas. */
 const GAP = SP2;
 
@@ -189,18 +192,18 @@ const laneAt = (g: Geo, y: number): Lane | undefined => laneRects(g).find((l) =>
 /** The parts of a canvas of `w` by `h` pixels. */
 export function geo(w: number, h: number): Geo {
   const want = LANE_HEIGHTS.reduce((a, b) => a + b, 0);
-  const room = Math.max(0, h - RULER_H - GAP - ROLL_MIN);
+  const room = Math.max(0, h - RULER_H - GAP - ROLL_MIN - 2 * LANE_GAP);
   const k = Math.min(1, Math.max(0.4, room / want));
   const hs = LANE_HEIGHTS.map((x) => Math.round(x * k));
-  const top = h - hs.reduce((a, b) => a + b, 0);
+  const top = h - hs.reduce((a, b) => a + b, 0) - 2 * LANE_GAP;
   return {
     w,
     h,
     ruler: { y: 0, h: RULER_H },
     roll: { y: RULER_H, h: Math.max(0, top - RULER_H - GAP) },
     tempo: { y: top, h: hs[0] },
-    sustain: { y: top + hs[0], h: hs[1] },
-    soft: { y: top + hs[0] + hs[1], h: hs[2] },
+    sustain: { y: top + hs[0] + LANE_GAP, h: hs[1] },
+    soft: { y: top + hs[0] + hs[1] + 2 * LANE_GAP, h: hs[2] },
   };
 }
 

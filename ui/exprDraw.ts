@@ -37,6 +37,8 @@ export interface Colors {
   muted: string;
   accent: string;
   accentSoft: string;
+  /** The hue of each curve lane. */
+  lane: Record<'tempo' | 'sustain' | 'soft', string>;
   play: string;
   fsXs: number;
 }
@@ -56,6 +58,7 @@ export function readColors(): Colors {
     muted: get('--muted'),
     accent: get('--accent'),
     accentSoft: get('--accent-soft'),
+    lane: { tempo: get('--lane-tempo'), sustain: get('--lane-sustain'), soft: get('--lane-soft') },
     play: PLAYHEAD,
     fsXs: Number.parseFloat(get('--fs-xs')) || 11,
   };
@@ -325,9 +328,9 @@ function drawAxis(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, r: Rect, s
 function drawCurveLine(
   ctx: CanvasRenderingContext2D,
   f: Frame,
-  c: Colors,
   r: Rect,
   scale: Scale,
+  color: string,
   at: (tick: number) => number,
   fill: boolean,
 ): void {
@@ -343,15 +346,15 @@ function drawCurveLine(
       else ctx.lineTo(x, y);
       first = false;
     }
-    ctx.strokeStyle = c.accent;
+    ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.stroke();
     if (fill) {
       ctx.lineTo(g.w, base);
       ctx.lineTo(GUTTER, base);
       ctx.closePath();
-      ctx.fillStyle = c.accentSoft;
-      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.18;
       ctx.fill();
       ctx.globalAlpha = 1;
     }
@@ -363,9 +366,10 @@ function drawCurve(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, name: 'te
   const r = f.g[name];
   const scale = scaleOf(name);
   const pts = f.curves[name];
+  const color = c.lane[name];
   drawAxis(ctx, f, c, r, scale);
-  if (name === 'tempo') drawCurveLine(ctx, f, c, r, scale, ratioFunction(pts), false);
-  else drawCurveLine(ctx, f, c, r, scale, (t) => (pts.length && t >= pts[0].tick ? linearAt(pts, t, 0) : 0), true);
+  if (name === 'tempo') drawCurveLine(ctx, f, r, scale, color, ratioFunction(pts), false);
+  else drawCurveLine(ctx, f, r, scale, color, (t) => (pts.length && t >= pts[0].tick ? linearAt(pts, t, 0) : 0), true);
   clipped(ctx, f, r.y, r.h, () => {
     pts.forEach((p, i) => {
       const x = xOf(p.tick, f.view);
@@ -374,9 +378,9 @@ function drawCurve(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, name: 'te
       const hot = f.hover?.kind === 'point' && f.hover.lane === name && f.hover.index === i;
       ctx.beginPath();
       ctx.arc(x, y, sel || hot ? 5 : 4, 0, Math.PI * 2);
-      ctx.fillStyle = sel ? c.accent : c.panel;
+      ctx.fillStyle = sel ? color : c.panel;
       ctx.fill();
-      ctx.strokeStyle = c.accent;
+      ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
       ctx.stroke();
     });
@@ -394,11 +398,11 @@ function drawSoft(ctx: CanvasRenderingContext2D, f: Frame, c: Colors): void {
       const hot = f.hover?.kind === 'region' && f.hover.index === i;
       const y = r.y + padOf(r);
       const h = r.h - 2 * padOf(r);
-      ctx.fillStyle = sel ? c.accent : c.accentSoft;
-      ctx.globalAlpha = sel ? 0.55 : 1;
+      ctx.fillStyle = c.lane.soft;
+      ctx.globalAlpha = sel ? 0.55 : 0.22;
       ctx.fillRect(x0, y, Math.max(2, x1 - x0), h);
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = c.accent;
+      ctx.strokeStyle = c.lane.soft;
       ctx.lineWidth = hot || sel ? 2 : 1;
       ctx.strokeRect(x0 + 0.5, y + 0.5, Math.max(2, x1 - x0) - 1, h - 1);
     });
@@ -416,11 +420,6 @@ function drawLanes(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick:
   drawCurve(ctx, f, c, 'tempo');
   drawCurve(ctx, f, c, 'sustain');
   drawSoft(ctx, f, c);
-  // A line at the top of each lane, as between the canvases of Pianizer.
-  for (const { r } of laneRects(g)) {
-    ctx.fillStyle = c.line;
-    ctx.fillRect(0, r.y - 1, g.w, 1);
-  }
 }
 
 /** The gutter: the pitch of each C in the roll, and for each lane its name and the marks of its axis. */
@@ -447,15 +446,15 @@ function drawGutter(ctx: CanvasRenderingContext2D, f: Frame, c: Colors): void {
     );
   }
   ctx.restore();
-  const lanes = CURVE_LANES.map((l) => ({ r: g[l.id], name: l.label, scale: scaleOf(l.id) }));
-  for (const { r, name, scale } of lanes) {
+  const lanes = CURVE_LANES.map((l) => ({ r: g[l.id], name: l.label, scale: scaleOf(l.id), color: c.lane[l.id] }));
+  for (const { r, name, scale, color } of lanes) {
     if (r.h >= 44) {
       ctx.save();
       ctx.translate(SP1 + c.fsXs / 2, r.y + r.h / 2);
       ctx.rotate(-Math.PI / 2);
-      centeredText(ctx, name.toUpperCase(), 0, 0, c.muted, 'center');
+      centeredText(ctx, name.toUpperCase(), 0, 0, color, 'center');
       ctx.restore();
-    } else centeredText(ctx, name, SP1, r.y + r.h / 2, c.muted);
+    } else centeredText(ctx, name, SP1, r.y + r.h / 2, color);
     for (const v of scale.marks) centeredText(ctx, scale.fmt(v), GUTTER - SP2, yOfValue(r, scale, v), c.muted, 'right');
   }
 }

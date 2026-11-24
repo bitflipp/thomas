@@ -9,6 +9,10 @@
   --err: #c0302a;
   --hover: #ebebf0;
   --accent-soft: #dce6fc;
+  /* One hue for each of the Expression pane's curve lanes. */
+  --lane-tempo: #12877f;
+  --lane-sustain: #2f6fed;
+  --lane-soft: #8a4fd6;
   /* Spacing scale: every padding, margin and gap is one of these. */
   --sp-1: 6px;
   --sp-2: 10px;
@@ -46,6 +50,9 @@
     --err: #ff7b72;
     --hover: #2a2a31;
     --accent-soft: #263552;
+    --lane-tempo: #3cc4b9;
+    --lane-sustain: #6b9bff;
+    --lane-soft: #b48cf5;
   }
 }
 * {
