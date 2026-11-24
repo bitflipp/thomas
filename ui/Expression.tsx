@@ -356,7 +356,6 @@ function frameOf(g: E.Geo): Frame {
     g,
     view: exprView.value,
     roll: E.roll.value,
-    range: E.pitchRange(E.roll.value, exprView.value, g.w),
     stems: E.stems.value,
     measures: E.measures.value,
     curves: E.curves.value,
@@ -479,10 +478,22 @@ export function Expression() {
     () =>
       effect(() => {
         void selection.value;
-        const tick = E.selectionTick();
-        if (!inside.current && tick !== undefined) E.reveal(tick, size.w);
+        const spot = E.selectionSpot();
+        if (inside.current || !spot) return;
+        E.reveal(spot.tick, size.w);
+        E.revealPitch(g, spot.midi);
       }),
-    [size.w],
+    [size.w, g],
+  );
+
+  // The roll is first scrolled to the middle of the music's pitches.
+  useEffect(
+    () =>
+      effect(() => {
+        void E.roll.value;
+        E.placeView(g);
+      }),
+    [g],
   );
 
   /** The pointer's place in the canvas. */
@@ -530,6 +541,7 @@ export function Expression() {
             e.preventDefault();
             const { x } = at(e);
             if (e.ctrlKey || e.metaKey) E.zoomAt(Math.exp(-e.deltaY * 0.0015), x);
+            else if (e.altKey) E.scrollBy(g, e.deltaY || e.deltaX);
             else E.panBy(e.deltaX || e.deltaY);
           }}
           onKeyDown={(e) => {

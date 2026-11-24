@@ -204,8 +204,12 @@ exprHeight.subscribe((h) => {
   }
 });
 
-/** The part of the piece the Expression pane shows: the tick at its left edge and the width of a quarter note in pixels. */
-export const exprView = signal({ left: 0, ppq: 56 });
+/**
+ * The part of the piece the Expression pane shows: the tick at its left edge, the width of a quarter note in pixels (the
+ * zoom, which changes only the width of the notes) and how far the roll is scrolled down from its highest pitch in pixels
+ * (negative until the pane has placed it on the music).
+ */
+export const exprView = signal({ left: 0, ppq: 56, top: -1 });
 
 export const space = signal<number | null>(null);
 

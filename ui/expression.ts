@@ -83,6 +83,11 @@ export interface RollData {
   hi: number;
 }
 
+/** The pitches of a piano's 88 keys, A0 to C8: the roll's rows, more only for notes beyond them. */
+const PIANO_LO = 21;
+
+const PIANO_HI = 108;
+
 /** The tick a note is heard at: its notated start moved by its shift at the local tempo. */
 function shownTick(s: Sequence, n: Note): number {
   if (!n.shift) return n.start;
@@ -114,7 +119,7 @@ export const roll = computed<RollData>(() => {
     maxEnd.push(reach);
   }
   const midis = bars.map((b) => b.midi);
-  return { bars, maxEnd, lo: midis.length ? Math.min(...midis) : 48, hi: midis.length ? Math.max(...midis) : 72 };
+  return { bars, maxEnd, lo: Math.min(PIANO_LO, ...midis), hi: Math.max(PIANO_HI, ...midis) };
 });
 
 /** A head's stem in a value lane: where its attack is drawn (the heard tick, or the written one in the shift lane). */
@@ -195,53 +200,43 @@ export const tickAt = (x: number): number => exprView.peek().left + ((x - GUTTER
 /** The pixel of a tick under the view `v`. */
 export const xOf = (tick: number, v = exprView.value): number => GUTTER + ((tick - v.left) * v.ppq) / PPQ;
 
-/** The lowest and highest pitch the roll shows. */
-export interface Range {
-  lo: number;
-  hi: number;
-}
+/** The height of a pitch row in pixels. It is fixed, as on a piano roll: zooming changes only the width of the notes. */
+export const ROW_H = 12;
 
-/** The fewest pitches the roll shows (two octaves), so that a few notes do not fill it with fat bars. */
-const MIN_ROWS = 24;
+/** The scroll of the roll (pixels from its highest pitch) held within what there is to see. */
+export const clampTop = (g: Geo, data: RollData, top: number): number =>
+  Math.max(0, Math.min((data.hi - data.lo + 1) * ROW_H - g.roll.h, top));
 
-/**
- * The pitches the roll shows: those of the notes in view, widened to whole octaves (from a C to a B) so that the rows
- * move only when the music leaves its octaves, and to at least two octaves. The whole piece's range when nothing is in view.
- */
-export function pitchRange(data: RollData, view: { left: number; ppq: number }, w: number): Range {
-  const right = view.left + ((w - GUTTER) * PPQ) / view.ppq;
-  let lo = Number.POSITIVE_INFINITY;
-  let hi = Number.NEGATIVE_INFINITY;
-  let a = 0;
-  let b = data.maxEnd.length;
-  while (a < b) {
-    const mid = (a + b) >> 1;
-    if (data.maxEnd[mid] < view.left) a = mid + 1;
-    else b = mid;
-  }
-  for (let i = a; i < data.bars.length && data.bars[i].t0 <= right; i++) {
-    lo = Math.min(lo, data.bars[i].midi);
-    hi = Math.max(hi, data.bars[i].midi);
-  }
-  if (lo > hi) {
-    lo = data.lo;
-    hi = data.hi;
-  }
-  lo = Math.max(0, Math.floor(lo / 12) * 12);
-  hi = Math.min(127, Math.floor(hi / 12) * 12 + 11);
-  if (hi - lo + 1 < MIN_ROWS) hi = Math.min(127, lo + MIN_ROWS - 1);
-  return { lo, hi };
-}
-
-/** The pixel row of the top of the roll row of pitch `midi`, and the height of a row. */
-export function rollRow(g: Geo, range: Range, midi: number): { y: number; h: number } {
-  const h = g.roll.h / (range.hi - range.lo + 1);
-  return { y: g.roll.y + (range.hi - midi) * h, h };
-}
+/** The pixel row of the top of the roll row of pitch `midi`, with the roll scrolled by `top`; the rows are `ROW_H` high. */
+export const rollRow = (g: Geo, data: RollData, top: number, midi: number): number =>
+  g.roll.y + (data.hi - midi) * ROW_H - top;
 
 /** The pitch at pixel row `y` of the roll. */
-export function midiAt(g: Geo, range: Range, y: number): number {
-  return range.hi - Math.floor(((y - g.roll.y) / g.roll.h) * (range.hi - range.lo + 1));
+export const midiAt = (g: Geo, data: RollData, top: number, y: number): number =>
+  data.hi - Math.floor((y - g.roll.y + top) / ROW_H);
+
+/** The lowest and highest pitch that have a row in view. */
+export function visiblePitches(g: Geo, data: RollData, top: number): { lo: number; hi: number } {
+  return {
+    hi: data.hi - Math.floor(top / ROW_H),
+    lo: Math.max(data.lo, data.hi - Math.ceil((top + g.roll.h) / ROW_H) + 1),
+  };
+}
+
+/** The scroll that puts pitch `midi` in the middle of the roll. */
+const centeredOn = (g: Geo, data: RollData, midi: number): number =>
+  clampTop(g, data, (data.hi - midi + 0.5) * ROW_H - g.roll.h / 2);
+
+/** Scrolls the roll to the middle of the pitches at the start of the piece the first time it has a size (`top` is negative until then). */
+export function placeView(g: Geo): void {
+  const v = exprView.peek();
+  const data = roll.peek();
+  if (v.top >= 0 || !g.roll.h || !data.bars.length) return;
+  // The middle of the pitches in the first screenful (all of them if that has no notes).
+  const right = v.left + ((g.w - GUTTER) * PPQ) / v.ppq;
+  const near = data.bars.filter((b) => b.t0 <= right);
+  const midis = (near.length ? near : data.bars).map((b) => b.midi);
+  exprView.value = { ...v, top: centeredOn(g, data, (Math.min(...midis) + Math.max(...midis)) / 2) };
 }
 
 /** What a lane's vertical axis shows: the range, where the labels and lines go, and how a value reads. */
@@ -358,13 +353,28 @@ export function zoomAt(factor: number, x: number): void {
   const v = exprView.peek();
   const ppq = Math.max(PPQ_MIN, Math.min(PPQ_MAX, v.ppq * factor));
   const tick = tickAt(x);
-  exprView.value = { ppq, left: tick - ((x - GUTTER) * PPQ) / ppq };
+  exprView.value = { ...v, ppq, left: tick - ((x - GUTTER) * PPQ) / ppq };
 }
 
 /** Zooms so that the whole piece fits in `w` pixels. */
 export function fitAll(w: number): void {
   const ppq = Math.max(PPQ_MIN, Math.min(PPQ_MAX, ((w - GUTTER - 8) * PPQ) / Math.max(PPQ, total.peek())));
-  exprView.value = { ppq, left: 0 };
+  exprView.value = { ...exprView.peek(), ppq, left: 0 };
+}
+
+/** Scrolls the roll by `dy` pixels (positive: towards lower pitches). */
+export function scrollBy(g: Geo, dy: number): void {
+  const v = exprView.peek();
+  exprView.value = { ...v, top: clampTop(g, roll.peek(), v.top + dy) };
+}
+
+/** Scrolls the roll, if need be, so that pitch `midi` is in view. */
+export function revealPitch(g: Geo, midi: number): void {
+  const v = exprView.peek();
+  const data = roll.peek();
+  const y = rollRow(g, data, v.top, midi);
+  if (y >= g.roll.y && y + ROW_H <= g.roll.y + g.roll.h) return;
+  exprView.value = { ...v, top: centeredOn(g, data, midi) };
 }
 
 /** Moves the view the least that brings `tick` into the middle part of the canvas (width `w`). */
@@ -375,13 +385,11 @@ export function reveal(tick: number, w: number): void {
   exprView.value = { ...v, left: tick - ((w - GUTTER) * 0.3 * PPQ) / v.ppq };
 }
 
-/** The tick of the first selected head, if any (for bringing it into view). */
-export function selectionTick(): number | undefined {
+/** The first selected head's tick and pitch, if any (for bringing it into view). */
+export function selectionSpot(): { tick: number; midi: number } | undefined {
   const keys = selected.peek();
-  let first: number | undefined;
-  for (const i of infos.peek())
-    if (keys.has(i.key) && (first === undefined || i.note.start < first)) first = i.note.start;
-  return first;
+  const first = infos.peek().find((i) => keys.has(i.key));
+  return first && { tick: first.note.start, midi: first.midi };
 }
 
 // Pointer handling. A press starts a gesture (`drag`), moves update it and the release finishes it. Gestures that change
@@ -389,7 +397,7 @@ export function selectionTick(): number | undefined {
 
 type Drag =
   | { kind: 'seek' }
-  | { kind: 'pan'; x0: number; left0: number }
+  | { kind: 'pan'; x0: number; y0: number; left0: number; top0: number }
   | { kind: 'marquee'; x0: number; y0: number; additive: boolean; base: Ref[]; area: 'roll' | 'lane' }
   | { kind: 'stem'; start: Map<string, number>; y0: number; lane: 'velocity' | 'shift' | 'gate'; scale: Scale }
   | { kind: 'point'; lane: CurveName; index: number; base: Score; moved: boolean }
@@ -450,7 +458,7 @@ function barAt(g: Geo, x: number, y: number): Bar | undefined {
   const data = roll.peek();
   const tick = tickAt(x);
   const slack = (2 * PPQ) / exprView.peek().ppq;
-  const midi = midiAt(g, pitchRange(data, exprView.peek(), g.w), y);
+  const midi = midiAt(g, data, exprView.peek().top, y);
   let found: Bar | undefined;
   for (const b of data.bars) {
     if (b.t0 > tick + slack) break;
@@ -600,7 +608,7 @@ function pressSoft(x: number, free: boolean): void {
 /** Handles a press at canvas pixel (x, y). Returns whether the canvas should capture the pointer. */
 export function onDown(g: Geo, x: number, y: number, button: number, shift: boolean, free: boolean): boolean {
   if (button !== 0) {
-    drag = { kind: 'pan', x0: x, left0: exprView.peek().left };
+    drag = { kind: 'pan', x0: x, y0: y, left0: exprView.peek().left, top0: exprView.peek().top };
     return true;
   }
   if (x < GUTTER) return false;
@@ -635,12 +643,12 @@ function headsIn(g: Geo, area: 'roll' | 'lane', x0: number, y0: number, x1: numb
   const out = new Map<string, Ref>();
   if (area === 'roll') {
     const data = roll.peek();
-    const range = pitchRange(data, exprView.peek(), g.w);
+    const top = exprView.peek().top;
     for (const b of data.bars) {
       const bx0 = xOf(b.t0);
       if (bx0 > xb) break;
-      const row = rollRow(g, range, b.midi);
-      if (xOf(b.t1) >= xa && row.y + row.h >= ya && row.y <= yb) out.set(b.key, refOf(b.head));
+      const y = rollRow(g, data, top, b.midi);
+      if (xOf(b.t1) >= xa && y + ROW_H >= ya && y <= yb) out.set(b.key, refOf(b.head));
     }
     return [...out.values()];
   }
@@ -668,7 +676,11 @@ export function onMove(g: Geo, x: number, y: number, buttons: number, free: bool
       seek(snapTick(tickAt(x), free));
       break;
     case 'pan':
-      exprView.value = { ...exprView.peek(), left: drag.left0 - ((x - drag.x0) * PPQ) / exprView.peek().ppq };
+      exprView.value = {
+        ...exprView.peek(),
+        left: drag.left0 - ((x - drag.x0) * PPQ) / exprView.peek().ppq,
+        top: clampTop(g, roll.peek(), drag.top0 - (y - drag.y0)),
+      };
       break;
     case 'marquee':
       marquee.value = { x0: drag.x0, y0: drag.y0, x1: x, y1: y };

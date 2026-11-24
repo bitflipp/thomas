@@ -52,6 +52,10 @@ const ROWS: [string, string][] = [
     'Delete (Expression pane)',
     "Take the open lane's value off the selected notes, or remove the selected curve point or region",
   ],
+  [
+    'Right-drag, wheel (Expression pane)',
+    'Pan the roll in both directions; the wheel pans sideways, Alt + wheel up and down, Ctrl + wheel zooms the time axis',
+  ],
   ['Alt (Expression pane)', 'While dragging: no snapping, finer steps'],
   ['Ctrl S', 'Save'],
   ['Alt + click (note input)', 'Replace a tuplet as a whole instead of entering into it'],
