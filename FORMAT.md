@@ -16,6 +16,9 @@ page 210.1x296.9 margin=10 space=1.91         # mm: width x height, margin, staf
 staff s1 clef=F4 name="Piano" abbr="Pno."    # clef: G2, F4, C3, G2_8 (8 below), G2^8 (8 above); name and abbr are the staff labels (a name on the first staff of a brace or bracket is centered on the group when the others have none)
 staff s2 clef=F4
 brace s1 s2                                   # or: bracket a b c
+tempocurve m1@0=1 m3@2=0.95 m6@0=1.05         # performance (optional, see below): tempo ratio, sustain pedal, una corda
+sustain m1@0=0 m1@1=1 m2@0=0
+soft m5@0-m6@2
 
 m1 time=2/4 key=0                             # key = number of sharps (+) / flats (-)
   s1.1: 12:4(bracket,above,label=6){trem2{\tempo 4=115 \p g#3:4. a3:4.}}
@@ -48,6 +51,7 @@ Voice numbers are local to a staff (`s1.1`, `s1.2`, `s2.1`, ...). Every voice of
 | Line | `&` before the first note, `;` after the second (any two notes of one system, also in other voices or staves; `&` and `;` pair by number). Optional number (lines that overlap in time need different ones), `&.` dashed. In a chord the end can sit on one pitch, written after it like a tie: `<c3 g3;>`, `<c5&2. e5>` (without it the line points at the chord as a whole) | `&c5:4 ... e3;` `&2.g4 ... c3;2` |
 | Articulation | `->` accent, `-^` marcato, `-.` staccato (after the note; a trailing `^` or `_` forces them above/below, e.g. `c5:8-._`) | `c5:8->` |
 | Accidental override | `!` force, `?` cautionary (after the pitch) | `c#4!` `e4?` |
+| Expression | `{v=<velocity>,s=<shift>,g=<gate>}` after the pitch and its accidental override, before a chord pitch's tie; all three optional, in this order. See Expression below | `c4{v=64,s=-12}:4` `<c4{s=7} e4!{v=90}~ g4>:4` |
 | Mordent, turn | `+mo` mordent (with line: main, lower neighbor, main), `+mi` inverted mordent (upper neighbor), `+tu` turn, `+ti` inverted turn; notes only, after any trill and before `+fm` | `e5:4+tu` |
 | Trill, fermata | `+tr` (trill mark, notes only; `+tr#`, `+tr=`, `+trb` add a small sharp, natural or flat above it for the upper note; without one, playback uses the upper note of the key) and `+fm` (fermata, notes and rests) after the note, after any articulations; `+fms` short and `+fml` long fermata, `_` after it puts it below (`+fm_`, `+fms_`) | `c5:4->+tr+fm`, `r+fm`, `g4:2+fml_` |
 | Lyrics | a quoted syllable after the note (after any `+tr`/`+fm`). A leading `-` joins it to the previous syllable of the word, a trailing `-` to the next one (`"Ly-"` `"-ri-"` `"-cs"`; `"word"` is a whole word). `v2` before the quote is verse 2 (verse 1 is the default), `_` after it an extender line (melisma). Notes only | `c5:4"Hel-" d5"-lo"v2"-ld"_` |
@@ -100,6 +104,35 @@ the writer never emits such lines:
 ```
   s1@: @1/4 \< @3/4 \!
 ```
+
+## Expression and performance
+
+How a score is played, as opposed to how it is written. None of it is drawn.
+
+A head (one pitch of a note or chord) may carry expression in braces, directly after the pitch and its `!`/`?`:
+
+| Key | Meaning |
+|---|---|
+| `v=` | MIDI velocity, an integer from 1 to 127. Without it the velocity follows the dynamics and hairpins |
+| `s=` | Displacement of the attack in milliseconds, negative for earlier (at most 2000 either way). It is applied after the tempo map, so it does not change with the tempo; a notated arpeggio (`\arp`) keeps its roll and the shift is added to it. An attack cannot move before the start of the piece, and a note keeps at least 10 ms. Grace notes are not shifted |
+| `g=` | Gate, a factor from above 0 to 4 on the sounding length that the notation gives (`g=0.5` of a staccato note is half of the staccato length), counted from the played attack to the written end. Above 1 the note is held longer, but ends 1 ms before a new attack of the same key |
+
+Only the first head of a tied chain counts (the tied heads after it are one sounding note); a tied head ignores `g`. In a
+tremolo, `v` and `s` apply to every stroke of the head and `g` is not used. A trill or ornament plays all its notes with the
+velocity, shift and gate of its head.
+
+The statements between the staves and the first measure give the performance of the whole piece, in positions `m<N>@<quarters>`
+(measure N counted from 1, then the place in the measure in quarter notes: an integer or a fraction, as in a mark line; the end of
+the measure is allowed). Points are in score order, strictly increasing:
+
+| Statement | Meaning |
+|---|---|
+| `tempocurve <pos>=<ratio> ...` | A factor on the tempo (1: as notated, 0.9: ten percent slower), from 0.1 to 10: a monotone cubic spline through the points (it never overshoots them), held flat before the first and after the last. It multiplies the notated tempi and fermatas |
+| `sustain <pos>=<value> ...` | The sustain pedal (CC64) from 0 (up) to 1 (down, in between: half pedal), straight lines between the points; up before the first point, held after the last until the end of the piece. The controller is sent in steps of one |
+| `soft <from>-<to> ...` | Una corda pedal (CC67) down from `<from>` to `<to>`; regions in order and apart |
+
+The pedal marks of the notation (`\ped`, `\unped`) are drawn but never played: the pedaling of the performance is independent
+of them. Pedal events go to every MIDI channel in use.
 
 ## Layout directives
 

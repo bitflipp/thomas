@@ -39,6 +39,12 @@ export interface NotePitch {
   tie?: boolean; // The note is tied to the next note of the same pitch.
   tieSide?: 'above' | 'below'; // The tie arches to this side instead of the automatic one.
   acc?: AccOverride;
+  /** The MIDI velocity (1 to 127) of this head; absent: it follows the dynamics. Only the first head of a tie chain counts. */
+  vel?: number;
+  /** The displacement of the attack in milliseconds (negative: earlier), applied after the tempo map; absent: none. Only the first head of a tie chain counts. */
+  shift?: number;
+  /** The factor on the sounding length that the notation gives (1: as written, below 1: shorter), counted from the played attack; absent: 1. Ignored on a tied head. */
+  gate?: number;
 }
 
 export type Articulation = 'accent' | 'marcato' | 'staccato';
@@ -266,12 +272,44 @@ export interface PageSetup {
   labelSize?: number;
 }
 
+/** A position in the score: a measure (0-based index) and the tick within it (0 up to the measure's length). */
+export interface Pos {
+  mi: number;
+  tick: number;
+}
+
+/** A control point of a performance curve. */
+export interface CurvePoint {
+  pos: Pos;
+  value: number;
+}
+
+/** A stretch of the score during which the una corda pedal is down. */
+export interface SoftRegion {
+  from: Pos;
+  to: Pos;
+}
+
+/**
+ * How the score is played, as opposed to how it is written. The pedals are only found here: the pedal marks of the
+ * notation are never played. The points of a curve are in score order.
+ */
+export interface Performance {
+  /** A tempo ratio curve (a factor on the tempo, 1: as notated), a monotone cubic spline through the points, held flat beyond the first and last. */
+  tempo?: CurvePoint[];
+  /** The sustain pedal (CC64) from 0 (up) to 1 (down), a straight line between the points; up before the first point and held after the last. */
+  sustain?: CurvePoint[];
+  /** The una corda pedal (CC67): down inside each region. */
+  soft?: SoftRegion[];
+}
+
 export interface Score {
   meta: Meta;
   page: PageSetup;
   staves: StaffDef[];
   groups: StaffGroup[];
   measures: Measure[];
+  performance?: Performance;
 }
 
 /** Indices (into `score.staves`) of the staves of a group, ascending; staves that do not exist are skipped. */
@@ -539,9 +577,11 @@ function groupProblems(items: Item[], where: string): string[] {
 function voiceProblems(v: Voice, sid: string, at: string, len: number, staffIds: Set<string>): string[] {
   const errs: string[] = [];
   const here = `${at}.${v.id}`;
-  for (const te of flattenVoice(v))
+  for (const te of flattenVoice(v)) {
     if (te.ev.staff !== undefined && (!staffIds.has(te.ev.staff) || te.ev.staff === sid))
       errs.push(`${here}: bad cross-staff target ${te.ev.staff}`);
+    errs.push(...expressionProblems(te.ev, here));
+  }
   let ticks: number;
   try {
     ticks = voiceTicks(v);
@@ -554,9 +594,72 @@ function voiceProblems(v: Voice, sid: string, at: string, len: number, staffIds:
   return errs;
 }
 
+/** Whether a position lies inside the score. */
+function posOk(score: Score, p: Pos): boolean {
+  return (
+    Number.isInteger(p.mi) &&
+    p.mi >= 0 &&
+    p.mi < score.measures.length &&
+    Number.isInteger(p.tick) &&
+    p.tick >= 0 &&
+    p.tick <= measureTicks(timeAt(score, p.mi))
+  );
+}
+
+/** Whether position `a` is strictly before `b`. */
+const posBefore = (a: Pos, b: Pos) => a.mi < b.mi || (a.mi === b.mi && a.tick < b.tick);
+
+/** The label of a position in messages. */
+const posLabel = (p: Pos) => `m${p.mi + 1}+${p.tick}`;
+
+/** Problems with one performance curve: positions, order (strictly increasing) and the range of the values. */
+function curveProblems(score: Score, name: string, pts: CurvePoint[], lo: number, hi: number): string[] {
+  const errs: string[] = [];
+  let prev: Pos | undefined;
+  for (const pt of pts) {
+    if (!posOk(score, pt.pos)) errs.push(`${name}: bad position ${posLabel(pt.pos)}`);
+    else if (prev && !posBefore(prev, pt.pos))
+      errs.push(`${name}: point ${posLabel(pt.pos)} is not after ${posLabel(prev)}`);
+    if (!(pt.value >= lo && pt.value <= hi)) errs.push(`${name}: value ${pt.value} outside ${lo}..${hi}`);
+    prev = pt.pos;
+  }
+  return errs;
+}
+
+/** Problems with the performance: curves in order and in range, soft regions inside the score, ordered and apart. */
+function performanceProblems(score: Score, perf: Performance): string[] {
+  const errs = [
+    ...curveProblems(score, 'tempo curve', perf.tempo ?? [], 0.1, 10),
+    ...curveProblems(score, 'sustain', perf.sustain ?? [], 0, 1),
+  ];
+  let prev: Pos | undefined;
+  for (const r of perf.soft ?? []) {
+    if (!(posOk(score, r.from) && posOk(score, r.to))) errs.push(`soft: bad region ${posLabel(r.from)}`);
+    else if (!posBefore(r.from, r.to)) errs.push(`soft: region ${posLabel(r.from)} is empty`);
+    else if (prev && posBefore(r.from, prev)) errs.push(`soft: region ${posLabel(r.from)} overlaps the one before`);
+    else prev = r.to;
+  }
+  return errs;
+}
+
+/** Problems with the expression of the heads of an event (`vel`, `shift`, `gate`). */
+function expressionProblems(ev: Event, at: string): string[] {
+  const errs: string[] = [];
+  if (ev.kind !== 'note') return errs;
+  for (const np of ev.pitches) {
+    if (np.vel !== undefined && !(Number.isInteger(np.vel) && np.vel >= 1 && np.vel <= 127))
+      errs.push(`${at}: bad velocity ${np.vel}`);
+    if (np.shift !== undefined && !(Number.isFinite(np.shift) && Math.abs(np.shift) <= 2000))
+      errs.push(`${at}: bad shift ${np.shift}`);
+    if (np.gate !== undefined && !(np.gate > 0 && np.gate <= 4)) errs.push(`${at}: bad gate ${np.gate}`);
+  }
+  return errs;
+}
+
 /** Structural checks; returns a list of problems. */
 export function validate(score: Score): string[] {
   const errs: string[] = [];
+  if (score.performance) errs.push(...performanceProblems(score, score.performance));
   const staffIds = new Set(score.staves.map((s) => s.id));
   score.measures.forEach((m, mi) => {
     const len = measureTicks(timeAt(score, mi));

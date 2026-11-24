@@ -3,20 +3,23 @@ page 210x297 margin=10 space=1.75
 staff s1 clef=G2 name="Piano"
 staff s2 clef=F4 name="Piano"
 brace s1 s2
+tempocurve m1@0=1 m3@2=0.95 m6@0=1.05 m9@0=1
+sustain m1@0=0 m1@1=1 m2@0=0 m3@0=0.5 m4@0=0
+soft m5@0-m6@2
 
 m1 time=4/4 key=0
   s1.1: \tempo 4=124 \p= (e5:4 d5 c5:2~
   s2.1: \ped <c3 g3>:2 \unped <a2~ e3~>
 m2
   s1.1: c5:4) r r d5;
-  s2.1: <a2 e3>:2 &g3:4 f3
+  s2.1: <a2{v=70,s=-8} e3{s=6.5}>:2 &g3:4 f3
 m3
-  s1.1: [\mf c5:8 d5 e5 f5] g5:4-> e5-.
+  s1.1: [\mf c5:8 d5 e5 f5] g5{v=100,g=0.85}:4-> e5-.
   s1.2: g4:2 c4
   s2.1: c3:1
 m4
   s1.1: 3:2{c5:8 d5 e5} 5:4{f5:16 e5 d5 e5 f5} trem2{g5:4 e5}
-  s2.1: c3:4 g3 c3 g3
+  s2.1: c3{s=-12}:4 g3 c3 g3
 m5
   s1.1: R:1
   s2.1: c3:4 r:16 \< d3 e3 d3 c3:2

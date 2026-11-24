@@ -24,7 +24,9 @@ import type {
   NoteEvent,
   NotePitch,
   Ornament,
+  Performance,
   Pitch,
+  Pos,
   RestEvent,
   Score,
   StaffMeasure,
@@ -70,6 +72,67 @@ function fracParse(s: string): number {
   const t = (Number(n) * PPQ) / Number(d ?? 1);
   if (!Number.isInteger(t)) throw new Error(`bad position ${s}`);
   return t;
+}
+
+/** Writes a position in quarter notes as an integer or a reduced fraction (`3/2`): the inverse of `fracParse`. */
+function fracStr(tick: number): string {
+  let a = tick;
+  let b = PPQ;
+  while (b) [a, b] = [b, a % b];
+  const d = PPQ / a;
+  return d === 1 ? String(tick / a) : `${tick / a}/${d}`;
+}
+
+/** Writes a position as `m3@1/2` (measure number counted from 1, then the place in the measure in quarter notes). */
+const posStr = (p: Pos): string => `m${p.mi + 1}@${fracStr(p.tick)}`;
+
+/** Parses a position written by `posStr`. */
+function posParse(s: string): Pos {
+  const m = /^m(\d+)@([\d/]+)$/.exec(s);
+  if (!m) throw new Error(`bad position ${s}`);
+  return { mi: Number(m[1]) - 1, tick: fracParse(m[2]) };
+}
+
+/** The performance statements: `tempocurve m1@0=1 m3@1=1.05`, `sustain m1@0=0 m1@1=1` and `soft m2@0-m4@1`. */
+function performanceLines(perf: Performance): string[] {
+  const L: string[] = [];
+  const curve = (name: string, pts?: Performance['tempo']) => {
+    if (pts?.length) L.push(`${name} ${pts.map((p) => `${posStr(p.pos)}=${p.value}`).join(' ')}`);
+  };
+  curve('tempocurve', perf.tempo);
+  curve('sustain', perf.sustain);
+  if (perf.soft?.length) L.push(`soft ${perf.soft.map((r) => `${posStr(r.from)}-${posStr(r.to)}`).join(' ')}`);
+  return L;
+}
+
+/** Reads a `performance` statement (`head` is its first word) into the score. */
+function parsePerformance(score: Score, head: string, t: string[]): void {
+  score.performance ??= {};
+  const perf = score.performance;
+  if (head === 'soft') {
+    perf.soft = t.slice(1).map((x) => {
+      const m = /^(m\d+@[\d/]+)-(m\d+@[\d/]+)$/.exec(x);
+      if (!m) throw new Error(`bad soft region ${x}`);
+      return { from: posParse(m[1]), to: posParse(m[2]) };
+    });
+    return;
+  }
+  const pts = t.slice(1).map((x) => {
+    const i = x.indexOf('=');
+    if (i < 0) throw new Error(`bad curve point ${x}`);
+    return { pos: posParse(x.slice(0, i)), value: Number(x.slice(i + 1)) };
+  });
+  if (head === 'tempocurve') perf.tempo = pts;
+  else perf.sustain = pts;
+}
+
+/** The expression of a head in braces after the pitch: `{v=72,s=-12,g=0.8}` (velocity, shift in ms, gate); empty without any. */
+function exprStr(p: NotePitch): string {
+  const o: string[] = [];
+  if (p.vel !== undefined) o.push(`v=${p.vel}`);
+  if (p.shift !== undefined) o.push(`s=${p.shift}`);
+  if (p.gate !== undefined) o.push(`g=${p.gate}`);
+  return o.length ? `{${o.join(',')}}` : '';
 }
 
 /** Writes a pitch: step, `#` or `b` per semitone, octave (`c#4`). */
@@ -231,7 +294,9 @@ class VoiceWriter {
         core: e.style === 'hidden' ? 's' : e.style === 'measure' ? 'R' : e.display ? `r@${pitchStr(e.display)}` : 'r',
         tie: '',
       };
-    const ps = e.pitches.map((p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : ''));
+    const ps = e.pitches.map(
+      (p) => pitchStr(p.pitch) + (p.acc === 'force' ? '!' : p.acc === 'cautionary' ? '?' : '') + exprStr(p),
+    );
     if (e.pitches.length === 1) return { core: ps[0], tie: tieStr(e.pitches[0]) };
     const heads = (i: number) =>
       (e.lineStart ?? [])
@@ -394,6 +459,7 @@ function write(score: Score, tags?: Tags): string {
       `staff ${s.id} clef=${clefStr(s.clef)}${s.name ? ` name=${quote(s.name)}` : ''}${s.abbr ? ` abbr=${quote(s.abbr)}` : ''}`,
     );
   for (const g of score.groups) L.push(`${g.kind} ${g.staves.join(' ')}`);
+  if (score.performance) L.push(...performanceLines(score.performance));
   L.push('');
   score.measures.forEach((m, mi) => {
     const h = [`m${mi + 1}`];
@@ -796,6 +862,7 @@ class VoiceLineParser {
       sc.i++;
       np.acc = 'cautionary';
     }
+    this.readExpression(np);
     if (sc.peek() === '~') {
       sc.i++;
       np.tie = true;
@@ -803,6 +870,21 @@ class VoiceLineParser {
       if (side) np.tieSide = side;
     }
     return np;
+  }
+
+  /** Reads the `{v=72,s=-12,g=0.8}` after a pitch, if there is one. */
+  private readExpression(np: NotePitch): void {
+    const sc = this.sc;
+    const body = sc.take(/\{[^}]*\}/y);
+    if (body === null) return;
+    for (const x of body.slice(1, -1).split(',')) {
+      const m = /^([vsg])=(-?\d+(?:\.\d+)?)$/.exec(x.trim());
+      if (!m) sc.fail(`bad expression ${x}`);
+      const n = Number(must(m)[2]);
+      if (must(m)[1] === 'v') np.vel = n;
+      else if (must(m)[1] === 's') np.shift = n;
+      else np.gate = n;
+    }
   }
 
   /** A single pitch, or a chord <...> of pitches. */
@@ -1064,6 +1146,7 @@ function parseStatement(st: TextState, t: string[]): void {
       ...(o.abbr ? { abbr: JSON.parse(o.abbr) } : {}),
     });
   } else if (head === 'brace' || head === 'bracket') score.groups.push({ kind: head, staves: t.slice(1) });
+  else if (head === 'tempocurve' || head === 'sustain' || head === 'soft') parsePerformance(score, head, t);
   else if (/^m\d+$/.test(head)) parseMeasureStatement(st, t);
   else throw new Error(`unknown statement ${head}`);
 }
