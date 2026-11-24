@@ -178,13 +178,19 @@ test('a doubled octave still counts as a line: b-e-b going to c#-e-g# is contrar
   assert.deepEqual(findParallels(score(['rh.1: <b4 e5 b5>:2 <c#5 e5 g#5>', 'lh.1: R:1'])), []);
 });
 
-test('a repeated interval on the same pitches is no parallel motion, a step after it or an octave leap is', () => {
+test('a repeated interval on the same pitch classes is no parallel motion, a step after it is', () => {
   assert.deepEqual(findParallels(score(['rh.1: <c4 g4>:2 <c4 g4>', 'lh.1: R:1'])), []);
   assert.deepEqual(findParallels(score(['rh.1: g4:4 g4 g4 g4', 'lh.1: c4:4 c4 c4 c4'])), []);
   const gs = findParallels(score(['rh.1: g4:4 g4 a4 a4', 'lh.1: c4:4 c4 d4 d4']));
   assert.equal(gs.length, 1);
   assert.equal(gs[0].intervals.length, 1);
-  assert.equal(findParallels(score(['rh.1: g4:2 g5', 'lh.1: c4:2 c5'])).length, 1);
+  // Octave leaps keep the pitch classes: one voice over a held one, both together, or by different amounts.
+  assert.deepEqual(findParallels(score(['rh.1: g4:2 g5', 'lh.1: c4:2 c4'])), []);
+  assert.deepEqual(findParallels(score(['rh.1: g4:2 g5', 'lh.1: c4:2 c5'])), []);
+  assert.deepEqual(findParallels(score(['rh.1: g4:2 g6', 'lh.1: c4:2 c5'])), []);
+  assert.deepEqual(findParallels(score(['rh.1: <c4 g4>:2 <c5 g5>', 'lh.1: R:1'])), []);
+  // A leap that changes a pitch class is still parallel.
+  assert.equal(findParallels(score(['rh.1: g4:2 a5', 'lh.1: c4:2 d5'])).length, 1);
 });
 
 test('a tie that leads nowhere releases its note, so the fifth after it is still consecutive', () => {

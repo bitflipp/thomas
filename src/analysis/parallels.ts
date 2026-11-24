@@ -225,8 +225,9 @@ class Flags {
     let [a2, b2] = [notes[ids[2]], notes[ids[3]]];
     const swap = a1.vk === b1.vk ? a1.midi < b1.midi !== a2.midi < b2.midi : a2.vk !== a1.vk;
     if (swap) [a2, b2] = [b2, a2];
-    // Both lines stand still on the same pitches: a repetition, not parallel motion.
-    if (a1.midi === a2.midi && b1.midi === b2.midi) return;
+    // Both lines keep their pitch classes, only the octave may change: a repetition, an octave leap over a held note
+    // (oblique motion) or both lines shifting register, not parallel motion.
+    if (a1.midi % 12 === a2.midi % 12 && b1.midi % 12 === b2.midi % 12) return;
     this.quads.set(`${kind}:${[a1.id, b1.id, a2.id, b2.id].join(':')}`, { kind, ids: [a1.id, b1.id, b2.id, a2.id] });
     for (const [x, y] of [
       [ids[0], ids[1]],
