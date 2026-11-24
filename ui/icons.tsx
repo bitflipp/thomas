@@ -1,6 +1,7 @@
 // Icons for the palette: SMuFL glyphs from the same font as the score, centered on their ink and
 // scaled to fit, plus text labels. Glyph outlines come from the engraver's font access (smufl.ts).
 
+import { useLayoutEffect, useRef } from 'preact/hooks';
 import { loadSmufl } from '../src/smufl.ts';
 
 const bboxCache = new Map<number, { d: string; x0: number; y0: number; x1: number; y1: number }>();
@@ -28,7 +29,7 @@ function glyphBox(cp: number) {
 }
 
 /** A SMuFL glyph as an icon: centered on its ink and scaled to fit `max` px (never beyond `cap` px per staff space). */
-export function Glyph({ cp, max = 24, cap = 7.5 }: { cp: number; max?: number; cap?: number }) {
+export function Glyph({ cp, max = 24, cap = 10 }: { cp: number; max?: number; cap?: number }) {
   const g = glyphBox(cp);
   const w = g.x1 - g.x0;
   const h = g.y1 - g.y0;
@@ -44,7 +45,58 @@ export function Glyph({ cp, max = 24, cap = 7.5 }: { cp: number; max?: number; c
   );
 }
 
-/** Text icon in one common style. */
+/**
+ * An icon whose drawing is centered on its ink: the content is measured after rendering and moved
+ * so that the middle of its bounding box is the middle of the `vb` square. `size` (px) is the
+ * attribute size; CSS may override it.
+ */
+function Centered({ vb, size, children }: { vb: number; size?: number; children: preact.ComponentChildren }) {
+  const ref = useRef<SVGGElement>(null);
+  useLayoutEffect(() => {
+    const g = ref.current;
+    if (!g) return;
+    g.removeAttribute('transform');
+    const b = g.getBBox();
+    if (b.width > 0 || b.height > 0) {
+      g.setAttribute('transform', `translate(${vb / 2 - (b.x + b.width / 2)} ${vb / 2 - (b.y + b.height / 2)})`);
+    }
+  });
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${vb} ${vb}`} aria-hidden="true">
+      <g ref={ref}>{children}</g>
+    </svg>
+  );
+}
+
+/** A glyph outline scaled by `k` and centered on its ink at the origin. */
+function GlyphPath({ cp, k }: { cp: number; k: number }) {
+  const g = glyphBox(cp);
+  return (
+    <path
+      d={g.d}
+      transform={`translate(${-((g.x0 + g.x1) / 2) * k} ${-((g.y0 + g.y1) / 2) * k}) scale(${k})`}
+      fill="currentColor"
+    />
+  );
+}
+
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+
+/** The ink box of a text in the label font: distances from the baseline origin (left, right, ascent, descent). */
+function inkOf(text: string, font: string) {
+  if (measureCtx === undefined) measureCtx = document.createElement('canvas').getContext('2d');
+  if (!measureCtx) return null;
+  measureCtx.font = font;
+  const m = measureCtx.measureText(text);
+  return {
+    l: m.actualBoundingBoxLeft,
+    r: m.actualBoundingBoxRight,
+    a: m.actualBoundingBoxAscent,
+    d: m.actualBoundingBoxDescent,
+  };
+}
+
+/** Text icon in one common style, centered on its ink (not on its line box). */
 export function Label({
   children,
   italic,
@@ -54,15 +106,20 @@ export function Label({
   italic?: boolean;
   size?: number;
 }) {
+  const text = [children].flat().join('');
+  const family = "Georgia, 'Noto Serif', serif";
+  const ink = inkOf(text, `${italic ? 'italic ' : ''}700 ${size}px ${family}`);
+  const x = ink ? 18 + (ink.l - ink.r) / 2 : 18;
+  const y = ink ? 18 + (ink.a - ink.d) / 2 : 18;
   return (
     <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
       <text
-        x="18"
-        y="18"
-        dy=".35em"
-        text-anchor="middle"
+        x={x}
+        y={y}
+        dy={ink ? undefined : '.35em'}
+        text-anchor={ink ? 'start' : 'middle'}
         font-size={size}
-        font-family="Georgia, 'Noto Serif', serif"
+        font-family={family}
         font-weight="700"
         font-style={italic ? 'italic' : 'normal'}
         fill="currentColor"
@@ -70,19 +127,6 @@ export function Label({
         {children}
       </text>
     </svg>
-  );
-}
-
-/** The quarter note drawn into the tempo icon. */
-function Glyph2() {
-  const g = glyphBox(0xe1d5);
-  const k = 5.5;
-  return (
-    <path
-      d={g.d}
-      transform={`translate(${-((g.x0 + g.x1) / 2) * k + 6} ${-((g.y0 + g.y1) / 2) * k}) scale(${k})`}
-      fill="currentColor"
-    />
   );
 }
 
@@ -114,92 +158,102 @@ export const CPS = {
 
 export const Icon = {
   select: () => (
-    <svg aria-hidden="true" width="36" height="36" viewBox="0 0 40 40">
-      <path d="M13 9l0 20 5-5 4 9 4-2-4-9 7 0z" fill="currentColor" />
-    </svg>
+    <Centered vb={40} size={36}>
+      <path
+        d="M13 9l0 20 5-5 4 9 4-2-4-9 7 0z"
+        fill="currentColor"
+        stroke="currentColor"
+        stroke-width="1"
+        stroke-linejoin="round"
+      />
+    </Centered>
   ),
   slur: () => (
-    <svg aria-hidden="true" width="36" height="36" viewBox="0 0 40 40">
-      <path d="M8 26C14 12 26 12 32 26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
-      <circle cx="8" cy="27" r="2.6" fill="currentColor" />
-      <circle cx="32" cy="27" r="2.6" fill="currentColor" />
-    </svg>
+    <Centered vb={40} size={36}>
+      <path d="M8 26C14 12 26 12 32 26" fill="none" stroke="currentColor" stroke-width={LW} stroke-linecap="round" />
+      <circle cx="8" cy="27" r="2.8" fill="currentColor" />
+      <circle cx="32" cy="27" r="2.8" fill="currentColor" />
+    </Centered>
   ),
   link: () => (
-    <svg aria-hidden="true" width="36" height="36" viewBox="0 0 40 40">
-      <path d="M9 12L31 28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-      <ellipse cx="8" cy="11" rx="3.6" ry="2.6" fill="currentColor" transform="rotate(-20 8 11)" />
-      <ellipse cx="32" cy="29" rx="3.6" ry="2.6" fill="currentColor" transform="rotate(-20 32 29)" />
-    </svg>
+    <Centered vb={40} size={36}>
+      <path d="M9 12L31 28" fill="none" stroke="currentColor" stroke-width={LW} stroke-linecap="round" />
+      <circle cx="8" cy="11" r="2.8" fill="currentColor" />
+      <circle cx="32" cy="29" r="2.8" fill="currentColor" />
+    </Centered>
   ),
   cresc: () => (
-    <svg aria-hidden="true" width="36" height="36" viewBox="0 0 40 40">
-      <path d="M7 20L33 12M7 20L33 28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-    </svg>
+    <Centered vb={40} size={36}>
+      <path
+        d="M7 20L33 12M7 20L33 28"
+        fill="none"
+        stroke="currentColor"
+        stroke-width={LW}
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </Centered>
   ),
   dim: () => (
-    <svg aria-hidden="true" width="36" height="36" viewBox="0 0 40 40">
-      <path d="M7 12L33 20M7 28L33 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-    </svg>
+    <Centered vb={40} size={36}>
+      <path
+        d="M7 12L33 20M7 28L33 20"
+        fill="none"
+        stroke="currentColor"
+        stroke-width={LW}
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </Centered>
   ),
   tie: () => (
-    <svg aria-hidden="true" width="36" height="36" viewBox="0 0 40 40">
-      <path d="M9 22C14 30 26 30 31 22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
-    </svg>
+    <Centered vb={40} size={36}>
+      <path d="M9 22C14 30 26 30 31 22" fill="none" stroke="currentColor" stroke-width={LW} stroke-linecap="round" />
+    </Centered>
   ),
   text: () => <Label italic>Aa</Label>,
   tempo: () => (
-    <svg aria-hidden="true" width="36" height="36" viewBox="0 0 36 36">
-      <g transform="translate(6 18) scale(1)">
-        <Glyph2 />
+    <Centered vb={40} size={36}>
+      <g transform="translate(11 20)">
+        <GlyphPath cp={0xe1d5} k={6} />
       </g>
-      <text
-        x="24"
-        y="18"
-        dy=".35em"
-        text-anchor="middle"
-        font-size="17"
-        font-family="Georgia, 'Noto Serif', serif"
-        font-weight="700"
-        fill="currentColor"
-      >
-        =
-      </text>
-    </svg>
+      <path d="M22 17h10M22 23h10" fill="none" stroke="currentColor" stroke-width={LW} stroke-linecap="round" />
+    </Centered>
   ),
   tuplet: () => (
-    <svg aria-hidden="true" width="36" height="36" viewBox="0 0 40 40">
-      <path d="M8 25v-6h24v6" fill="none" stroke="currentColor" stroke-width="2.4" />
-      <text
-        x="20"
-        y="17"
-        text-anchor="middle"
-        font-size="16"
-        font-weight="700"
-        font-style="italic"
-        font-family="Georgia, serif"
-        fill="currentColor"
-      >
-        3
-      </text>
-    </svg>
+    <Centered vb={40} size={36}>
+      <path
+        d="M8 28v-6h24v6"
+        fill="none"
+        stroke="currentColor"
+        stroke-width={LW}
+        stroke-linejoin="round"
+        stroke-linecap="round"
+      />
+      <g transform="translate(20 13)">
+        <GlyphPath cp={0xe883} k={9} />
+      </g>
+    </Centered>
   ),
   rest: () => <Glyph cp={CPS.restQuarter} />,
 };
 
+/** The stroke width of the palette's line icons (in the 40-unit drawing grid). */
+const LW = 2.6;
+
 /** Small line icons for toolbar and Properties panel buttons (24 px grid, drawn in the text color; sized by CSS). */
 const S = (d: preact.ComponentChildren, fill = false) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill={fill ? 'currentColor' : 'none'}
-    stroke={fill ? 'none' : 'currentColor'}
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    aria-hidden="true"
-  >
-    {d}
-  </svg>
+  <Centered vb={24}>
+    <g
+      fill={fill ? 'currentColor' : 'none'}
+      stroke={fill ? 'none' : 'currentColor'}
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      {d}
+    </g>
+  </Centered>
 );
 
 export const Ui = {
@@ -259,21 +313,7 @@ export const Ui = {
         <path d="M12 15h.01" stroke-width="4" />
       </>,
     ),
-  trill: () =>
-    S(
-      <text
-        x="12"
-        y="16.5"
-        text-anchor="middle"
-        font-family="serif"
-        font-size="16"
-        font-style="italic"
-        font-weight="bold"
-      >
-        tr
-      </text>,
-      true,
-    ),
+  trill: () => S(<GlyphPath cp={0xe566} k={3.2} />, true),
   tie: () => S(<path d="M4 10c3 8 13 8 16 0" />),
   arpeggio: () => S(<path d="M12 3q3 2 0 4t0 4 0 4 0 4 0 4" />),
 };

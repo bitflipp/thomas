@@ -170,7 +170,7 @@ export function Palette() {
       <div class="grid">
         <DurationButtons value={dur.value} onPick={chooseDuration} />
         <Btn on={dots.value > 0} title="Dot (.)" onClick={() => chooseDots((dots.value + 1) % 3)}>
-          {dots.value === 2 ? <Label size={26}>··</Label> : <Glyph cp={CPS.dot} cap={24} max={6} />}
+          {dots.value === 2 ? <Label size={26}>··</Label> : <Glyph cp={CPS.dot} cap={24} max={9} />}
         </Btn>
       </div>
       <h4>Accidental</h4>
