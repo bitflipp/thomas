@@ -11,7 +11,7 @@ import type { HeadInfo, HeadRef, RampShape } from '../src/editor/expression.ts';
 import * as X from '../src/editor/expression.ts';
 import type { CurveName } from '../src/editor/performance.ts';
 import * as P from '../src/editor/performance.ts';
-import type { Score } from '../src/model.ts';
+import type { Pitch, Score } from '../src/model.ts';
 import { beatOf, PPQ, timeAt } from '../src/model.ts';
 import type { HeadAt, Note, Sequence } from '../src/playback/sequence.ts';
 import { buildSequence, measureStarts } from '../src/playback/sequence.ts';
@@ -317,10 +317,14 @@ export const cursor = signal('default');
 /** The rectangle of a selection in progress, in pixels. */
 export const marquee = signal<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 
-const NOTE_NAMES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
-/** The name of a MIDI pitch, like `c4` or `f#3`. */
-export const pitchName = (midi: number): string => `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+/** The name of a MIDI pitch in capitals, like `C4` or `F#3`; a written pitch gives its own spelling (`Bb3`). */
+export const pitchName = (midi: number, written?: Pitch): string => {
+  if (!written) return `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+  const acc = written.alter > 0 ? '#'.repeat(written.alter) : 'b'.repeat(-written.alter);
+  return `${written.step.toUpperCase()}${acc}${written.octave}`;
+};
 
 /** A number as short text (at most one decimal). */
 const num = (v: number): string => String(Math.round(v * 10) / 10);
@@ -328,9 +332,9 @@ const num = (v: number): string => String(Math.round(v * 10) / 10);
 /** The text over a head: pitch, place, and what it sounds like with where each value comes from. */
 function headTip(i: HeadInfo): string {
   const start = seq.peek().measureStart[i.head.mi] ?? 0;
-  const set = (on: boolean) => (on ? '' : ' (from the notation)');
+  const set = (on: boolean) => (on ? '' : ' (from notation)');
   return [
-    `${pitchName(i.midi)} · m. ${i.head.mi + 1} beat ${beatOf(i.at - start)}`,
+    `${pitchName(i.midi, i.written)} · m. ${i.head.mi + 1} beat ${beatOf(i.at - start)}`,
     `velocity ${i.vel}${set(i.has.vel)}`,
     `shift ${i.shift > 0 ? '+' : ''}${num(i.shift)} ms${set(i.has.shift)}`,
     `gate ${i.gate}${set(i.has.gate)}`,

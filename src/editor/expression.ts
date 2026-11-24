@@ -5,8 +5,8 @@
 
 import type { Draft } from 'immer';
 import { produce } from 'immer';
-import type { Event, Score } from '../model.ts';
-import { flattenVoice } from '../model.ts';
+import type { Event, Pitch, Score } from '../model.ts';
+import { flattenVoice, pitchMidi } from '../model.ts';
 import type { HeadAt, Note, Sequence } from '../playback/sequence.ts';
 import { buildSequence } from '../playback/sequence.ts';
 import { must } from '../util.ts';
@@ -35,6 +35,8 @@ export interface HeadInfo {
   head: HeadRef;
   key: string;
   midi: number;
+  /** The written pitch when it sounds as `midi` (no ottava or transposition between), else absent: the name then follows `midi`. */
+  written?: Pitch;
   /** The first sounding note of the head (a tremolo or trill has many). */
   note: Note;
   /** The absolute tick the event starts at in the notation. */
@@ -110,6 +112,7 @@ export function headInfos(score: Score, seq: Sequence = buildSequence(score)): H
       head: { mi: h.mi, staff: h.staff, voice: h.voice, idx: h.idx, pi: h.pi },
       key,
       midi: note.midi,
+      ...(pitchMidi(np.pitch) === note.midi ? { written: np.pitch } : {}),
       note,
       at: (seq.measureStart[h.mi] ?? 0) + te.start,
       strokes: strokes.get(key) ?? 1,

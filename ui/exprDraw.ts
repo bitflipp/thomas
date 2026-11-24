@@ -9,7 +9,7 @@ import { must } from '../src/util.ts';
 import type { Geo, Hover, MeasureSpan, Rect, RollData, Scale } from './expression.ts';
 
 // The opacity of the notes outside a selection.
-const DIM_ALPHA = 0.4;
+const DIM_ALPHA = 0.28;
 
 import {
   BOX_GAP,
@@ -226,7 +226,7 @@ const isBlack = (midi: number): boolean => [1, 3, 6, 8, 10].includes(midi % 12);
 
 /**
  * The roll: a shaded row for each black key and a line under each C, and a bar for each sounding note, colored by its
- * velocity (blue, orange, red) with the number inside when the bar has room. Selected bars have a contrasting double ring and the others are dimmed.
+ * velocity (blue, orange, red) with the number inside when the bar has room. With a selection the other bars are dimmed, and the hovered bar is brighter.
  */
 function drawRoll(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: number, rightTick: number): void {
   const { g, roll } = f;
@@ -287,6 +287,11 @@ function drawRoll(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: 
       ctx.globalAlpha = dimming && !f.selected.has(b.key) && !hot ? DIM_ALPHA : 1;
       ctx.fillStyle = color.css;
       ctx.fillRect(x0, y, w, h);
+      if (hot) {
+        // The hovered box is brighter, and at full strength even when it is outside the selection.
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.fillRect(x0, y, w, h);
+      }
       // The number goes where the box is not covered by a box drawn later (the shorter unison notes): the widest free stretch.
       const label = String(b.vel);
       const need = label.length * digits + 2 * LABEL_PAD;
@@ -303,22 +308,6 @@ function drawRoll(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: 
       if (best.to - best.from >= need)
         centeredText(ctx, label, best.from + LABEL_PAD - 1, y + h / 2, color.light > 0.6 ? '#1d1d22' : '#ffffff');
       ctx.globalAlpha = 1;
-      if (hot && !f.selected.has(b.key)) {
-        ctx.strokeStyle = c.accent;
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(x0 + 0.5, y + 0.5, w - 1, h - 1);
-      }
-    }
-    // The rings of the selected boxes come last, so that no neighbor covers them. A ring of the text color inside one of the
-    // background color stays visible on every color of the velocity ramp.
-    for (const { b, x0, x1, y } of boxes) {
-      if (!f.selected.has(b.key)) continue;
-      ctx.strokeStyle = c.bg;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x0 - 0.5, y - 0.5, x1 - x0 + 1, h + 1);
-      ctx.strokeStyle = c.fg;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x0 + 1, y + 1, x1 - x0 - 2, h - 2);
     }
     ctx.font = `${c.fsXs}px system-ui, sans-serif`;
   });
