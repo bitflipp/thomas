@@ -264,7 +264,7 @@ type Drag =
       /** Set when a grace note of the event is dragged (`ref` is its note). */
       grace?: number;
     }
-  | { k: 'marquee'; start: Where; additive: boolean; moved: boolean; base: Ref[] }
+  | { k: 'marquee'; start: Where; additive: boolean; moved: boolean; base: Ref[]; click?: { mi: number; e: Modifiers } }
   | {
       k: 'span';
       tool: 'slur' | 'line' | 'cresc' | 'dim' | 'pedal' | 'trill' | '8va' | '8vb';
@@ -351,8 +351,11 @@ function selectMeasureRange(a: number, b: number): void {
   select(Array.from({ length: hi - lo + 1 }, (_, k) => ({ t: 'measure' as const, mi: lo + k })));
 }
 
+/** The modifier keys of a pointer event. */
+type Modifiers = Pick<PointerEvent, 'shiftKey' | 'ctrlKey' | 'metaKey'>;
+
 /** A click on a measure: it becomes the selection; Shift extends from the anchor to it, Ctrl or Cmd adds or removes it. */
-function selectMeasure(mi: number, e: PointerEvent): void {
+function selectMeasure(mi: number, e: Modifiers): void {
   if (e.shiftKey) {
     selectMeasureRange(measureAnchor ?? measureRefs()[0] ?? mi, mi);
     return;
@@ -371,9 +374,15 @@ function pressWithSelectTool(e: PointerEvent, w: Where, h: HitIndex, target: Tar
   const additive = e.shiftKey || e.ctrlKey || e.metaKey;
   if (!target) {
     const g = measureAt(h.layout, w.page, w.x, w.y);
-    drag = { k: 'marquee', start: w, additive, moved: false, base: additive ? selection.value : [] };
-    if (g) selectMeasure(g.mi, e);
-    else if (!additive) select([]);
+    // Extending a selection that holds anything but measures must not turn into a measure selection.
+    const extendsOthers = additive && selection.value.some((r) => r.t !== 'measure');
+    // The measure is selected when the press turns out to be a click, not when a marquee drag starts.
+    const click =
+      g && !extendsOthers
+        ? { mi: g.mi, e: { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey } }
+        : undefined;
+    drag = { k: 'marquee', start: w, additive, moved: false, base: additive ? selection.value : [], click };
+    if (!(click || additive)) select([]);
     return;
   }
   const r = target.ref;
@@ -569,6 +578,7 @@ function continueDrag(d: Drag, e: PointerEvent, w: Where, h: HitIndex): void {
   if (d.k === 'head') dragHeadGhost(d, e, w, h);
   else if (d.k === 'marquee') {
     if (!d.moved && Math.hypot(w.x - d.start.x, w.y - d.start.y) < MARQUEE_THRESHOLD) return;
+    if (!(d.moved || d.additive)) select([]);
     d.moved = true;
     if (w.page === d.start.page) ghost.value = { kind: 'rect', page: w.page, box: rectBetween(w, d.start) };
   } else if (d.k === 'span') {
@@ -589,6 +599,7 @@ function continueDrag(d: Drag, e: PointerEvent, w: Where, h: HitIndex): void {
 
 /** Selects what the marquee encloses, adding to the earlier selection if the drag was additive. */
 function finishMarquee(d: Extract<Drag, { k: 'marquee' }>, w: Where, h: HitIndex): void {
+  if (!d.moved && d.click) selectMeasure(d.click.mi, d.click.e);
   if (!d.moved || w.page !== d.start.page) return;
   const refs = marquee(h, w.page, rectBetween(w, d.start));
   selection.value = d.additive ? [...new Map([...d.base, ...refs].map((r) => [refKey(r), r])).values()] : refs;
