@@ -264,7 +264,7 @@ function Toolbar() {
         <button
           type="button"
           aria-pressed={showExpression.value}
-          title="Expression: velocity, timing and pedals (Ctrl M)"
+          title="Switch between score and Expression view (Ctrl Space)"
           onClick={() => (showExpression.value = !showExpression.value)}
         >
           Expression
@@ -309,7 +309,7 @@ export function App() {
       <Toolbar />
       <div class="main">
         <Palette />
-        <div class="scorecol">
+        <div class={`scorecol${showExpression.value ? ' xmax' : ''}`}>
           <ScorePane />
           {showExpression.value && <Expression />}
           <Overview />

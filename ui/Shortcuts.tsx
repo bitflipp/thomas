@@ -43,7 +43,10 @@ const ROWS: [string, string][] = [
   ['Ctrl G', 'Go to a measure: asks for its number, Enter selects it and shows it'],
   ['Ctrl E', 'Show the score as text, editable'],
   ['Ctrl I', 'Properties panel'],
-  ['Ctrl M', 'Expression pane: velocity, timing and pedals of the performance'],
+  [
+    'Ctrl Space  (or Ctrl M)',
+    'Switch between the score and the Expression view (velocity, timing and pedals of the performance)',
+  ],
   [
     '↑ ↓ (Expression pane)',
     'Change the value of the selected notes (or of the selected curve point) in the open lane; Shift: ten times as much',
@@ -56,7 +59,7 @@ const ROWS: [string, string][] = [
     'Right-drag, wheel (Expression pane)',
     'Pan the roll in both directions; the wheel pans sideways, Alt + wheel up and down, Ctrl + wheel zooms the time axis',
   ],
-  ['Alt (Expression pane)', 'While dragging: no snapping, finer steps'],
+  ['Alt (Expression pane)', 'While dragging: any curve value (not only the usual ones), finer steps'],
   ['Ctrl S', 'Save'],
   ['Alt + click (note input)', 'Replace a tuplet as a whole instead of entering into it'],
   ['Shift / Ctrl + click', 'Add to the selection'],

@@ -5,10 +5,12 @@
 
 import { PPQ } from '../src/model.ts';
 import { linearAt, ratioFunction } from '../src/playback/curves.ts';
+import { must } from '../src/util.ts';
 import type { Geo, Hover, Lane, MeasureSpan, RollData, Scale, Stem } from './expression.ts';
 
 import {
   BOX_GAP,
+  BOX_TOP,
   GUTTER,
   LABEL_FONT,
   LABEL_PAD,
@@ -248,22 +250,54 @@ function drawRoll(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: 
     // The numbers have the same padding on every side of the box: left of them, and above and below their digits.
     ctx.font = `${LABEL_FONT}px system-ui, sans-serif`;
     const digits = ctx.measureText('8').width;
+    // The boxes in view, each with its edges on whole pixels so that they sit on the grid lines (a line is the pixel at
+    // `round(x)`, so a box starts on it and ends right before the line of its end tick).
+    const boxes: { b: RollData['bars'][number]; x0: number; x1: number; y: number }[] = [];
     for (let i = lowerBound(roll.maxEnd, leftTick); i < roll.bars.length; i++) {
       const b = roll.bars[i];
       if (b.t0 > rightTick) break;
       if (b.midi < range.lo || b.midi > range.hi) continue;
-      const x0 = xOf(b.t0, f.view);
-      const x1 = xOf(b.t1, f.view);
+      const x0 = Math.round(xOf(b.t0, f.view));
+      const x1 = Math.max(x0 + 2, Math.round(xOf(b.t1, f.view)));
       if (x1 < GUTTER) continue;
-      const y = rollRow(g, roll, f.view.top, b.midi);
+      boxes.push({ b, x0, x1, y: Math.round(rollRow(g, roll, f.view.top, b.midi)) + BOX_TOP });
+    }
+    // Longer boxes are drawn first, so that a shorter one of the same pitch (a unison in another voice) stays visible on top.
+    boxes.sort((p, q) => q.x1 - q.x0 - (p.x1 - p.x0) || p.b.t0 - q.b.t0);
+    // The boxes of each pitch in drawing order: those after a box cover it where they overlap.
+    const byPitch = new Map<number, typeof boxes>();
+    const rank = new Map<unknown, number>();
+    for (const bx of boxes) {
+      const list = byPitch.get(bx.b.midi) ?? [];
+      rank.set(bx, list.length);
+      byPitch.set(bx.b.midi, list);
+      list.push(bx);
+    }
+    // A box ends right at the line of its end tick, but a note of the same pitch that starts there is told apart by a gap.
+    for (const list of byPitch.values())
+      for (const bx of list) if (bx.x1 - bx.x0 > 2 && list.some((o) => o.x0 === bx.x1)) bx.x1 -= 1;
+    const h = ROW_H - BOX_GAP;
+    for (const box of boxes) {
+      const { b, x0, x1, y } = box;
+      const w = x1 - x0;
       const color = velocityColor(b.vel);
-      const h = ROW_H - BOX_GAP;
-      const w = Math.max(2, x1 - x0 - 1);
       ctx.fillStyle = color.css;
       ctx.fillRect(x0, y, w, h);
+      // The number goes where the box is not covered by a box drawn later (the shorter unison notes): the widest free stretch.
       const label = String(b.vel);
-      if (w >= label.length * digits + 2 * LABEL_PAD)
-        centeredText(ctx, label, x0 + LABEL_PAD, y + h / 2, color.light > 0.6 ? '#1d1d22' : '#ffffff');
+      const need = label.length * digits + 2 * LABEL_PAD;
+      const covers = must(byPitch.get(b.midi))
+        .slice(must(rank.get(box)) + 1)
+        .filter((o) => o.x0 < x1 && o.x1 > x0)
+        .sort((p, q) => p.x0 - q.x0);
+      let best = { from: x0, to: x0 };
+      let at = x0;
+      for (const o of [...covers, { x0: x1, x1 }]) {
+        if (o.x0 - at > best.to - best.from) best = { from: at, to: o.x0 };
+        at = Math.max(at, o.x1);
+      }
+      if (best.to - best.from >= need)
+        centeredText(ctx, label, best.from + LABEL_PAD - 1, y + h / 2, color.light > 0.6 ? '#1d1d22' : '#ffffff');
       const sel = f.selected.has(b.key);
       const hot = f.hover?.kind === 'bar' && f.hover.key === b.key;
       if (sel || hot) {
@@ -436,7 +470,7 @@ function drawGutter(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, laneName
       ctx,
       pitchName(m),
       GUTTER - SP2,
-      rollRow(g, roll, f.view.top, m) + (ROW_H - BOX_GAP) / 2,
+      rollRow(g, roll, f.view.top, m) + BOX_TOP + (ROW_H - BOX_GAP) / 2,
       c.muted,
       'right',
     );

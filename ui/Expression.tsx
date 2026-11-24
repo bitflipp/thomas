@@ -9,18 +9,15 @@ import { effect } from '@preact/signals';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { RampShape } from '../src/editor/expression.ts';
 import { RAMP_SHAPES } from '../src/editor/expression.ts';
+import { must } from '../src/util.ts';
 import type { DropdownOpt } from './Dropdown.tsx';
 import { Dropdown } from './Dropdown.tsx';
 import type { Frame } from './exprDraw.ts';
 import { paint, RAMP_GRADIENT, readColors, velocityColor } from './exprDraw.ts';
 import * as E from './expression.ts';
-import { Ui } from './icons.tsx';
 import { reveal } from './interact.ts';
 import { playing, playTick } from './player.ts';
-import { EXPR_HEIGHT, EXPR_MIN_HEIGHT, exprHeight, exprView, selection, showHints } from './state.ts';
-
-/** The zoom the view starts at, to show the zoom as a percentage of it. */
-const BASE_PPQ = 56;
+import { exprView, selection, showHints } from './state.ts';
 
 /** A labeled number field. It shows `'mixed'` (an empty box) when the selected notes differ, and commits on Enter or when it loses focus. */
 function Field({
@@ -169,22 +166,50 @@ function ShapeGlyph({ shape }: { shape: RampShape }) {
   );
 }
 
-/** The window of the open tool: it opens under its button and closes on a pick, Escape or a click elsewhere. */
-function ToolWindow({ tool, anchor, onClose }: { tool: Tool; anchor: HTMLElement; onClose: () => void }) {
+/** Where a tool window opens: under its button, or at a point (the pointer, when a key opened it). */
+type Place = { anchor: HTMLElement; point?: undefined } | { point: { x: number; y: number }; anchor?: undefined };
+
+/** The last place the pointer was seen, so that a key can open a tool window under it. */
+const pointer = { x: 200, y: 200 };
+
+/** The help text at the bottom of a tool window; for the ramp it follows the step the person is at. */
+const toolHelp = (tool: Tool, first: number | undefined): string => {
+  switch (tool) {
+    case 'set':
+      return 'Note velocity: click a value to give every selected note exactly that velocity (1–127). The buttons are grouped by the dynamic they stand for, from ff at the top to ppp at the bottom. Escape closes the window without a change.';
+    case 'curve':
+      return first === undefined
+        ? 'Ramp, step 1 of 2: choose a shape above (how the change is spread over time), then click the velocity the first selected note should get. The selected notes are ordered by their onset.'
+        : `Ramp, step 2 of 2: the first note gets ${first}. Click the velocity the last selected note should get; the notes between follow the chosen shape. Picking ${first} again does nothing, Escape cancels.`;
+    case 'delta':
+      return 'Velocity delta: raise or lower the velocity of every selected note by a fixed amount, keeping the differences between them. Notes without a velocity of their own start from the one their dynamic gives. Escape closes the window without a change.';
+  }
+};
+
+/** The window of the open tool: it opens under its button or at the pointer and closes on a pick, Escape or a click elsewhere. */
+function ToolWindow({ tool, place, onClose }: { tool: Tool; place: Place; onClose: () => void }) {
+  const { anchor, point } = place;
   const box = useRef<HTMLDivElement>(null);
   const [first, setFirst] = useState<number | undefined>();
   const [at, setAt] = useState({ left: 0, top: 0 });
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const r = anchor.getBoundingClientRect();
+    if (point) {
+      // The pointer lands inside the window, near its top left corner, so that a pick is a short move.
+      const left = Math.max(8, Math.min(point.x - 16, innerWidth - el.offsetWidth - 8));
+      const top = Math.max(8, Math.min(point.y - 16, innerHeight - el.offsetHeight - 8));
+      setAt({ left, top });
+      return;
+    }
+    const r = must(anchor).getBoundingClientRect();
     const left = Math.max(8, Math.min(r.left, innerWidth - el.offsetWidth - 8));
     const top = r.bottom + 2 + el.offsetHeight > innerHeight - 8 ? r.top - 2 - el.offsetHeight : r.bottom + 2;
     setAt({ left, top: Math.max(8, top) });
-  }, [anchor]);
+  }, [anchor, point]);
   useEffect(() => {
     const away = (e: PointerEvent) => {
-      if (!(box.current?.contains(e.target as Node) || anchor.contains(e.target as Node))) onClose();
+      if (!(box.current?.contains(e.target as Node) || anchor?.contains(e.target as Node))) onClose();
     };
     const esc = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -200,15 +225,6 @@ function ToolWindow({ tool, anchor, onClose }: { tool: Tool; anchor: HTMLElement
   }, [anchor, onClose]);
   return (
     <div ref={box} class="vtool" role="dialog" style={{ left: `${at.left}px`, top: `${at.top}px` }}>
-      <div class="vtitle">
-        {tool === 'set'
-          ? 'Note velocity'
-          : tool === 'curve'
-            ? first === undefined
-              ? 'Ramp: pick the start'
-              : `Ramp from ${first}: pick the end`
-            : 'Velocity delta'}
-      </div>
       {tool === 'set' && (
         <VelocityGrid
           onPick={(v) => {
@@ -259,13 +275,14 @@ function ToolWindow({ tool, anchor, onClose }: { tool: Tool; anchor: HTMLElement
           ))}
         </div>
       )}
+      {showHints.value && <p class="vhelp">{toolHelp(tool, first)}</p>}
     </div>
   );
 }
 
 /** The controls of the velocity lane: the three tools (1, 2, 3 on the canvas) and the exact value. */
 function VelocityBar({ none }: { none: boolean }) {
-  const [open, setOpen] = useState<{ tool: Tool; anchor: HTMLElement } | null>(null);
+  const [open, setOpen] = useState<({ tool: Tool } & Place) | null>(null);
   const tools: { tool: Tool; key: string; label: string; title: string }[] = [
     {
       tool: 'set',
@@ -286,20 +303,27 @@ function VelocityBar({ none }: { none: boolean }) {
       title: 'Raise or lower the velocities of the selected notes by a fixed amount (3)',
     },
   ];
-  // The keys 1, 2 and 3 on the canvas open the tools, as in Pianizer.
+  // The keys 1, 2 and 3 open the tools (as in Pianizer) wherever the focus is in the Expression view, also with a tool
+  // window open (it then switches to that tool), except while a text field is being typed in.
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const t = tools.find((x) => x.key === e.key);
       const target = e.target as HTMLElement;
-      if (!t || e.ctrlKey || e.metaKey || e.altKey || target.tagName !== 'CANVAS' || !target.closest('.expression'))
-        return;
+      if (!t || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
       e.preventDefault();
       e.stopPropagation();
-      const anchor = document.querySelector<HTMLElement>(`.expression [data-tool="${t.tool}"]`);
-      if (anchor && !none) setOpen({ tool: t.tool, anchor });
+      if (!none) setOpen(open?.tool === t.tool ? null : { tool: t.tool, point: { x: pointer.x, y: pointer.y } });
+    };
+    const move = (e: PointerEvent) => {
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
     };
     document.addEventListener('keydown', key, true);
-    return () => document.removeEventListener('keydown', key, true);
+    document.addEventListener('pointermove', move, true);
+    return () => {
+      document.removeEventListener('keydown', key, true);
+      document.removeEventListener('pointermove', move, true);
+    };
   });
   return (
     <>
@@ -319,7 +343,17 @@ function VelocityBar({ none }: { none: boolean }) {
           </button>
         ))}
       </div>
-      {open && <ToolWindow tool={open.tool} anchor={open.anchor} onClose={() => setOpen(null)} />}
+      {open && (
+        <ToolWindow
+          key={open.tool}
+          tool={open.tool}
+          place={open}
+          onClose={() => {
+            setOpen(null);
+            document.querySelector<HTMLElement>('.expression canvas')?.focus();
+          }}
+        />
+      )}
       <Field
         label="Velocity"
         title="The velocity of the selected notes (1–127). Notes without one follow the dynamics."
@@ -405,9 +439,10 @@ function GateBar({ none }: { none: boolean }) {
 
 /** The hints of the lanes that hold curves. */
 const CURVE_HINTS: Record<'tempo' | 'sustain' | 'soft', string> = {
-  tempo: 'Click to add a point, drag to move it (Alt: no snapping), Delete removes it. 100% is the notated tempo.',
+  tempo:
+    'Click to add a point, drag to move it (Alt: any value, not only the usual ones), Delete removes it. 100% is the notated tempo.',
   sustain:
-    'Click to add a point, drag to move it (Alt: no snapping), Delete removes it. The pedal is up before the first point.',
+    'Click to add a point, drag to move it (Alt: any value, not only the usual ones), Delete removes it. The pedal is up before the first point.',
   soft: 'Drag to put the soft pedal down, drag an edge or the body of a region to change it, Delete removes it.',
 };
 
@@ -478,47 +513,25 @@ function LaneBar() {
   );
 }
 
-/** The tabs of the lanes, the snap grid and the zoom. */
-function Head({ width }: { width: number }) {
-  const v = exprView.value;
+/** The tabs of the lanes. */
+function Head() {
   return (
-    <div class="xhead">
-      <div class="tabs" role="tablist">
-        {E.LANES.map((l) => (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={E.lane.value === l.id}
-            class={E.lane.value === l.id ? 'on' : ''}
-            title={l.title}
-            onClick={() => {
-              E.lane.value = l.id;
-              E.pointSel.value = null;
-            }}
-          >
-            {l.label}
-          </button>
-        ))}
-      </div>
-      <span class="grow" />
-      <Dropdown
-        title="Snap grid for curve points and regions (Alt while dragging: none)"
-        value={E.snap.value}
-        opts={E.SNAPS.map((s) => ({ value: s.value, label: `Snap ${s.label}` }))}
-        onChange={(n) => (E.snap.value = n)}
-      />
-      <div class="seg">
-        <button type="button" class="icon" title="Zoom out" onClick={() => E.zoomAt(1 / 1.25, width / 2)}>
-          <Ui.minus />
+    <div class="tabs" role="tablist">
+      {E.LANES.map((l) => (
+        <button
+          type="button"
+          role="tab"
+          aria-selected={E.lane.value === l.id}
+          class={E.lane.value === l.id ? 'on' : ''}
+          title={l.title}
+          onClick={() => {
+            E.lane.value = l.id;
+            E.pointSel.value = null;
+          }}
+        >
+          {l.label}
         </button>
-        <span class="val">{Math.round((v.ppq / BASE_PPQ) * 100)}%</span>
-        <button type="button" class="icon" title="Zoom in" onClick={() => E.zoomAt(1.25, width / 2)}>
-          <Ui.plus />
-        </button>
-        <button type="button" title="Show the whole piece" onClick={() => E.fitAll(width)}>
-          Fit
-        </button>
-      </div>
+      ))}
     </div>
   );
 }
@@ -542,52 +555,6 @@ function frameOf(g: E.Geo): Frame {
     marquee: E.marquee.value,
     playTick: playingNow || tick > 0 ? tick : null,
   };
-}
-
-/** The tallest the pane may be: most of the window, so that the toolbar and a little of the score stay in view. */
-const maxHeight = (): number => Math.max(EXPR_MIN_HEIGHT, window.innerHeight - 220);
-
-/** Sets the pane's height, within its limits. */
-const resizeTo = (h: number): void => {
-  exprHeight.value = Math.max(EXPR_MIN_HEIGHT, Math.min(maxHeight(), Math.round(h)));
-};
-
-/** The handle on the pane's top edge: drag it (or use the arrow keys) to change the height; a double click restores the default. */
-function Grip() {
-  const from = useRef<{ y: number; h: number } | null>(null);
-  return (
-    <hr
-      class="xgrip"
-      aria-orientation="horizontal"
-      aria-label="Resize the Expression pane"
-      aria-valuenow={exprHeight.value}
-      aria-valuemin={EXPR_MIN_HEIGHT}
-      aria-valuemax={maxHeight()}
-      tabIndex={0}
-      title="Drag to resize; double-click for the default height"
-      onPointerDown={(e) => {
-        from.current = { y: e.clientY, h: exprHeight.peek() };
-        e.currentTarget.setPointerCapture(e.pointerId);
-        e.preventDefault();
-      }}
-      onPointerMove={(e) => {
-        if (from.current) resizeTo(from.current.h + from.current.y - e.clientY);
-      }}
-      onPointerUp={() => {
-        from.current = null;
-      }}
-      onPointerCancel={() => {
-        from.current = null;
-      }}
-      onDblClick={() => resizeTo(EXPR_HEIGHT)}
-      onKeyDown={(e) => {
-        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-        e.preventDefault();
-        e.stopPropagation();
-        resizeTo(exprHeight.peek() + (e.key === 'ArrowUp' ? 24 : -24));
-      }}
-    />
-  );
 }
 
 /** The Expression pane. */
@@ -679,9 +646,8 @@ export function Expression() {
   };
   const tip = E.tip.value;
   return (
-    <section class="expression" aria-label="Expression" style={{ height: `${exprHeight.value}px` }}>
-      <Grip />
-      <Head width={size.w} />
+    <section class="expression" aria-label="Expression">
+      <Head />
       <LaneBar />
       <div class="xcanvas" ref={wrap}>
         <canvas

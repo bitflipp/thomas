@@ -292,7 +292,18 @@ button.mini {
   min-width: 0;
   min-height: 0;
 }
-.overview {
+/* With the Expression pane maximized the score collapses to nothing (kept mounted, so that its scroll position survives). */
+.scorecol.xmax > .scroll {
+  flex: 0 0 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  visibility: hidden;
+}
+.scorecol.xmax > .expression {
+  flex: 1;
+}
+.scorecol.xmax .overview {
   flex: none;
   display: flex;
   align-items: stretch;
@@ -678,7 +689,6 @@ button.mini {
     box-shadow: none;
     margin: 0;
     width: 100% !important;
-    height: auto !important;
     break-after: page;
     overflow: hidden;
   }
@@ -894,32 +904,17 @@ button.dd {
 /* The Expression pane (ui/Expression.tsx): tabs for the lanes with the snap and zoom controls, a row of controls for the
    open lane, and the canvas with the roll and the lane. */
 .expression {
-  flex: none; /* The height is set from the script (the pane can be dragged to size). */
+  flex: 1;
+  min-height: 0;
   position: relative;
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-top: 1px solid var(--line);
-}
-.expression .xhead {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding-right: var(--sp-2);
-  border-bottom: 1px solid var(--line);
 }
 .expression .tabs {
   position: static;
   margin: 0;
-  border-bottom: 0;
   flex: none;
-}
-.expression .tabs button {
-  flex: none;
-  padding: var(--sp-2);
-}
-.expression .grow {
-  flex: 1;
 }
 .expression .xbar {
   flex: none;
@@ -964,10 +959,6 @@ button.dd {
   touch-action: none;
   outline: none;
 }
-.expression canvas:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
-}
 .xtip {
   position: absolute;
   z-index: 5;
@@ -978,26 +969,6 @@ button.dd {
   padding: var(--sp-1) var(--sp-2);
   font-size: var(--fs-sm);
   white-space: nowrap;
-}
-
-/* The handle on the top edge of the Expression pane. */
-.xgrip {
-  border: 0;
-  margin: 0;
-  background: transparent;
-  position: absolute;
-  top: -3px;
-  left: 0;
-  right: 0;
-  height: 7px;
-  z-index: 6;
-  cursor: ns-resize;
-  touch-action: none;
-}
-.xgrip:hover,
-.xgrip:focus-visible {
-  background: color-mix(in srgb, var(--accent) 45%, transparent);
-  outline: none;
 }
 
 /* The legend of the velocity colors in the Expression pane's toolbar. */
@@ -1015,19 +986,25 @@ button.dd {
 
 /* The velocity tools of the Expression pane (a window under the button that opened it). */
 .vtool {
+  min-width: 20em;
   position: fixed;
   z-index: 30;
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
-  padding: var(--sp-2);
+  padding: var(--sp-3);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
 }
-.vtool .vtitle {
+.vtool .vhelp {
+  margin: 0;
+  contain: inline-size; /* The text wraps at the width the buttons give the window, and the rule spans all of it. */
   color: var(--muted);
   font-size: var(--fs-xs);
+  line-height: 1.4;
+  border-top: 1px solid var(--line);
+  padding-top: var(--sp-3);
 }
 .vtool .vgrid {
   display: grid;
@@ -1058,6 +1035,8 @@ button.dd {
   gap: var(--sp-1);
 }
 .vtool .vshapes button {
+  flex: 1;
+  justify-content: center;
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);

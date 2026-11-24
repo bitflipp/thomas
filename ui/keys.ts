@@ -160,6 +160,12 @@ function onViewShortcut(e: KeyboardEvent): boolean {
   const toggleSignal = (flag: { value: boolean }) => {
     flag.value = !flag.value;
   };
+  // Ctrl Space is told by its physical key, since an input method may report another `key` for it.
+  if (e.code === 'Space') {
+    toggleSignal(showExpression);
+    e.preventDefault();
+    return true;
+  }
   switch (e.key.toLowerCase()) {
     case 'e':
       toggleSignal(showText);

@@ -19,7 +19,7 @@ import { select } from './interact.ts';
 import { seek } from './player.ts';
 import { commit, exprView, run, say, score, selection } from './state.ts';
 
-// The settings of the pane and what it derives from the score: the lane that is open, the snap grid, the score as it is
+// The settings of the pane and what it derives from the score: the lane that is open the score as it is
 // shown (with the drag in progress), and the bars, stems and curves drawn from it.
 
 /** The lane below the roll: the value of the notes' velocity, shift or gate, or one of the three curves. */
@@ -35,17 +35,6 @@ export const LANES: { id: Lane; label: string; title: string }[] = [
 ];
 
 export const lane = signal<Lane>('velocity');
-
-/** The snap grids of the curve lanes in ticks (0: none). */
-export const SNAPS: { value: number; label: string }[] = [
-  { value: PPQ, label: '1/4' },
-  { value: PPQ / 2, label: '1/8' },
-  { value: PPQ / 4, label: '1/16' },
-  { value: PPQ / 8, label: '1/32' },
-  { value: 0, label: 'Off' },
-];
-
-export const snap = signal(PPQ / 2);
 
 /** The score with the change a drag in progress would make; null when nothing is being dragged. */
 export const draft = signal<Score | null>(null);
@@ -206,10 +195,16 @@ const tickAt = (x: number): number => exprView.peek().left + ((x - GUTTER) * PPQ
 export const xOf = (tick: number, v = exprView.value): number => GUTTER + ((tick - v.left) * v.ppq) / PPQ;
 
 /** The height of a pitch row in pixels. It is fixed, as on a piano roll: zooming changes only the width of the notes. */
-export const ROW_H = 16;
+export const ROW_H = 17;
 
-/** The gap between the boxes of adjacent rows. */
-export const BOX_GAP = 1;
+/**
+ * The gap between the boxes of adjacent rows: a pixel below a box, the pixel of the row line (the one under a C, where
+ * there is one) and a pixel above the next box, so that a box has a pixel of room to the C line on both sides.
+ */
+export const BOX_GAP = 3;
+
+/** The distance of a box from the top of its row: the pixel of the row line and the pixel of room. */
+export const BOX_TOP = 2;
 
 /** The size of the velocity numbers in the note boxes, and the padding around them, which is the same on every side (the box is as high as the number and twice the padding). */
 export const LABEL_FONT = 10;
@@ -369,12 +364,6 @@ export function zoomAt(factor: number, x: number): void {
   exprView.value = { ...v, ppq, left: tick - ((x - GUTTER) * PPQ) / ppq };
 }
 
-/** Zooms so that the whole piece fits in `w` pixels. */
-export function fitAll(w: number): void {
-  const ppq = Math.max(PPQ_MIN, Math.min(PPQ_MAX, ((w - GUTTER - 8) * PPQ) / Math.max(PPQ, total.peek())));
-  exprView.value = { ...exprView.peek(), ppq, left: 0 };
-}
-
 /** Scrolls the roll by `dy` pixels (positive: towards lower pitches). */
 export function scrollBy(g: Geo, dy: number): void {
   const v = exprView.peek();
@@ -431,21 +420,8 @@ let drag: Drag | null = null;
 /** The pixel distance within which a point, edge or handle is grabbed. */
 const GRAB = 7;
 
-/** Snaps a tick to the grid (to a barline too, which the grid is counted from); `free` leaves it alone. */
-export function snapTick(tick: number, free = false): number {
-  const g = snap.peek();
-  const ms = measures.peek();
-  if (free || !g || !ms.length) return Math.max(0, Math.round(tick));
-  let lo = 0;
-  let hi = ms.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (ms[mid].start <= tick) lo = mid;
-    else hi = mid - 1;
-  }
-  const m = ms[lo];
-  return Math.max(0, Math.min(m.start + m.len, m.start + Math.round((tick - m.start) / g) * g));
-}
+/** The tick at pixel `x` as a whole tick within the piece. */
+const tickOfX = (x: number): number => Math.max(0, Math.round(tickAt(x)));
 
 /** The value of a curve at a pixel row, snapped to the usual values (1 for the tempo; 0, a half and 1 for the pedal) unless `free`. */
 function curveValueAt(l: CurveName, g: Geo, y: number, free: boolean): number {
@@ -587,7 +563,7 @@ function pressCurve(l: CurveName, g: Geo, x: number, y: number, free: boolean): 
   let index = pointAt(g, l, x, y);
   let from = base;
   if (index < 0) {
-    const tick = snapTick(tickAt(x), free);
+    const tick = tickOfX(x);
     from = P.setCurvePoint(base, l, tick, curveValueAt(l, g, y, free));
     index = P.curveTicks(from, l).findIndex((p) => Math.abs(p.tick - tick) <= 1);
     draft.value = from;
@@ -597,10 +573,10 @@ function pressCurve(l: CurveName, g: Geo, x: number, y: number, free: boolean): 
 }
 
 /** Presses in the una corda lane: grabs an edge or the body of a region, or starts a new one. */
-function pressSoft(x: number, free: boolean): void {
+function pressSoft(x: number): void {
   const base = score.peek();
   const at = regionAt(x);
-  const tick = snapTick(tickAt(x), free);
+  const tick = tickOfX(x);
   if (at) {
     const r = curves.peek().soft[at.index];
     pointSel.value = { lane: 'soft', index: at.index };
@@ -627,7 +603,7 @@ export function onDown(g: Geo, x: number, y: number, button: number, shift: bool
   }
   if (x < GUTTER) return false;
   if (y < g.ruler.h) {
-    seek(snapTick(tickAt(x), free));
+    seek(tickOfX(x));
     drag = { kind: 'seek' };
     return true;
   }
@@ -645,7 +621,7 @@ export function onDown(g: Geo, x: number, y: number, button: number, shift: bool
   if (l === 'velocity' || l === 'shift' || l === 'gate') {
     if (!pressStem(g, x, y, shift))
       drag = { kind: 'marquee', x0: x, y0: y, additive: shift, base: selection.peek(), area: 'lane' };
-  } else if (l === 'soft') pressSoft(x, free);
+  } else if (l === 'soft') pressSoft(x);
   else pressCurve(l, g, x, y, free);
   return true;
 }
@@ -687,7 +663,7 @@ export function onMove(g: Geo, x: number, y: number, buttons: number, free: bool
   tip.value = null;
   switch (drag.kind) {
     case 'seek':
-      seek(snapTick(tickAt(x), free));
+      seek(tickOfX(x));
       break;
     case 'pan':
       exprView.value = {
@@ -706,7 +682,7 @@ export function onMove(g: Geo, x: number, y: number, buttons: number, free: bool
       movePoint(drag, g, x, y, free);
       break;
     case 'region':
-      moveRegion(drag, x, free);
+      moveRegion(drag, x);
       break;
   }
 }
@@ -714,13 +690,13 @@ export function onMove(g: Geo, x: number, y: number, buttons: number, free: bool
 /** Moves the grabbed point of a curve. */
 function movePoint(d: Extract<Drag, { kind: 'point' }>, g: Geo, x: number, y: number, free: boolean): void {
   d.moved = true;
-  const tick = snapTick(tickAt(x), free);
+  const tick = tickOfX(x);
   setDraft(() => P.moveCurvePoint(d.base, d.lane, d.index, tick, curveValueAt(d.lane, g, y, free)));
 }
 
 /** Moves, resizes or paints the una corda region of a drag. */
-function moveRegion(d: Extract<Drag, { kind: 'region' }>, x: number, free: boolean): void {
-  const tick = snapTick(tickAt(x), free);
+function moveRegion(d: Extract<Drag, { kind: 'region' }>, x: number): void {
+  const tick = tickOfX(x);
   if (tick !== d.at) d.moved = true;
   if (!d.moved) return;
   const dt = tick - d.at;
@@ -749,7 +725,7 @@ export function onUp(g: Geo, x: number, y: number): void {
     return;
   }
   if (d.kind === 'region') {
-    if (!d.moved && d.mode === 'new') setDraft(() => P.addSoftRegion(d.base, d.at, d.at + (snap.peek() || PPQ / 2)));
+    if (!d.moved && d.mode === 'new') setDraft(() => P.addSoftRegion(d.base, d.at, d.at + PPQ / 2));
     const kept = draft.peek();
     finishDraft();
     if (kept) {
