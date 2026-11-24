@@ -53,6 +53,7 @@ import { must } from '../util.ts';
 import type { EvAddr, MarkAddr } from './addr.ts';
 import { eventOf, markOf } from './addr.ts';
 import { comparePitch, transposeSemis, transposeSteps } from './context.ts';
+import { fitPerformance, moveAnchorsOnDelete, moveAnchorsOnInsert } from './performance.ts';
 import { durOfTicks, EditError, eventAtTick, itemsTicks, putEvent, rest, restsFor, splitTicks } from './voice.ts';
 
 export { EditError };
@@ -68,7 +69,7 @@ export interface Loc {
 
 /** Runs `fn` on a draft of the score and tidies what it touched (`tidy` re-establishes the invariants). Returns the same score if nothing changed. */
 function edit(score: Score, fn: (d: Draft<Score>) => void): Score {
-  const next = produce(score, fn);
+  const next = fitPerformance(produce(score, fn));
   if (next === score) return next;
   // Only the measures the edit touched need tidying (a whole score is hundreds of measures); Immer
   // keeps untouched measures identical by reference, so a reference comparison finds them. Adding or
@@ -1262,6 +1263,7 @@ export function insertMeasures(score: Score, at: number, count = 1): Score {
   return edit(score, (d) => {
     const fresh = Array.from({ length: count }, () => emptyMeasure(score, Math.max(at - 1, 0)));
     d.measures.splice(at, 0, ...(fresh as Draft<Score['measures'][number]>[]));
+    moveAnchorsOnInsert(d, at, count);
     if (at === 0 && d.measures.length > count && d.measures[count].time) {
       // The new first measure carries the time and key.
       d.measures[0].time = d.measures[count].time;
@@ -1391,6 +1393,7 @@ export function deleteMeasures(score: Score, from: number, to: number): Score {
   if (to - from + 1 >= score.measures.length) throw new EditError('A score needs at least one measure');
   return edit(score, (d) => {
     const gone = d.measures.splice(from, to - from + 1);
+    moveAnchorsOnDelete(d, from, to);
     const next = d.measures[from];
     if (next) {
       // Keep time/key changes that were in force.
