@@ -1,4 +1,4 @@
-// Command line: `thomas <import|render|check> ...` (see USAGE below). A thin wrapper: parsing, engraving
+// Command line: `thomas <import|import-rendition|render|check> ...` (see USAGE below). A thin wrapper: parsing, engraving
 // and drawing all live in the modules imported here; this file only reads and writes files and
 // shells out to rsvg-convert for PDF output.
 
@@ -12,6 +12,8 @@ import type { Score } from './model.ts';
 import { beatOf, validate } from './model.ts';
 import { importMusicXml } from './musicxml.ts';
 import { pageToSvg } from './render.ts';
+import type { PianizerProject } from './rendition.ts';
+import { importRendition } from './rendition.ts';
 import { parseText, writeText } from './textformat.ts';
 import { must } from './util.ts';
 
@@ -35,6 +37,11 @@ function loadScore(path: string, flags = new Set<string>()): Score {
 const USAGE = `usage:
   thomas import  <in.musicxml> <out.txt> [--keep-breaks] [--keep-stems]
                                                   convert MusicXML to the text format
+  thomas import-rendition <project.json> <in.txt|in.musicxml> <out.txt> [--tolerance <quarters>] [--force]
+                                                  take the rendition of a Pianizer project over into the score: velocities,
+                                                  attack shifts and gates of the heads, tempo curve, sustain and una corda.
+                                                  Notes are matched by pitch and time (--tolerance, default 0.5); with fewer
+                                                  than 80% matched nothing is written unless --force
   thomas render  <in.txt|in.musicxml> <out-base> [--pdf] [--no-breaks] [--numbers|--no-numbers] [--space <mm>]
                                                   write <out-base>-<page>.svg (and <out-base>.pdf)
   thomas check   <in.txt|in.musicxml> [--parallels] [--collisions [--mark <out-base>]]
@@ -76,6 +83,38 @@ try {
     const flags = new Set(args.filter((a) => a.startsWith('--')));
     const [inp, out] = args.filter((a) => !a.startsWith('--'));
     writeFileSync(out, writeText(loadScore(inp, flags)));
+  } else if (cmd === 'import-rendition') {
+    const ti = args.indexOf('--tolerance');
+    const tolerance = ti >= 0 ? Number(args[ti + 1]) : undefined;
+    if (tolerance !== undefined && !(tolerance > 0 && tolerance <= 4))
+      throw new Error('--tolerance expects quarter notes, e.g. 0.5');
+    const pos = args.filter((a, i) => !(a.startsWith('--') || (ti >= 0 && i === ti + 1)));
+    if (pos.length !== 3) throw new Error(USAGE);
+    const [projectFile, scoreFile, out] = pos;
+    const { score, report: r } = importRendition(
+      loadScore(scoreFile),
+      JSON.parse(readFileSync(projectFile, 'utf8')) as PianizerProject,
+      { tolerance },
+    );
+    const pct = r.notes ? Math.round((100 * r.matched) / r.notes) : 100;
+    console.log(
+      `${r.matched} of ${r.notes} notes matched (${pct}%), ${r.heads} heads in the score, ${r.headsWithoutNote} without a note`,
+    );
+    console.log(`velocities: ${r.velocities}, shifts: ${r.shifts}, gates: ${r.gates}`);
+    console.log(
+      `tempo curve: ${r.tempoPoints} points, sustain: ${r.sustainPoints} points, una corda: ${r.softRegions} regions`,
+    );
+    if (r.muted) console.log(`${r.muted} muted notes of the project are not muted in the score`);
+    for (const u of r.unmatchedNotes) console.log(`  no note in the score for ${u}`);
+    if (r.unmatchedCount > r.unmatchedNotes.length)
+      console.log(`  ... and ${r.unmatchedCount - r.unmatchedNotes.length} more`);
+    if (pct < 80 && !args.includes('--force')) {
+      console.error(
+        'error: fewer than 80% of the notes matched, so this is probably another piece (nothing written; --force writes anyway)',
+      );
+      process.exit(1);
+    }
+    writeFileSync(out, writeText(score));
   } else if (cmd === 'check') {
     const s = withSpace(loadScore(must(args.find((a) => !a.startsWith('--')))));
     console.log(`ok: ${s.measures.length} measures, ${s.staves.length} staves`);
