@@ -29,8 +29,6 @@
   /* Widths: a standard button, and the side panes. */
   --w-btn: calc(var(--h) * 3);
   --w-pane: 372px;
-  /* Height of the Expression pane under the score. */
-  --h-expr: 400px;
   --shadow-sm: 0 1px 6px rgba(0, 0, 0, 0.3);
   --shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.4);
@@ -896,8 +894,8 @@ button.dd {
 /* The Expression pane (ui/Expression.tsx): tabs for the lanes with the snap and zoom controls, a row of controls for the
    open lane, and the canvas with the roll and the lane. */
 .expression {
-  flex: none;
-  height: var(--h-expr);
+  flex: none; /* The height is set from the script (the pane can be dragged to size). */
+  position: relative;
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -948,7 +946,7 @@ button.dd {
   gap: var(--sp-1);
 }
 .expression .xf input {
-  width: 4.5em;
+  width: 4em;
 }
 .expression .xbar .hint {
   margin: 0;
@@ -980,4 +978,37 @@ button.dd {
   padding: var(--sp-1) var(--sp-2);
   font-size: var(--fs-sm);
   white-space: nowrap;
+}
+
+/* The handle on the top edge of the Expression pane. */
+.xgrip {
+  border: 0;
+  margin: 0;
+  background: transparent;
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 7px;
+  z-index: 6;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.xgrip:hover,
+.xgrip:focus-visible {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  outline: none;
+}
+
+/* The legend of the velocity colors in the Expression pane's toolbar. */
+.expression .xramp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.expression .xramp i {
+  width: calc(var(--h) * 1.5);
+  height: var(--sp-2);
 }

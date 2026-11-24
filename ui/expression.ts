@@ -195,17 +195,53 @@ export const tickAt = (x: number): number => exprView.peek().left + ((x - GUTTER
 /** The pixel of a tick under the view `v`. */
 export const xOf = (tick: number, v = exprView.value): number => GUTTER + ((tick - v.left) * v.ppq) / PPQ;
 
+/** The lowest and highest pitch the roll shows. */
+export interface Range {
+  lo: number;
+  hi: number;
+}
+
+/** The fewest pitches the roll shows (two octaves), so that a few notes do not fill it with fat bars. */
+const MIN_ROWS = 24;
+
+/**
+ * The pitches the roll shows: those of the notes in view, widened to whole octaves (from a C to a B) so that the rows
+ * move only when the music leaves its octaves, and to at least two octaves. The whole piece's range when nothing is in view.
+ */
+export function pitchRange(data: RollData, view: { left: number; ppq: number }, w: number): Range {
+  const right = view.left + ((w - GUTTER) * PPQ) / view.ppq;
+  let lo = Number.POSITIVE_INFINITY;
+  let hi = Number.NEGATIVE_INFINITY;
+  let a = 0;
+  let b = data.maxEnd.length;
+  while (a < b) {
+    const mid = (a + b) >> 1;
+    if (data.maxEnd[mid] < view.left) a = mid + 1;
+    else b = mid;
+  }
+  for (let i = a; i < data.bars.length && data.bars[i].t0 <= right; i++) {
+    lo = Math.min(lo, data.bars[i].midi);
+    hi = Math.max(hi, data.bars[i].midi);
+  }
+  if (lo > hi) {
+    lo = data.lo;
+    hi = data.hi;
+  }
+  lo = Math.max(0, Math.floor(lo / 12) * 12);
+  hi = Math.min(127, Math.floor(hi / 12) * 12 + 11);
+  if (hi - lo + 1 < MIN_ROWS) hi = Math.min(127, lo + MIN_ROWS - 1);
+  return { lo, hi };
+}
+
 /** The pixel row of the top of the roll row of pitch `midi`, and the height of a row. */
-export function rollRow(g: Geo, data: RollData, midi: number): { y: number; h: number } {
-  const rows = data.hi - data.lo + 1;
-  const h = g.roll.h / rows;
-  return { y: g.roll.y + (data.hi - midi) * h, h };
+export function rollRow(g: Geo, range: Range, midi: number): { y: number; h: number } {
+  const h = g.roll.h / (range.hi - range.lo + 1);
+  return { y: g.roll.y + (range.hi - midi) * h, h };
 }
 
 /** The pitch at pixel row `y` of the roll. */
-export function midiAt(g: Geo, data: RollData, y: number): number {
-  const rows = data.hi - data.lo + 1;
-  return data.hi - Math.floor(((y - g.roll.y) / g.roll.h) * rows);
+export function midiAt(g: Geo, range: Range, y: number): number {
+  return range.hi - Math.floor(((y - g.roll.y) / g.roll.h) * (range.hi - range.lo + 1));
 }
 
 /** What a lane's vertical axis shows: the range, where the labels and lines go, and how a value reads. */
@@ -414,10 +450,11 @@ function barAt(g: Geo, x: number, y: number): Bar | undefined {
   const data = roll.peek();
   const tick = tickAt(x);
   const slack = (2 * PPQ) / exprView.peek().ppq;
+  const midi = midiAt(g, pitchRange(data, exprView.peek(), g.w), y);
   let found: Bar | undefined;
   for (const b of data.bars) {
     if (b.t0 > tick + slack) break;
-    if (b.t1 >= tick - slack && b.midi === midiAt(g, data, y)) found = b;
+    if (b.t1 >= tick - slack && b.midi === midi) found = b;
   }
   return found;
 }
@@ -598,10 +635,11 @@ function headsIn(g: Geo, area: 'roll' | 'lane', x0: number, y0: number, x1: numb
   const out = new Map<string, Ref>();
   if (area === 'roll') {
     const data = roll.peek();
+    const range = pitchRange(data, exprView.peek(), g.w);
     for (const b of data.bars) {
       const bx0 = xOf(b.t0);
       if (bx0 > xb) break;
-      const row = rollRow(g, data, b.midi);
+      const row = rollRow(g, range, b.midi);
       if (xOf(b.t1) >= xa && row.y + row.h >= ya && row.y <= yb) out.set(b.key, refOf(b.head));
     }
     return [...out.values()];
@@ -822,6 +860,7 @@ export function nudgeGate(d: number): void {
 
 /** The settings of the velocity ramp and the chord roll. */
 export const rampFrom = signal(40);
+
 export const rampTo = signal(100);
 export const rampShape = signal<RampShape>('linear');
 export const rollSpan = signal(60);

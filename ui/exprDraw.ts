@@ -5,7 +5,7 @@
 
 import { PPQ } from '../src/model.ts';
 import { linearAt, ratioFunction } from '../src/playback/curves.ts';
-import type { Geo, Hover, Lane, MeasureSpan, RollData, Scale, Stem } from './expression.ts';
+import type { Geo, Hover, Lane, MeasureSpan, Range, RollData, Scale, Stem } from './expression.ts';
 import { GUTTER, pitchName, rollRow, xOf, yOfValue } from './expression.ts';
 
 /** The theme colors and text sizes the canvas uses. */
@@ -55,11 +55,33 @@ function mix(a: string, b: string, t: number): string {
   return `rgb(${f(r1, r2)},${f(g1, g2)},${f(b1, b2)})`;
 }
 
+/** The colors of the velocity ramp, from the softest to the loudest: blue, teal, amber, red. Between any two the blend stays clean, and all four read on the light and the dark theme alike. */
+const VELOCITY_RAMP: [number, number, number][] = [
+  [58, 104, 196],
+  [24, 164, 158],
+  [236, 172, 36],
+  [214, 44, 38],
+];
+
+/** The ramp as a CSS gradient, for the legend in the toolbar. */
+export const RAMP_GRADIENT = `linear-gradient(to right, ${VELOCITY_RAMP.map((c) => `rgb(${c.join(',')})`).join(', ')})`;
+
+/** The color of a velocity (1 to 127) on the ramp, with how light it is (0 to 1) for choosing the text color on it. */
+function velocityColor(vel: number): { css: string; light: number } {
+  const t = Math.max(0, Math.min(1, (vel - 1) / 126)) * (VELOCITY_RAMP.length - 1);
+  const i = Math.min(VELOCITY_RAMP.length - 2, Math.floor(t));
+  const f = t - i;
+  const [r, g, b] = VELOCITY_RAMP[i].map((v, k) => Math.round(v + (VELOCITY_RAMP[i + 1][k] - v) * f));
+  return { css: `rgb(${r},${g},${b})`, light: (0.299 * r + 0.587 * g + 0.114 * b) / 255 };
+}
+
 /** Everything a painting shows. */
 export interface Frame {
   g: Geo;
   view: { left: number; ppq: number };
   roll: RollData;
+  /** The pitches of the roll's rows. */
+  range: Range;
   stems: Stem[];
   measures: MeasureSpan[];
   curves: {
@@ -172,39 +194,69 @@ function drawGrid(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, ms: Number
   }
 }
 
-/** The roll: a row line at each C and a bar for each sounding note, brighter for a higher velocity, the selected ones in the accent color. */
+/** Whether a pitch is a black key. */
+const isBlack = (midi: number): boolean => [1, 3, 6, 8, 10].includes(midi % 12);
+
+/**
+ * The roll: a shaded row for each black key and a line under each C, and a bar for each sounding note, colored by its
+ * velocity (blue, orange, red) with the number inside when the bar has room. A selected bar has an accent outline.
+ */
 function drawRoll(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: number, rightTick: number): void {
-  const { g, roll } = f;
+  const { g, roll, range } = f;
   ctx.fillStyle = c.bg;
   ctx.fillRect(GUTTER, g.roll.y, g.w - GUTTER, g.roll.h);
   clipped(ctx, f, g.roll.y, g.roll.h, () => {
-    for (let m = roll.lo; m <= roll.hi; m++) {
+    for (let m = range.lo; m <= range.hi; m++) {
+      const r = rollRow(g, range, m);
+      if (r.h >= 5 && isBlack(m)) {
+        ctx.fillStyle = mix(c.bg, c.muted, 0.1);
+        ctx.fillRect(GUTTER, r.y, g.w - GUTTER, r.h);
+      }
       if (m % 12 !== 0) continue;
-      const r = rollRow(g, roll, m);
-      ctx.fillStyle = mix(c.bg, c.muted, 0.25);
+      ctx.fillStyle = mix(c.bg, c.muted, 0.3);
       ctx.fillRect(GUTTER, Math.round(r.y + r.h), g.w - GUTTER, 1);
     }
   });
   drawGrid(ctx, f, c, visibleMeasures(f, leftTick, rightTick));
   clipped(ctx, f, g.roll.y, g.roll.h, () => {
+    // The numbers are as large as the rows allow, and left out when that would be too small to read.
+    const rowH = g.roll.h / (range.hi - range.lo + 1);
+    const size = Math.min(c.fsXs, Math.floor(rowH - 1.5));
+    ctx.font = `${size}px system-ui, sans-serif`;
+    ctx.textBaseline = 'middle';
     for (let i = lowerBound(roll.maxEnd, leftTick); i < roll.bars.length; i++) {
       const b = roll.bars[i];
       if (b.t0 > rightTick) break;
+      if (b.midi < range.lo || b.midi > range.hi) continue;
       const x0 = xOf(b.t0, f.view);
       const x1 = xOf(b.t1, f.view);
       if (x1 < GUTTER) continue;
-      const r = rollRow(g, roll, b.midi);
-      const sel = f.selected.has(b.key);
-      const level = b.vel / 127;
-      ctx.fillStyle = sel ? mix(c.accentSoft, c.accent, 0.35 + 0.65 * level) : mix(c.bg, c.fg, 0.18 + 0.6 * level);
+      const r = rollRow(g, range, b.midi);
+      const color = velocityColor(b.vel);
       const h = Math.max(2, r.h - 1);
-      ctx.fillRect(x0, r.y, Math.max(2, x1 - x0 - 1), h);
-      if (f.hover?.kind === 'bar' && f.hover.key === b.key) {
+      const w = Math.max(2, x1 - x0 - 1);
+      ctx.fillStyle = color.css;
+      ctx.fillRect(x0, r.y, w, h);
+      if (size >= 7 && w >= 22) {
+        ctx.fillStyle = color.light > 0.6 ? '#1d1d22' : '#ffffff';
+        ctx.textAlign = 'left';
+        ctx.fillText(String(b.vel), x0 + 3, r.y + h / 2 + 0.5);
+      }
+      const sel = f.selected.has(b.key);
+      const hot = f.hover?.kind === 'bar' && f.hover.key === b.key;
+      if (sel || hot) {
         ctx.strokeStyle = c.accent;
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(x0 + 0.5, r.y + 0.5, Math.max(2, x1 - x0 - 1) - 1, h - 1);
+        ctx.lineWidth = sel ? 2 : 1.5;
+        ctx.strokeRect(x0 + 0.5, r.y + 0.5, w - 1, h - 1);
+        if (sel) {
+          ctx.strokeStyle = c.panel;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x0 - 0.5, r.y - 0.5, w + 1, h + 1);
+        }
       }
     }
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = `${c.fsXs}px system-ui, sans-serif`;
   });
 }
 
@@ -235,7 +287,8 @@ function drawStems(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick:
       const sel = f.selected.has(s.info.key);
       const hot = f.hover?.kind === 'stem' && f.hover.key === s.info.key;
       const set = s.info.has[which];
-      const color = sel || hot ? c.accent : set ? c.fg : c.muted;
+      const ramp = lane === 'velocity' ? velocityColor(v).css : undefined;
+      const color = sel || hot ? c.accent : (ramp ?? (set ? c.fg : c.muted));
       ctx.strokeStyle = color;
       ctx.globalAlpha = sel || set ? 1 : 0.55;
       ctx.lineWidth = sel ? 2 : 1;
@@ -346,14 +399,14 @@ function drawLane(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: 
 
 /** The gutter: the pitch of each C in the roll and the marks of the lane's axis, with the lane's name. */
 function drawGutter(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, laneName: string): void {
-  const { g, roll } = f;
+  const { g, range } = f;
   ctx.fillStyle = c.panel;
   ctx.fillRect(0, g.ruler.h, GUTTER, g.h - g.ruler.h);
   ctx.fillStyle = c.line;
   ctx.fillRect(GUTTER - 1, 0, 1, g.h);
-  for (let m = roll.lo; m <= roll.hi; m++) {
+  for (let m = range.lo; m <= range.hi; m++) {
     if (m % 12 !== 0) continue;
-    const r = rollRow(g, roll, m);
+    const r = rollRow(g, range, m);
     text(ctx, pitchName(m), GUTTER - 6, r.y + r.h - 2, c.muted, 'right');
   }
   ctx.save();

@@ -179,6 +179,31 @@ export const showProperties = signal(true);
 /** Whether the Expression pane (under the score) is shown. */
 export const showExpression = signal(false);
 
+/** The default height of the Expression pane in pixels, and the smallest one. */
+export const EXPR_HEIGHT = 400;
+
+export const EXPR_MIN_HEIGHT = 220;
+
+/** The height of the Expression pane, which the person sets by dragging its top edge; kept for the next session when storage allows. */
+export const exprHeight = signal(
+  (() => {
+    try {
+      const n = Number(localStorage.getItem('thomas.exprHeight'));
+      return n >= EXPR_MIN_HEIGHT ? n : EXPR_HEIGHT;
+    } catch {
+      return EXPR_HEIGHT;
+    }
+  })(),
+);
+
+exprHeight.subscribe((h) => {
+  try {
+    localStorage.setItem('thomas.exprHeight', String(Math.round(h)));
+  } catch {
+    /* storage may be unavailable */
+  }
+});
+
 /** The part of the piece the Expression pane shows: the tick at its left edge and the width of a quarter note in pixels. */
 export const exprView = signal({ left: 0, ppq: 56 });
 

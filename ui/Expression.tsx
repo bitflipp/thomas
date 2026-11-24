@@ -11,11 +11,11 @@ import type { RampShape } from '../src/editor/expression.ts';
 import type { DropdownOpt } from './Dropdown.tsx';
 import { Dropdown } from './Dropdown.tsx';
 import type { Frame } from './exprDraw.ts';
-import { paint, readColors } from './exprDraw.ts';
+import { paint, RAMP_GRADIENT, readColors } from './exprDraw.ts';
 import * as E from './expression.ts';
 import { Ui } from './icons.tsx';
 import { playing, playTick } from './player.ts';
-import { exprView, selection } from './state.ts';
+import { EXPR_HEIGHT, EXPR_MIN_HEIGHT, exprHeight, exprView, selection } from './state.ts';
 
 /** The zoom the view starts at, to show the zoom as a percentage of it. */
 const BASE_PPQ = 56;
@@ -122,6 +122,9 @@ function VelocityBar({ none }: { none: boolean }) {
         onChange={E.setVelocity}
       />
       <Steps steps={[-10, -1, 1, 10]} label="Velocity" disabled={none} onStep={E.nudgeVelocity} />
+      <span class="xramp" title="The colors of the notes in the roll: soft (blue) to loud (red), 1 to 127">
+        <i style={{ background: RAMP_GRADIENT }} />
+      </span>
       <span class="sep" />
       <span class="lbl">Ramp</span>
       <Field
@@ -289,10 +292,10 @@ function LaneBar() {
           <button
             type="button"
             disabled={none}
-            title="Take velocity, shift and gate off the selected notes"
+            title="Take velocity, shift and gate all off the selected notes"
             onClick={() => E.resetHeads(true)}
           >
-            Reset all
+            Clear
           </button>
         </>
       )}
@@ -353,6 +356,7 @@ function frameOf(g: E.Geo): Frame {
     g,
     view: exprView.value,
     roll: E.roll.value,
+    range: E.pitchRange(E.roll.value, exprView.value, g.w),
     stems: E.stems.value,
     measures: E.measures.value,
     curves: E.curves.value,
@@ -364,6 +368,52 @@ function frameOf(g: E.Geo): Frame {
     marquee: E.marquee.value,
     playTick: playingNow || tick > 0 ? tick : null,
   };
+}
+
+/** The tallest the pane may be: most of the window, so that the toolbar and a little of the score stay in view. */
+const maxHeight = (): number => Math.max(EXPR_MIN_HEIGHT, window.innerHeight - 220);
+
+/** Sets the pane's height, within its limits. */
+const resizeTo = (h: number): void => {
+  exprHeight.value = Math.max(EXPR_MIN_HEIGHT, Math.min(maxHeight(), Math.round(h)));
+};
+
+/** The handle on the pane's top edge: drag it (or use the arrow keys) to change the height; a double click restores the default. */
+function Grip() {
+  const from = useRef<{ y: number; h: number } | null>(null);
+  return (
+    <hr
+      class="xgrip"
+      aria-orientation="horizontal"
+      aria-label="Resize the Expression pane"
+      aria-valuenow={exprHeight.value}
+      aria-valuemin={EXPR_MIN_HEIGHT}
+      aria-valuemax={maxHeight()}
+      tabIndex={0}
+      title="Drag to resize; double-click for the default height"
+      onPointerDown={(e) => {
+        from.current = { y: e.clientY, h: exprHeight.peek() };
+        e.currentTarget.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      }}
+      onPointerMove={(e) => {
+        if (from.current) resizeTo(from.current.h + from.current.y - e.clientY);
+      }}
+      onPointerUp={() => {
+        from.current = null;
+      }}
+      onPointerCancel={() => {
+        from.current = null;
+      }}
+      onDblClick={() => resizeTo(EXPR_HEIGHT)}
+      onKeyDown={(e) => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        e.stopPropagation();
+        resizeTo(exprHeight.peek() + (e.key === 'ArrowUp' ? 24 : -24));
+      }}
+    />
+  );
 }
 
 /** The Expression pane. */
@@ -442,7 +492,8 @@ export function Expression() {
   };
   const tip = E.tip.value;
   return (
-    <section class="expression" aria-label="Expression">
+    <section class="expression" aria-label="Expression" style={{ height: `${exprHeight.value}px` }}>
+      <Grip />
       <Head width={size.w} />
       <LaneBar />
       <div class="xcanvas" ref={wrap}>
