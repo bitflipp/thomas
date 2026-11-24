@@ -134,17 +134,30 @@ export function locate(cx: number, cy: number): Where | undefined {
   return { page: best, x: ((cx - r.left) / r.width) * p.width, y: ((cy - r.top) / r.height) * p.height };
 }
 
-/** Scrolls the score pane so that the object `ref` is in view, a third of the way down (nothing happens when it is not drawn). */
-export function reveal(ref: Ref): void {
+/** Where the object `ref` is drawn in the score pane's scroll box: the box, and the top and bottom of the object relative to the box's top. Undefined when it is not drawn. */
+function placeInView(ref: Ref): { box: Element; y0: number; y1: number } | undefined {
   const key = refKey(ref);
   const res = engraved.peek();
   const t = hit.peek()?.targets.find((x) => refKey(x.ref) === key);
   const pg = t && pageEls[t.page];
   const box = pg?.closest('.scroll');
-  if (!(t && res && pg && box)) return;
+  if (!(t && res && pg && box)) return undefined;
   const k = pg.clientWidth / res.pages[t.page].width;
-  const y = pg.getBoundingClientRect().top - box.getBoundingClientRect().top + t.bbox.y0 * k;
-  box.scrollTo({ top: Math.max(0, box.scrollTop + y - box.clientHeight / 3), behavior: 'instant' });
+  const top = pg.getBoundingClientRect().top - box.getBoundingClientRect().top;
+  return { box, y0: top + t.bbox.y0 * k, y1: top + t.bbox.y1 * k };
+}
+
+/** Scrolls the score pane so that the object `ref` is in view, a third of the way down (nothing happens when it is not drawn). */
+export function reveal(ref: Ref): void {
+  const at = placeInView(ref);
+  if (at)
+    at.box.scrollTo({ top: Math.max(0, at.box.scrollTop + at.y0 - at.box.clientHeight / 3), behavior: 'instant' });
+}
+
+/** Like `reveal`, but leaves the score where it is when the object is in view already. */
+export function revealIfHidden(ref: Ref): void {
+  const at = placeInView(ref);
+  if (at && !(at.y0 >= 0 && at.y1 <= at.box.clientHeight)) reveal(ref);
 }
 
 /** Scrolls the score pane so that measure `mi` is in view (its system a third of the way down), at once. */

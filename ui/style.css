@@ -916,7 +916,7 @@ button.dd {
 }
 .expression .tabs button {
   flex: none;
-  padding: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2);
 }
 .expression .grow {
   flex: 1;
@@ -927,14 +927,14 @@ button.dd {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--sp-2);
-  padding: var(--sp-1) var(--sp-2);
+  padding: var(--sp-2);
   border-bottom: 1px solid var(--line);
 }
 .expression .xbar .sep {
   width: 1px;
   align-self: stretch;
   background: var(--line);
-  margin: 0 var(--sp-1);
+  margin: 0;
 }
 .expression .xbar .lbl,
 .expression .xf > span {

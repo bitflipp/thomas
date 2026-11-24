@@ -14,6 +14,7 @@ import type { Frame } from './exprDraw.ts';
 import { paint, RAMP_GRADIENT, readColors } from './exprDraw.ts';
 import * as E from './expression.ts';
 import { Ui } from './icons.tsx';
+import { revealIfHidden } from './interact.ts';
 import { playing, playTick } from './player.ts';
 import { EXPR_HEIGHT, EXPR_MIN_HEIGHT, exprHeight, exprView, selection } from './state.ts';
 
@@ -479,9 +480,13 @@ export function Expression() {
       effect(() => {
         void selection.value;
         const spot = E.selectionSpot();
-        if (inside.current || !spot) return;
-        E.reveal(spot.tick, size.w);
-        E.revealPitch(g, spot.midi);
+        if (!spot) return;
+        // A selection made here brings the score to the notes, one made in the score brings this view to them; both at once, without easing, and only when the notes are out of sight.
+        if (inside.current) revealIfHidden(spot.ref);
+        else {
+          E.reveal(spot.tick, size.w);
+          E.revealPitch(g, spot.midi);
+        }
       }),
     [size.w, g],
   );
@@ -556,8 +561,8 @@ export function Expression() {
             class="xtip"
             style={
               tip.x > size.w / 2
-                ? { right: `${size.w - tip.x + 12}px`, top: `${tip.y + 14}px` }
-                : { left: `${tip.x + 12}px`, top: `${tip.y + 14}px` }
+                ? { right: `${size.w - tip.x + E.SP2}px`, top: `${tip.y + E.SP2}px` }
+                : { left: `${tip.x + E.SP2}px`, top: `${tip.y + E.SP2}px` }
             }
           >
             {tip.text}

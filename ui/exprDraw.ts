@@ -6,7 +6,22 @@
 import { PPQ } from '../src/model.ts';
 import { linearAt, ratioFunction } from '../src/playback/curves.ts';
 import type { Geo, Hover, Lane, MeasureSpan, RollData, Scale, Stem } from './expression.ts';
-import { GUTTER, pitchName, ROW_H, rollRow, visiblePitches, xOf, yOfValue } from './expression.ts';
+
+import {
+  BOX_GAP,
+  GUTTER,
+  LABEL_FONT,
+  LABEL_PAD,
+  LANE_PAD,
+  pitchName,
+  ROW_H,
+  rollRow,
+  SP1,
+  SP2,
+  visiblePitches,
+  xOf,
+  yOfValue,
+} from './expression.ts';
 
 /** The theme colors and text sizes the canvas uses. */
 export interface Colors {
@@ -122,6 +137,18 @@ function text(
   ctx.fillText(s, x, y);
 }
 
+/** Draws a text with its glyphs (digits and capitals, which have no descenders) centered on height `cy`, whatever the font. */
+function centeredText(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  x: number,
+  cy: number,
+  color: string,
+  align: CanvasTextAlign = 'left',
+): void {
+  text(ctx, s, x, cy + ctx.measureText('8').actualBoundingBoxAscent / 2, color, align);
+}
+
 /** Runs `fn` with drawing clipped to a rectangle of the canvas right of the gutter. */
 function clipped(ctx: CanvasRenderingContext2D, f: Frame, y: number, h: number, fn: () => void): void {
   ctx.save();
@@ -157,9 +184,9 @@ function drawRuler(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, ms: Numbe
     for (const m of ms) {
       const x = xOf(m.start, f.view);
       ctx.fillStyle = c.muted;
-      ctx.fillRect(Math.round(x), 4, 1, g.ruler.h - 5);
+      ctx.fillRect(Math.round(x), SP1, 1, g.ruler.h - SP1 - 1);
       if (x - lastLabel >= 34) {
-        text(ctx, String(m.mi + 1), x + 3, g.ruler.h - 8, c.muted);
+        centeredText(ctx, String(m.mi + 1), x + SP1, g.ruler.h / 2, c.muted);
         lastLabel = x;
       }
       const beatPx = (m.beat * f.view.ppq) / PPQ;
@@ -218,10 +245,9 @@ function drawRoll(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: 
   });
   drawGrid(ctx, f, c, visibleMeasures(f, leftTick, rightTick));
   clipped(ctx, f, g.roll.y, g.roll.h, () => {
-    // The numbers are as large as the rows allow.
-    const size = Math.min(c.fsXs, Math.floor(ROW_H - 1.5));
-    ctx.font = `${size}px system-ui, sans-serif`;
-    ctx.textBaseline = 'middle';
+    // The numbers have the same padding on every side of the box: left of them, and above and below their digits.
+    ctx.font = `${LABEL_FONT}px system-ui, sans-serif`;
+    const digits = ctx.measureText('8').width;
     for (let i = lowerBound(roll.maxEnd, leftTick); i < roll.bars.length; i++) {
       const b = roll.bars[i];
       if (b.t0 > rightTick) break;
@@ -231,15 +257,13 @@ function drawRoll(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: 
       if (x1 < GUTTER) continue;
       const y = rollRow(g, roll, f.view.top, b.midi);
       const color = velocityColor(b.vel);
-      const h = ROW_H - 1;
+      const h = ROW_H - BOX_GAP;
       const w = Math.max(2, x1 - x0 - 1);
       ctx.fillStyle = color.css;
       ctx.fillRect(x0, y, w, h);
-      if (size >= 7 && w >= 22) {
-        ctx.fillStyle = color.light > 0.6 ? '#1d1d22' : '#ffffff';
-        ctx.textAlign = 'left';
-        ctx.fillText(String(b.vel), x0 + 3, y + h / 2 + 0.5);
-      }
+      const label = String(b.vel);
+      if (w >= label.length * digits + 2 * LABEL_PAD)
+        centeredText(ctx, label, x0 + LABEL_PAD, y + h / 2, color.light > 0.6 ? '#1d1d22' : '#ffffff');
       const sel = f.selected.has(b.key);
       const hot = f.hover?.kind === 'bar' && f.hover.key === b.key;
       if (sel || hot) {
@@ -253,7 +277,6 @@ function drawRoll(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, leftTick: 
         }
       }
     }
-    ctx.textBaseline = 'alphabetic';
     ctx.font = `${c.fsXs}px system-ui, sans-serif`;
   });
 }
@@ -370,8 +393,8 @@ function drawSoft(ctx: CanvasRenderingContext2D, f: Frame, c: Colors): void {
       const x1 = xOf(r.to, f.view);
       const sel = f.pointSel?.lane === 'soft' && f.pointSel.index === i;
       const hot = f.hover?.kind === 'region' && f.hover.index === i;
-      const y = g.lane.y + 8;
-      const h = g.lane.h - 16;
+      const y = g.lane.y + LANE_PAD;
+      const h = g.lane.h - 2 * LANE_PAD;
       ctx.fillStyle = sel ? c.accent : c.accentSoft;
       ctx.globalAlpha = sel ? 0.55 : 1;
       ctx.fillRect(x0, y, Math.max(2, x1 - x0), h);
@@ -409,15 +432,23 @@ function drawGutter(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, laneName
   const range = visiblePitches(g, roll, f.view.top);
   for (let m = range.lo; m <= range.hi; m++) {
     if (m % 12 !== 0) continue;
-    text(ctx, pitchName(m), GUTTER - 6, rollRow(g, roll, f.view.top, m) + ROW_H - 2, c.muted, 'right');
+    centeredText(
+      ctx,
+      pitchName(m),
+      GUTTER - SP2,
+      rollRow(g, roll, f.view.top, m) + (ROW_H - BOX_GAP) / 2,
+      c.muted,
+      'right',
+    );
   }
   ctx.restore();
   ctx.save();
-  ctx.translate(c.fsXs + 2, g.lane.y + g.lane.h / 2);
+  ctx.translate(SP2, g.lane.y + g.lane.h / 2);
   ctx.rotate(-Math.PI / 2);
-  text(ctx, laneName.toUpperCase(), 0, 0, c.muted, 'center');
+  centeredText(ctx, laneName.toUpperCase(), 0, 0, c.muted, 'center');
   ctx.restore();
-  for (const v of f.scale.marks) text(ctx, f.scale.fmt(v), GUTTER - 6, yOfValue(g, f.scale, v) + 4, c.muted, 'right');
+  for (const v of f.scale.marks)
+    centeredText(ctx, f.scale.fmt(v), GUTTER - SP2, yOfValue(g, f.scale, v), c.muted, 'right');
 }
 
 /** Paints the whole canvas for `f`. `laneName` is the label of the open lane. */

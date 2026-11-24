@@ -168,11 +168,16 @@ export const GUTTER = 64;
 export const RULER_H = 22;
 export const LANE_H = 96;
 
+/** The spacing scale of the stylesheet (`--sp-1`, `--sp-2`) in pixels: the canvas uses the same margins and paddings as the controls around it. */
+export const SP1 = 6;
+
+export const SP2 = 10;
+
 /** The room between the parts of the canvas. */
-const GAP = 6;
+const GAP = SP2;
 
 /** The inner margin of the lane, so that the extreme values are not on its edge. */
-const LANE_PAD = 8;
+export const LANE_PAD = SP2;
 
 export interface Geo {
   w: number;
@@ -201,7 +206,15 @@ export const tickAt = (x: number): number => exprView.peek().left + ((x - GUTTER
 export const xOf = (tick: number, v = exprView.value): number => GUTTER + ((tick - v.left) * v.ppq) / PPQ;
 
 /** The height of a pitch row in pixels. It is fixed, as on a piano roll: zooming changes only the width of the notes. */
-export const ROW_H = 12;
+export const ROW_H = 16;
+
+/** The gap between the boxes of adjacent rows. */
+export const BOX_GAP = 1;
+
+/** The size of the velocity numbers in the note boxes, and the padding around them, which is the same on every side (the box is as high as the number and twice the padding). */
+export const LABEL_FONT = 10;
+
+export const LABEL_PAD = 4;
 
 /** The scroll of the roll (pixels from its highest pitch) held within what there is to see. */
 export const clampTop = (g: Geo, data: RollData, top: number): number =>
@@ -386,10 +399,10 @@ export function reveal(tick: number, w: number): void {
 }
 
 /** The first selected head's tick and pitch, if any (for bringing it into view). */
-export function selectionSpot(): { tick: number; midi: number } | undefined {
+export function selectionSpot(): { tick: number; midi: number; ref: Ref } | undefined {
   const keys = selected.peek();
   const first = infos.peek().find((i) => keys.has(i.key));
-  return first && { tick: first.note.start, midi: first.midi };
+  return first && { tick: first.note.start, midi: first.midi, ref: refOf(first.head) };
 }
 
 // Pointer handling. A press starts a gesture (`drag`), moves update it and the release finishes it. Gestures that change
