@@ -23,12 +23,12 @@ export interface HeadRef extends EvAddr {
 export const headKey = (h: HeadAt | HeadRef): string => `${h.mi}/${h.staff}/${h.voice}/${h.idx}/${h.pi}`;
 
 /** The limits of the expression values. */
-export const VEL_MIN = 1;
+const VEL_MIN = 1;
 
-export const VEL_MAX = 127;
-export const SHIFT_MAX = 2000;
-export const GATE_MIN = 0.05;
-export const GATE_MAX = 4;
+const VEL_MAX = 127;
+const SHIFT_MAX = 2000;
+const GATE_MIN = 0.05;
+const GATE_MAX = 4;
 
 /** What a head sounds like now, with whether each value is set on the head or follows from the notation. */
 export interface HeadInfo {
@@ -129,13 +129,13 @@ function infosOf(score: Score, heads: readonly HeadRef[], seq?: Sequence): HeadI
 }
 
 /** Rounds a velocity to the whole numbers MIDI has and keeps it audible. */
-export const clampVel = (v: number): number => Math.max(VEL_MIN, Math.min(VEL_MAX, Math.round(v)));
+const clampVel = (v: number): number => Math.max(VEL_MIN, Math.min(VEL_MAX, Math.round(v)));
 
 /** Rounds a shift to a tenth of a millisecond and keeps it within the limits. */
-export const clampShift = (v: number): number => Math.max(-SHIFT_MAX, Math.min(SHIFT_MAX, Math.round(v * 10) / 10));
+const clampShift = (v: number): number => Math.max(-SHIFT_MAX, Math.min(SHIFT_MAX, Math.round(v * 10) / 10));
 
 /** Rounds a gate to hundredths and keeps it within the limits. */
-export const clampGate = (v: number): number => Math.max(GATE_MIN, Math.min(GATE_MAX, Math.round(v * 100) / 100));
+const clampGate = (v: number): number => Math.max(GATE_MIN, Math.min(GATE_MAX, Math.round(v * 100) / 100));
 
 /** The note event at the address in the draft. */
 function noteIn(d: Draft<Score>, a: EvAddr): Draft<Event> & { kind: 'note' } {

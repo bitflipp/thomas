@@ -165,8 +165,8 @@ export const total = computed(() => seq.value.totalTicks);
 // heights. The canvas is the ruler on top, the roll, then one lane with the values; the labels sit in a gutter on the left.
 
 export const GUTTER = 64;
-export const RULER_H = 22;
-export const LANE_H = 96;
+const RULER_H = 22;
+const LANE_H = 96;
 
 /** The spacing scale of the stylesheet (`--sp-1`, `--sp-2`) in pixels: the canvas uses the same margins and paddings as the controls around it. */
 export const SP1 = 6;
@@ -200,7 +200,7 @@ export function geo(w: number, h: number): Geo {
 }
 
 /** The tick at pixel `x`. */
-export const tickAt = (x: number): number => exprView.peek().left + ((x - GUTTER) * PPQ) / exprView.peek().ppq;
+const tickAt = (x: number): number => exprView.peek().left + ((x - GUTTER) * PPQ) / exprView.peek().ppq;
 
 /** The pixel of a tick under the view `v`. */
 export const xOf = (tick: number, v = exprView.value): number => GUTTER + ((tick - v.left) * v.ppq) / PPQ;
@@ -217,7 +217,7 @@ export const LABEL_FONT = 10;
 export const LABEL_PAD = 4;
 
 /** The scroll of the roll (pixels from its highest pitch) held within what there is to see. */
-export const clampTop = (g: Geo, data: RollData, top: number): number =>
+const clampTop = (g: Geo, data: RollData, top: number): number =>
   Math.max(0, Math.min((data.hi - data.lo + 1) * ROW_H - g.roll.h, top));
 
 /** The pixel row of the top of the roll row of pitch `midi`, with the roll scrolled by `top`; the rows are `ROW_H` high. */
@@ -225,7 +225,7 @@ export const rollRow = (g: Geo, data: RollData, top: number, midi: number): numb
   g.roll.y + (data.hi - midi) * ROW_H - top;
 
 /** The pitch at pixel row `y` of the roll. */
-export const midiAt = (g: Geo, data: RollData, top: number, y: number): number =>
+const midiAt = (g: Geo, data: RollData, top: number, y: number): number =>
   data.hi - Math.floor((y - g.roll.y + top) / ROW_H);
 
 /** The lowest and highest pitch that have a row in view. */
@@ -266,7 +266,7 @@ export interface Scale {
 const SHIFT_RANGES = [50, 100, 200, 500, 1000, 2000];
 
 /** The scale of a lane. The shift lane widens to hold the largest shift of `heads`. */
-export function scaleOf(l: Lane, heads: HeadInfo[]): Scale {
+function scaleOf(l: Lane, heads: HeadInfo[]): Scale {
   switch (l) {
     case 'velocity':
       return { min: 0, max: 127, marks: [0, 32, 64, 96, 127], base: 0, fmt: (v) => String(Math.round(v)) };
@@ -293,7 +293,7 @@ export function scaleOf(l: Lane, heads: HeadInfo[]): Scale {
 }
 
 /** The scale kept while a drag is under way, so that the axis does not move under the pointer. */
-export const frozenScale = signal<Scale | null>(null);
+const frozenScale = signal<Scale | null>(null);
 
 /** The scale of the open lane. */
 export const laneScale = (): Scale => frozenScale.value ?? scaleOf(lane.value, infos.value);
@@ -303,7 +303,7 @@ export const yOfValue = (g: Geo, s: Scale, value: number): number =>
   g.lane.y + g.lane.h - LANE_PAD - ((value - s.min) / (s.max - s.min)) * (g.lane.h - 2 * LANE_PAD);
 
 /** The value at pixel row `y` of the lane. */
-export const valueAt = (g: Geo, s: Scale, y: number): number =>
+const valueAt = (g: Geo, s: Scale, y: number): number =>
   s.min + ((g.lane.y + g.lane.h - LANE_PAD - y) / (g.lane.h - 2 * LANE_PAD)) * (s.max - s.min);
 
 // What is under the pointer, and the text that goes with it.
@@ -910,7 +910,7 @@ export function resetHeads(all = false): void {
 }
 
 /** Removes the selected curve point or region. */
-export function removePoint(): boolean {
+function removePoint(): boolean {
   const p = pointSel.peek();
   if (!p) return false;
   pointSel.value = null;

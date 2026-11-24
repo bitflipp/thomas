@@ -21,12 +21,12 @@ const NO_BRACE_ROOM = 0.8;
 const LABEL_GAP = 0.7;
 
 /** The font size of a label in staff spaces when the page does not say. */
-export const DEFAULT_LABEL_SIZE = 2;
+const DEFAULT_LABEL_SIZE = 2;
 
 type LabelMode = NonNullable<PageSetup['labelsFirst']>;
 
 /** The text a staff shows in `mode` (undefined: nothing). */
-export function labelText(s: StaffDef, mode: LabelMode | undefined): string | undefined {
+function labelText(s: StaffDef, mode: LabelMode | undefined): string | undefined {
   const t = mode === 'full' ? s.name : mode === 'abbr' ? s.abbr : undefined;
   return t || undefined;
 }

@@ -150,7 +150,7 @@ function fermataSpans(score: Score, measureStart: number[]): [number, number, nu
  * absolute ticks) divides the seconds per tick by its spline; the time within a segment is then integrated
  * numerically, and the inverse is found by bisection.
  */
-export function tempoMap(
+function tempoMap(
   score: Score,
   measureStart: number[],
   curve: CurvePt[] = [],

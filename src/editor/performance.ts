@@ -15,18 +15,15 @@ import { EditError } from './voice.ts';
 export type CurveName = 'tempo' | 'sustain';
 
 /** The range of the values of each curve (the model's own limits). */
-export const CURVE_RANGE: Record<CurveName, [number, number]> = { tempo: [0.1, 10], sustain: [0, 1] };
-
-/** The value of a curve where it has no points. */
-export const CURVE_REST: Record<CurveName, number> = { tempo: 1, sustain: 0 };
+const CURVE_RANGE: Record<CurveName, [number, number]> = { tempo: [0.1, 10], sustain: [0, 1] };
 
 /** The absolute tick of a position of the score. */
-export function absTick(starts: number[], total: number, pos: Pos): number {
+function absTick(starts: number[], total: number, pos: Pos): number {
   return pos.mi < starts.length ? starts[pos.mi] + pos.tick : total;
 }
 
 /** The position of an absolute tick: its measure and the tick within it (the end of the last measure for a tick past the piece). */
-export function posAt(score: Score, starts: number[], total: number, abs: number): Pos {
+function posAt(score: Score, starts: number[], total: number, abs: number): Pos {
   const tick = Math.max(0, Math.min(total, Math.round(abs)));
   let lo = 0;
   let hi = starts.length - 1;

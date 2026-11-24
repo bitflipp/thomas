@@ -173,26 +173,24 @@ function placeOf(score: Score, measureStart: number[], total: number, abs: numbe
   return `m. ${p.mi + 1} beat ${Math.round((p.tick / PPQ + 1) * 100) / 100}`;
 }
 
-/**
- * Takes the rendition of a Pianizer project over into (a copy of) `score`, replacing any expression and performance the
- * score had. Throws when the project is not one.
- */
-export function importRendition(
-  score: Score,
-  project: PianizerProject,
-  opts: RenditionOptions = {},
-): { score: Score; report: RenditionReport } {
-  if (!project || typeof project.version !== 'number' || !Array.isArray(project.notes))
-    throw new Error('not a Pianizer project (version and notes expected)');
-  const tpb = project.ticksPerBeat > 0 ? project.ticksPerBeat : 480;
-  const scale = PPQ / tpb;
-  const tol = (opts.tolerance ?? 0.5) * PPQ;
-  const out = structuredClone(score);
-  stripExpression(out);
-  const { measureStart, total } = measureStarts(out);
-  const at = (tick: number) => posOf(out, measureStart, total, tick * scale);
+/** The note of the project that a head of the score was matched to. */
+interface Match {
+  /** The first sounding note of the head. */
+  note: Note;
+  /** The note of the project it was matched to. */
+  theirs: PianizerProject['notes'][number];
+  /** All notes of the project matched to the notes of the head (a tremolo has many). */
+  all: PianizerProject['notes'];
+  /** Set when the head is a unison twin that only copies the note of another head. */
+  twin?: true;
+}
 
-  // The curves come first: the times of the notes below are those of the score played with them.
+/** Where the curves of the project end up in the score: the three curves with their point and region counts. */
+function importCurves(
+  out: Score,
+  project: PianizerProject,
+  at: (tick: number) => Pos,
+): { tempo: CurvePoint[]; sustain: CurvePoint[]; soft: SoftRegion[] } {
   const perf: NonNullable<Score['performance']> = {};
   const tempo = curveOf(project.tempoPoints ?? [], at, 0.1, 10);
   if (tempo.length) perf.tempo = tempo;
@@ -209,27 +207,22 @@ export function importRendition(
   if (soft.length) perf.soft = soft;
   if (Object.keys(perf).length) out.performance = perf;
   else delete out.performance;
+  return { tempo, sustain, soft };
+}
 
-  const seq = buildSequence(out);
-  const heard = project.notes.filter((n) => !n.muted);
-  const report: RenditionReport = {
-    notes: heard.length,
-    matched: 0,
-    unmatchedNotes: [],
-    unmatchedCount: 0,
-    headsWithoutNote: 0,
-    heads: 0,
-    headsCopied: 0,
-    muted: project.notes.length - heard.length,
-    velocities: 0,
-    shifts: 0,
-    gates: 0,
-    tempoPoints: tempo.length,
-    sustainPoints: sustain.length,
-    softRegions: soft.length,
-  };
-
-  // Match the notes of the project to the notes of the score, one pitch at a time.
+/**
+ * Matches the notes of the project to the sounding notes of the score that have a head, one pitch at a time, and counts
+ * what was matched in `report`. Returns the match of each head by `headKey`.
+ */
+function matchHeads(
+  out: Score,
+  seq: ReturnType<typeof buildSequence>,
+  heard: PianizerProject['notes'],
+  scale: number,
+  tol: number,
+  report: RenditionReport,
+): Map<string, Match> {
+  const { measureStart, total } = measureStarts(out);
   const byPitch = new Map<number, { mine: Note[]; theirs: PianizerProject['notes'] }>();
   const entry = (pitch: number) => {
     const e = byPitch.get(pitch) ?? { mine: [], theirs: [] };
@@ -238,12 +231,7 @@ export function importRendition(
   };
   for (const n of seq.notes) if (n.head) entry(n.midi).mine.push(n);
   for (const n of heard) entry(n.pitch).theirs.push(n);
-  // For each head: its first sounding note with the note of the project it was matched to, and all notes of the project
-  // matched to its notes (a tremolo has many).
-  const matches = new Map<
-    string,
-    { note: Note; theirs: PianizerProject['notes'][number]; all: PianizerProject['notes']; twin?: true }
-  >();
+  const matches = new Map<string, Match>();
   const headsSeen = new Set<string>();
   for (const [pitch, e] of byPitch) {
     e.mine.sort((a, b) => a.start - b.start || a.end - b.end);
@@ -314,8 +302,17 @@ export function importRendition(
   for (const n of seq.notes) if (n.head) headsSeen.add(headKey(n.head));
   report.heads = headsSeen.size;
   report.headsWithoutNote = headsSeen.size - matches.size;
+  return matches;
+}
 
-  // The differences become the expression of the heads.
+/** Writes the differences between each matched pair of notes into the heads of `out` as `vel`, `shift` and `gate`. */
+function applyDifferences(
+  out: Score,
+  seq: ReturnType<typeof buildSequence>,
+  matches: Map<string, Match>,
+  scale: number,
+  report: RenditionReport,
+): void {
   const events = new Map<string, Event[]>();
   const headOf = (h: HeadAt) => {
     const k = `${h.mi}/${h.staff}/${h.voice}`;
@@ -351,6 +348,49 @@ export function importRendition(
       }
     }
   }
+}
+
+/**
+ * Takes the rendition of a Pianizer project over into (a copy of) `score`, replacing any expression and performance the
+ * score had. Throws when the project is not one.
+ */
+export function importRendition(
+  score: Score,
+  project: PianizerProject,
+  opts: RenditionOptions = {},
+): { score: Score; report: RenditionReport } {
+  if (!project || typeof project.version !== 'number' || !Array.isArray(project.notes))
+    throw new Error('not a Pianizer project (version and notes expected)');
+  const tpb = project.ticksPerBeat > 0 ? project.ticksPerBeat : 480;
+  const scale = PPQ / tpb;
+  const tol = (opts.tolerance ?? 0.5) * PPQ;
+  const out = structuredClone(score);
+  stripExpression(out);
+  const { measureStart, total } = measureStarts(out);
+  const at = (tick: number) => posOf(out, measureStart, total, tick * scale);
+
+  // The curves come first: the times of the notes below are those of the score played with them.
+  const { tempo, sustain, soft } = importCurves(out, project, at);
+  const seq = buildSequence(out);
+  const heard = project.notes.filter((n) => !n.muted);
+  const report: RenditionReport = {
+    notes: heard.length,
+    matched: 0,
+    unmatchedNotes: [],
+    unmatchedCount: 0,
+    headsWithoutNote: 0,
+    heads: 0,
+    headsCopied: 0,
+    muted: project.notes.length - heard.length,
+    velocities: 0,
+    shifts: 0,
+    gates: 0,
+    tempoPoints: tempo.length,
+    sustainPoints: sustain.length,
+    softRegions: soft.length,
+  };
+  const matches = matchHeads(out, seq, heard, scale, tol, report);
+  applyDifferences(out, seq, matches, scale, report);
   const problems = validate(out);
   if (problems.length) throw new Error(`the rendition does not fit the score: ${problems.slice(0, 3).join('; ')}`);
   return { score: out, report };

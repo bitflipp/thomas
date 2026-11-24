@@ -35,7 +35,7 @@ function edgeTangent(h0: number, h1: number, d0: number, d1: number): number {
  * and equal-valued runs get a zero slope, so flat parts stay flat and the spline never leaves the range of
  * its points.
  */
-export function monotoneTangents(pts: CurvePt[]): number[] {
+function monotoneTangents(pts: CurvePt[]): number[] {
   const n = pts.length;
   if (n < 2) return n ? [0] : [];
   const h: number[] = [];

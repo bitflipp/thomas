@@ -269,7 +269,7 @@ export function wheelFinding(delta: number, now: number): boolean {
 }
 
 /** Steps the hovered outline to the next (`dir` > 0) or previous one under the pointer; false when there is no choice. */
-export function cycleFinding(dir: number): boolean {
+function cycleFinding(dir: number): boolean {
   if (under.length < 2) return false;
   cycle = (cycle + (dir > 0 ? 1 : -1) + under.length) % under.length;
   chooseHover();
