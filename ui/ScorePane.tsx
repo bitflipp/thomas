@@ -28,6 +28,7 @@ import {
   onPointerMove,
   onPointerUp,
   pageEls,
+  reveal,
   takeZoomAnchor,
   zoomBy,
 } from './interact.ts';
@@ -43,6 +44,7 @@ import {
   printing,
   score,
   selection,
+  showExpression,
   shownZoom,
   tool,
   VOICE_COLORS,
@@ -424,6 +426,13 @@ export function ScorePane() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  // Coming back from the Expression pane, the score is scrolled so that the selection is in the middle.
+  const expressionOpen = showExpression.value;
+  useLayoutEffect(() => {
+    if (expressionOpen) return;
+    const first = selection.peek()[0];
+    if (first) reveal(first, true);
+  }, [expressionOpen]);
   useEffect(() => {
     // Panning: dragging with the right button scrolls the pane.
     const el = must(box.current);
