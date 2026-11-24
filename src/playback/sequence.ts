@@ -28,7 +28,7 @@ import { baseTicks, flattenVoice, keyAt, marksOf, measureTicks, PPQ, pitchMidi, 
 import type { CurvePt } from './curves.ts';
 import { rampEvents, ratioFunction, simpson } from './curves.ts';
 
-export interface Msg {
+interface Msg {
   sec: number;
   bytes: number[];
 }

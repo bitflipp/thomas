@@ -25,7 +25,7 @@ import { commit, exprView, run, say, score, selection } from './state.ts';
 // of the notes (velocity, shift, gate) are seen in the roll itself and set with tools (tool windows) on the selection.
 
 /** Every curve lane of the pane. */
-export type Lane = 'tempo' | 'sustain' | 'soft';
+type Lane = 'tempo' | 'sustain' | 'soft';
 
 /** The curve lanes under the roll, top to bottom. */
 export const CURVE_LANES: { id: Lane; label: string; title: string }[] = [
@@ -161,7 +161,7 @@ const LANE_GAP = SP1;
 const GAP = SP2;
 
 /** The inner margin of the lane, so that the extreme values are not on its edge. */
-export const LANE_PAD = SP2;
+const LANE_PAD = SP2;
 
 /** A band of the canvas: its top row and height. */
 export interface Rect {
@@ -830,10 +830,19 @@ function onHeads(fn: (s: Score, heads: HeadRef[]) => Score): void {
   run((s) => fn(s, heads));
 }
 
+/** Set (or, with null, clear) the velocity of the selected notes. */
 export const setVelocity = (v: number | null): void => onHeads((s, h) => X.setVelocity(s, h, v));
+
+/** Set (or, with null, clear) the shift in milliseconds of the selected notes. */
 export const setShift = (ms: number | null): void => onHeads((s, h) => X.setShift(s, h, ms));
+
+/** Set (or, with null, clear) the gate factor of the selected notes. */
 export const setGate = (g: number | null): void => onHeads((s, h) => X.setGate(s, h, g));
+
+/** Raise or lower the velocity of the selected notes by a delta. */
 export const nudgeVelocity = (d: number): void => onHeads((s, h) => X.nudgeVelocity(s, h, d));
+
+/** Move the attack of the selected notes by a delta in milliseconds. */
 export const nudgeShift = (d: number): void => onHeads((s, h) => X.nudgeShift(s, h, d));
 
 /** Nudges the gate of the selected heads by `d`. */

@@ -1,9 +1,8 @@
-// The Expression pane under the score: how the piece is played, as opposed to how it is written. A roll shows every sounding
-// note where it is heard (shifted attacks included) with its velocity as brightness; below it one lane at a time holds the
-// velocity, shift or gate of each note (a stem to drag) or one of the performance curves (tempo, sustain, una corda: points
-// and regions to draw). The notes are selected here and in the score alike, and the toolbar acts on that selection. All
-// expression editing is done here; the state, the pointer handling and the actions are in expression.ts, the drawing of the
-// canvas in exprDraw.ts.
+// The Expression view: how the piece is played, as opposed to how it is written. It takes the place of the score (Ctrl Space)
+// and shows a roll with every sounding note where it is heard (shifted attacks included) and its velocity as the color of the
+// bar, with the three performance curves (tempo, sustain, una corda) stacked under it in lanes that are always in view. The
+// notes are selected here and in the score alike, and the toolbar acts on that selection. All expression editing is done
+// here; the state, the pointer handling and the actions are in expression.ts, the drawing of the canvas in exprDraw.ts.
 
 import { effect } from '@preact/signals';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';

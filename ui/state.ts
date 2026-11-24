@@ -176,10 +176,9 @@ export const fit = signal(true); // When set, the pages are fitted to the pane w
 export const showText = signal(false);
 export const showProperties = signal(true);
 
-/** Whether the Expression pane (under the score) is shown. */
+/** Whether the Expression view is shown in place of the score. */
 export const showExpression = signal(false);
 
-/** The default height of the Expression pane in pixels, and the smallest one. */
 /**
  * The part of the piece the Expression pane shows: the tick at its left edge, the width of a quarter note in pixels (the
  * zoom, which changes only the width of the notes) and how far the roll is scrolled down from its highest pitch in pixels

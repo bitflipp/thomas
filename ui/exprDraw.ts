@@ -32,7 +32,7 @@ import {
 } from './expression.ts';
 
 /** The theme colors and text sizes the canvas uses. */
-export interface Colors {
+interface Colors {
   bg: string;
   panel: string;
   line: string;
