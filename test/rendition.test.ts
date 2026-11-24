@@ -155,6 +155,40 @@ test('repeated notes are matched in order', () => {
   assert.deepEqual(vels, [20, 21, 22, 23, 24, 25, 26, 27]);
 });
 
+test('a unison of two voices is one note in the project: the head with the same end gets it, the other one sounds alike', () => {
+  const text = `# music typesetter score\npage 210x297 margin=10 space=1.75\nstaff rh clef=G2\n\nm1 time=4/4 key=0\n  rh.1: c4:2 d4:2\n  rh.2: c4:4 r:4 d4:2\n`;
+  const project = plainProject(text);
+  const unison = project.notes.filter((n) => n.pitch === 60);
+  assert.equal(unison.length, 2);
+  project.notes = project.notes.filter((n) => n !== unison[1]); // The shorter one is dropped, as Pianizer does.
+  const long = project.notes.find((n) => n.pitch === 60 && n.endTick - n.startTick === TPB * 2);
+  assert.ok(long);
+  long.velocity = 55;
+  const { score, report } = importRendition(parseText(text), project);
+  const [v1, v2] = parseText(writeText(score)).measures[0].staves.rh.voices;
+  assert.equal(v1.items[0].kind === 'note' && v1.items[0].pitches[0].vel, 55);
+  assert.equal(v2.items[0].kind === 'note' && v2.items[0].pitches[0].vel, 55);
+  assert.equal(v2.items[0].kind === 'note' && v2.items[0].pitches[0].gate, 2);
+  assert.equal(report.headsCopied, 1);
+});
+
+test('the velocity of a head with several strokes is their mean', () => {
+  const text = `# music typesetter score\npage 210x297 margin=10 space=1.75\nstaff rh clef=G2\n\nm1 time=4/4 key=0\n  rh.1: trem1{c4:2 e4:2}\n`;
+  const project = plainProject(text);
+  const seen = new Map<number, number>();
+  for (const n of project.notes) {
+    const k = seen.get(n.pitch) ?? 0;
+    seen.set(n.pitch, k + 1);
+    n.velocity = 40 + (k % 2) * 20; // The strokes of each pitch alternate between 40 and 60.
+  }
+  const { score } = importRendition(parseText(text), project);
+  const trem = parseText(writeText(score)).measures[0].staves.rh.voices[0].items[0];
+  assert.ok(trem.kind === 'tremolo');
+  const first = trem.items[0];
+  assert.ok(first.kind === 'note');
+  assert.equal(first.pitches[0].vel, 50);
+});
+
 test('a file that is not a project is refused', () => {
   assert.throws(() => importRendition(parseText(TEXT), { nope: 1 } as unknown as PianizerProject), /Pianizer project/);
 });

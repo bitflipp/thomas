@@ -98,7 +98,7 @@ try {
     );
     const pct = r.notes ? Math.round((100 * r.matched) / r.notes) : 100;
     console.log(
-      `${r.matched} of ${r.notes} notes matched (${pct}%), ${r.heads} heads in the score, ${r.headsWithoutNote} without a note`,
+      `${r.matched} of ${r.notes} notes matched (${pct}%), ${r.heads} heads in the score, ${r.headsWithoutNote} without a note${r.headsCopied ? `, ${r.headsCopied} unison heads copied from the one at the same instant` : ''}`,
     );
     console.log(`velocities: ${r.velocities}, shifts: ${r.shifts}, gates: ${r.gates}`);
     console.log(

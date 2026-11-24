@@ -39,6 +39,8 @@ export interface RenditionReport {
   /** The heads of the score (first sounding note of each) that no note of the project matched. */
   headsWithoutNote: number;
   heads: number;
+  /** Heads without a note of their own that were given the expression of a unison head at the same instant (counted among those with a note). */
+  headsCopied: number;
   /** Muted notes of the project, which sound in the score all the same. */
   muted: number;
   /** How many heads got a velocity, a shift and a gate. */
@@ -51,8 +53,19 @@ export interface RenditionReport {
   softRegions: number;
 }
 
-/** The sorted pairs of an optimal one-to-one matching of two sorted lists, where a pair is at most `tol` apart; it matches as many as possible, then the nearest ones. */
-function matchSorted(a: number[], b: number[], tol: number): [number, number][] {
+/** The start and end of a note, in ticks of the score. */
+interface Span {
+  at: number;
+  end: number;
+}
+
+/**
+ * The sorted pairs of an optimal one-to-one matching of two lists sorted by start, where a pair starts at most
+ * `tol` apart; it matches as many as possible, then the ones with the nearest starts, and of equal starts the
+ * ones with the nearest ends (a unison written in two voices is one note of the project: it goes to the voice
+ * whose note ends where it does).
+ */
+function matchSorted(a: Span[], b: Span[], tol: number): [number, number][] {
   const n = a.length;
   const m = b.length;
   if (!(n && m)) return [];
@@ -61,8 +74,8 @@ function matchSorted(a: number[], b: number[], tol: number): [number, number][] 
     // Too large for the table: pair neighbors greedily.
     let j = 0;
     for (let i = 0; i < n; i++) {
-      while (j < m && b[j] < a[i] - tol) j++;
-      if (j < m && Math.abs(b[j] - a[i]) <= tol) pairs.push([i, j++]);
+      while (j < m && b[j].at < a[i].at - tol) j++;
+      if (j < m && Math.abs(b[j].at - a[i].at) <= tol) pairs.push([i, j++]);
     }
     return pairs;
   }
@@ -86,9 +99,9 @@ function matchSorted(a: number[], b: number[], tol: number): [number, number][] 
         best = left;
         h = 2;
       }
-      const d = Math.abs(a[i - 1] - b[j - 1]);
+      const d = Math.abs(a[i - 1].at - b[j - 1].at);
       if (d <= tol) {
-        const c = cost[(i - 1) * w + j - 1] + d;
+        const c = cost[(i - 1) * w + j - 1] + d + 0.01 * Math.min(tol, Math.abs(a[i - 1].end - b[j - 1].end));
         if (c <= best) {
           best = c;
           h = 3;
@@ -207,6 +220,7 @@ export function importRendition(
     unmatchedCount: 0,
     headsWithoutNote: 0,
     heads: 0,
+    headsCopied: 0,
     muted: project.notes.length - heard.length,
     velocities: 0,
     shifts: 0,
@@ -225,24 +239,46 @@ export function importRendition(
   };
   for (const n of seq.notes) if (n.head) entry(n.midi).mine.push(n);
   for (const n of heard) entry(n.pitch).theirs.push(n);
-  const matches = new Map<string, { note: Note; theirs: PianizerProject['notes'][number] }>();
+  // For each head: its first sounding note with the note of the project it was matched to, and all notes of the project
+  // matched to its notes (a tremolo has many).
+  const matches = new Map<
+    string,
+    { note: Note; theirs: PianizerProject['notes'][number]; all: PianizerProject['notes'] }
+  >();
   const headsSeen = new Set<string>();
   for (const [pitch, e] of byPitch) {
-    e.mine.sort((a, b) => a.start - b.start);
-    e.theirs.sort((a, b) => a.startTick - b.startTick);
+    e.mine.sort((a, b) => a.start - b.start || a.end - b.end);
+    e.theirs.sort((a, b) => a.startTick - b.startTick || a.endTick - b.endTick);
     const pairs = matchSorted(
-      e.mine.map((n) => n.start),
-      e.theirs.map((n) => n.startTick * scale),
+      e.mine.map((n) => ({ at: n.start, end: n.end })),
+      e.theirs.map((n) => ({ at: n.startTick * scale, end: n.endTick * scale })),
       tol,
     );
     const matchedTheirs = new Set<number>();
+    const partner = new Map<number, number>(); // The note of the project of a note of the score.
     for (const [i, j] of pairs) {
       matchedTheirs.add(j);
+      partner.set(i, j);
       const note = e.mine[i];
       const key = headKey(must(note.head));
       const prior = matches.get(key);
-      if (!prior || note.start < prior.note.start) matches.set(key, { note, theirs: e.theirs[j] });
+      if (!prior) matches.set(key, { note, theirs: e.theirs[j], all: [e.theirs[j]] });
+      else {
+        prior.all.push(e.theirs[j]);
+        if (note.start < prior.note.start) Object.assign(prior, { note, theirs: e.theirs[j] });
+      }
     }
+    // A unison of two voices at one instant is one note in the project: the other head sounds like it.
+    e.mine.forEach((note, i) => {
+      if (partner.has(i)) return;
+      const twin = e.mine.findIndex((o, k) => partner.has(k) && Math.abs(o.start - note.start) < 1);
+      const key = headKey(must(note.head));
+      if (twin >= 0 && !matches.has(key)) {
+        const theirs = e.theirs[must(partner.get(twin))];
+        matches.set(key, { note, theirs, all: [theirs] });
+        report.headsCopied++;
+      }
+    });
     report.matched += pairs.length;
     e.theirs.forEach((n, j) => {
       if (matchedTheirs.has(j)) return;
@@ -265,10 +301,12 @@ export function importRendition(
     const ev = evs[h.idx];
     return ev.kind === 'note' ? ev.pitches[h.pi] : undefined;
   };
-  for (const { note, theirs } of matches.values()) {
+  for (const { note, theirs, all } of matches.values()) {
     const np = headOf(must(note.head));
     if (!np) continue;
-    const vel = Math.max(1, Math.min(127, Math.round(theirs.velocity)));
+    // A head has one velocity: the mean of the strokes of a tremolo.
+    const mean = all.reduce((sum, n) => sum + n.velocity, 0) / all.length;
+    const vel = Math.max(1, Math.min(127, Math.round(mean)));
     if (vel !== note.vel) {
       np.vel = vel;
       report.velocities++;
