@@ -89,3 +89,35 @@ test('a trill without accidental follows the key signature', () => {
   assert.deepEqual(ups(0), [64, 65]);
   assert.deepEqual(ups(1), [64, 66]);
 });
+
+test('a unison written in two voices is struck once, at the louder velocity and the later end', () => {
+  const s = buildSequence(parseText(`${HEAD}m1 time=4/4 key=0\n  rh.1: c4:2 r:2\n  rh.2: c4{v=100}:4 r:4 r:2\n`));
+  const n = on(s).filter((m) => m.bytes[1] === 60);
+  assert.equal(n.length, 1);
+  assert.equal(n[0].bytes[2], 100);
+  const off = s.msgs.filter((m) => (m.bytes[0] & 0xf0) === 0x80 && m.bytes[1] === 60);
+  assert.equal(off.length, 1);
+  assert.ok(Math.abs(off[0].sec - 1) < 1e-9);
+});
+
+test('a unison entering while the key sounds keeps the longest sounding', () => {
+  const key = (src: string) => {
+    const s = buildSequence(parseText(`${HEAD}m1 time=4/4 key=0\n${src}`));
+    return s.msgs.filter((m) => m.bytes[1] === 60);
+  };
+  // The later, shorter note is absorbed by the long one.
+  const inner = key('  rh.1: c4:1\n  rh.2: r:4 c4:4 r:2\n');
+  assert.deepEqual(
+    inner.map((m) => m.bytes[0] & 0xf0),
+    [0x90, 0x80],
+  );
+  assert.ok(Math.abs(inner[1].sec - 2) < 1e-9);
+  // The later, longer note re-strikes and carries the end; the first is released just before it.
+  const outer = key('  rh.1: c4:4 r:4 r:2\n  rh.2: r:8 c4:2 r:4\n');
+  assert.deepEqual(
+    outer.map((m) => m.bytes[0] & 0xf0),
+    [0x90, 0x80, 0x90, 0x80],
+  );
+  assert.ok(outer[1].sec <= outer[2].sec);
+  assert.ok(outer[3].sec > outer[2].sec);
+});

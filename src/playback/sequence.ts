@@ -580,7 +580,41 @@ function toMessages(notes: Note[], controls: Control[], tickToSec: (tick: number
     const next = nextOn.get(t.n.ch * 128 + t.n.midi)?.find((x) => x > t.on);
     if (next !== undefined) t.off = Math.max(t.on + MIN_LENGTH, Math.min(t.off, next - KEY_GAP));
   }
-  for (const { n, on, off } of timed) {
+  // A unison written in several voices is one key struck once: the notes that attack the same key at the same
+  // instant are sounded as one, with the loudest velocity and the latest end (two note-ons would layer in the synth).
+  const struck = new Map<string, (typeof timed)[number]>();
+  const single: typeof timed = [];
+  for (const t of timed) {
+    const key = `${t.n.ch}:${t.n.midi}:${t.on.toFixed(6)}`;
+    const first = struck.get(key);
+    if (!first) {
+      const copy = { n: { ...t.n }, on: t.on, off: t.off };
+      struck.set(key, copy);
+      single.push(copy);
+    } else {
+      first.n.vel = Math.max(first.n.vel, t.n.vel);
+      first.off = Math.max(first.off, t.off);
+    }
+  }
+  // A key that is struck while it still sounds (a unison entering later in another voice) would be cut off by the
+  // first note's release. A note inside an earlier one's span is absorbed; one that outlasts it is a re-strike, and
+  // the earlier note ends just before it, so that the longest sounding is kept.
+  const byKey = new Map<number, typeof timed>();
+  for (const t of single) byKey.set(t.n.ch * 128 + t.n.midi, [...(byKey.get(t.n.ch * 128 + t.n.midi) ?? []), t]);
+  const absorbed = new Set<(typeof timed)[number]>();
+  for (const list of byKey.values()) {
+    list.sort((a, b) => a.on - b.on);
+    let cur = list[0];
+    for (const t of list.slice(1)) {
+      if (t.on >= cur.off) cur = t;
+      else if (t.off <= cur.off) absorbed.add(t);
+      else {
+        cur.off = Math.max(cur.on + MIN_LENGTH, t.on - KEY_GAP);
+        cur = t;
+      }
+    }
+  }
+  for (const { n, on, off } of single.filter((t) => !absorbed.has(t))) {
     used.add(n.ch);
     evs.push({ sec: on, order: 2, bytes: [0x90 | n.ch, n.midi, n.vel] });
     evs.push({ sec: off, order: 0, bytes: [0x80 | n.ch, n.midi, 0] });
