@@ -1012,3 +1012,57 @@ button.dd {
   width: calc(var(--h) * 1.5);
   height: var(--sp-2);
 }
+
+/* The velocity tools of the Expression pane (a window under the button that opened it). */
+.vtool {
+  position: fixed;
+  z-index: 30;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.vtool .vtitle {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.vtool .vgrid {
+  display: grid;
+  grid-template-columns: auto repeat(4, 1fr);
+  gap: var(--sp-1);
+  align-items: stretch;
+}
+.vtool .vlab {
+  align-self: center;
+  text-align: right;
+  color: var(--muted);
+  padding-right: var(--sp-1);
+}
+.vtool .vgrid button {
+  min-width: 3em;
+  text-align: right;
+  border: 1px solid transparent;
+}
+.vtool .vgrid button:hover {
+  border-color: var(--fg);
+}
+.vtool .vgrid button.on {
+  outline: 2px solid var(--fg);
+  outline-offset: -2px;
+}
+.vtool .vshapes {
+  display: flex;
+  gap: var(--sp-1);
+}
+.vtool .vshapes button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.vtool .vshapes button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}

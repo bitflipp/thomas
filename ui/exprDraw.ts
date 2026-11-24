@@ -82,7 +82,7 @@ const VELOCITY_RAMP: [number, number, number][] = [
 export const RAMP_GRADIENT = `linear-gradient(to right, ${VELOCITY_RAMP.map((c) => `rgb(${c.join(',')})`).join(', ')})`;
 
 /** The color of a velocity (1 to 127) on the ramp, with how light it is (0 to 1) for choosing the text color on it. */
-function velocityColor(vel: number): { css: string; light: number } {
+export function velocityColor(vel: number): { css: string; light: number } {
   const t = Math.max(0, Math.min(1, (vel - 1) / 126)) * (VELOCITY_RAMP.length - 1);
   const i = Math.min(VELOCITY_RAMP.length - 2, Math.floor(t));
   const f = t - i;

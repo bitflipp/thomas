@@ -885,17 +885,15 @@ export function nudgeGate(d: number): void {
 }
 
 /** The settings of the velocity ramp and the chord roll. */
-export const rampFrom = signal(40);
+export const rampShape = signal<RampShape>('s-curve');
 
-export const rampTo = signal(100);
-export const rampShape = signal<RampShape>('linear');
 export const rollSpan = signal(60);
 export const rollDir = signal<'up' | 'down'>('up');
 export const rollAnchor = signal<'first' | 'last'>('first');
 
-/** Gives the selected notes velocities along the ramp. */
-export const applyRamp = (): void =>
-  onHeads((s, h) => X.rampVelocity(s, h, rampFrom.peek(), rampTo.peek(), rampShape.peek()));
+/** Gives the selected notes velocities along a ramp from `from` to `to`, in the chosen shape. */
+export const applyRamp = (from: number, to: number): void =>
+  onHeads((s, h) => X.rampVelocity(s, h, from, to, rampShape.peek()));
 
 /** Rolls the chords among the selected notes. */
 export const applyRoll = (): void =>

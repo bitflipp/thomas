@@ -6,12 +6,13 @@
 // canvas in exprDraw.ts.
 
 import { effect } from '@preact/signals';
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { RampShape } from '../src/editor/expression.ts';
+import { RAMP_SHAPES } from '../src/editor/expression.ts';
 import type { DropdownOpt } from './Dropdown.tsx';
 import { Dropdown } from './Dropdown.tsx';
 import type { Frame } from './exprDraw.ts';
-import { paint, RAMP_GRADIENT, readColors } from './exprDraw.ts';
+import { paint, RAMP_GRADIENT, readColors, velocityColor } from './exprDraw.ts';
 import * as E from './expression.ts';
 import { Ui } from './icons.tsx';
 import { reveal } from './interact.ts';
@@ -109,10 +110,216 @@ const ROLL_ANCHORS: DropdownOpt<'first' | 'last'>[] = [
   { value: 'last', label: 'Last on the beat' },
 ];
 
-/** The controls of the velocity lane: set, nudge, ramp, reset. */
+/** The velocity presets of the tools, grouped by the dynamic they stand for (loud to soft, as in Pianizer). */
+const VEL_GROUPS: [string, number[]][] = [
+  ['ff', [110, 115, 120]],
+  ['f', [95, 100, 105]],
+  ['mf', [75, 80, 85, 90]],
+  ['mp', [55, 60, 65, 70]],
+  ['p', [35, 40, 45, 50]],
+  ['pp', [20, 25, 30]],
+  ['ppp', [5, 10, 15]],
+];
+
+/** The changes the delta tool offers. */
+const DELTAS = [-10, -5, -1, 1, 5, 10];
+
+type Tool = 'set' | 'curve' | 'delta';
+
+/** The grid of velocity buttons, each in its velocity's color; `from` marks the first pick of a ramp. */
+function VelocityGrid({ from, onPick }: { from?: number; onPick: (v: number) => void }) {
+  return (
+    <div class="vgrid">
+      {VEL_GROUPS.map(([name, values]) => (
+        <>
+          <span class="vlab">{name}</span>
+          {[0, 1, 2, 3].map((i) => {
+            const v = values[i];
+            if (v === undefined) return <span />;
+            const c = velocityColor(v);
+            return (
+              <button
+                type="button"
+                class={from === v ? 'on' : ''}
+                style={{ background: c.css, color: c.light > 0.6 ? '#1d1d22' : '#ffffff' }}
+                onClick={() => onPick(v)}
+              >
+                {v}
+              </button>
+            );
+          })}
+        </>
+      ))}
+    </div>
+  );
+}
+
+/** A small plot of a ramp shape, sampled from the shape's own function so it is always what the shape does. */
+function ShapeGlyph({ shape }: { shape: RampShape }) {
+  const ease = RAMP_SHAPES[shape];
+  const pts = Array.from({ length: 25 }, (_, k) => {
+    const t = k / 24;
+    return `${k ? 'L' : 'M'}${(2 + t * 26).toFixed(2)} ${(16 - ease(t) * 14).toFixed(2)}`;
+  });
+  return (
+    <svg viewBox="0 0 30 18" width="30" height="18" aria-hidden="true">
+      <path d="M2 2 L2 16 L28 16" fill="none" stroke="currentColor" opacity="0.35" />
+      <path d={pts.join(' ')} fill="none" stroke="currentColor" stroke-width="1.5" />
+    </svg>
+  );
+}
+
+/** The window of the open tool: it opens under its button and closes on a pick, Escape or a click elsewhere. */
+function ToolWindow({ tool, anchor, onClose }: { tool: Tool; anchor: HTMLElement; onClose: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [first, setFirst] = useState<number | undefined>();
+  const [at, setAt] = useState({ left: 0, top: 0 });
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const r = anchor.getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.left, innerWidth - el.offsetWidth - 8));
+    const top = r.bottom + 2 + el.offsetHeight > innerHeight - 8 ? r.top - 2 - el.offsetHeight : r.bottom + 2;
+    setAt({ left, top: Math.max(8, top) });
+  }, [anchor]);
+  useEffect(() => {
+    const away = (e: PointerEvent) => {
+      if (!(box.current?.contains(e.target as Node) || anchor.contains(e.target as Node))) onClose();
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('pointerdown', away, true);
+    document.addEventListener('keydown', esc, true);
+    return () => {
+      document.removeEventListener('pointerdown', away, true);
+      document.removeEventListener('keydown', esc, true);
+    };
+  }, [anchor, onClose]);
+  return (
+    <div ref={box} class="vtool" role="dialog" style={{ left: `${at.left}px`, top: `${at.top}px` }}>
+      <div class="vtitle">
+        {tool === 'set'
+          ? 'Note velocity'
+          : tool === 'curve'
+            ? first === undefined
+              ? 'Ramp: pick the start'
+              : `Ramp from ${first}: pick the end`
+            : 'Velocity delta'}
+      </div>
+      {tool === 'set' && (
+        <VelocityGrid
+          onPick={(v) => {
+            E.setVelocity(v);
+            onClose();
+          }}
+        />
+      )}
+      {tool === 'curve' && (
+        <>
+          <div class="vshapes">
+            {SHAPES.map((s) => (
+              <button
+                type="button"
+                class={E.rampShape.value === s.value ? 'on' : ''}
+                title={s.title}
+                onClick={() => (E.rampShape.value = s.value)}
+              >
+                <ShapeGlyph shape={s.value} />
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <VelocityGrid
+            from={first}
+            onPick={(v) => {
+              if (first === undefined) setFirst(v);
+              else if (v !== first) {
+                E.applyRamp(first, v);
+                onClose();
+              }
+            }}
+          />
+        </>
+      )}
+      {tool === 'delta' && (
+        <div class="vshapes">
+          {DELTAS.map((d) => (
+            <button
+              type="button"
+              onClick={() => {
+                E.nudgeVelocity(d);
+                onClose();
+              }}
+            >
+              {d > 0 ? `+${d}` : `−${-d}`}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The controls of the velocity lane: the three tools (1, 2, 3 on the canvas) and the exact value. */
 function VelocityBar({ none }: { none: boolean }) {
+  const [open, setOpen] = useState<{ tool: Tool; anchor: HTMLElement } | null>(null);
+  const tools: { tool: Tool; key: string; label: string; title: string }[] = [
+    {
+      tool: 'set',
+      key: '1',
+      label: 'Set',
+      title: 'Give the selected notes one velocity, picked from the dynamics (1)',
+    },
+    {
+      tool: 'curve',
+      key: '2',
+      label: 'Ramp',
+      title: 'Shape the velocities along a ramp: pick its shape, then the start and the end (2)',
+    },
+    {
+      tool: 'delta',
+      key: '3',
+      label: 'Delta',
+      title: 'Raise or lower the velocities of the selected notes by a fixed amount (3)',
+    },
+  ];
+  // The keys 1, 2 and 3 on the canvas open the tools, as in Pianizer.
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const t = tools.find((x) => x.key === e.key);
+      const target = e.target as HTMLElement;
+      if (!t || e.ctrlKey || e.metaKey || e.altKey || target.tagName !== 'CANVAS' || !target.closest('.expression'))
+        return;
+      e.preventDefault();
+      e.stopPropagation();
+      const anchor = document.querySelector<HTMLElement>(`.expression [data-tool="${t.tool}"]`);
+      if (anchor && !none) setOpen({ tool: t.tool, anchor });
+    };
+    document.addEventListener('keydown', key, true);
+    return () => document.removeEventListener('keydown', key, true);
+  });
   return (
     <>
+      <div class="seg">
+        {tools.map((t) => (
+          <button
+            type="button"
+            data-tool={t.tool}
+            disabled={none}
+            aria-pressed={open?.tool === t.tool}
+            title={t.title}
+            onClick={(e) =>
+              setOpen(open?.tool === t.tool ? null : { tool: t.tool, anchor: e.currentTarget as HTMLElement })
+            }
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {open && <ToolWindow tool={open.tool} anchor={open.anchor} onClose={() => setOpen(null)} />}
       <Field
         label="Velocity"
         title="The velocity of the selected notes (1–127). Notes without one follow the dynamics."
@@ -122,42 +329,9 @@ function VelocityBar({ none }: { none: boolean }) {
         disabled={none}
         onChange={E.setVelocity}
       />
-      <Steps steps={[-10, -1, 1, 10]} label="Velocity" disabled={none} onStep={E.nudgeVelocity} />
       <span class="xramp" title="The colors of the notes in the roll: soft (blue) to loud (red), 1 to 127">
         <i style={{ background: RAMP_GRADIENT }} />
       </span>
-      <span class="sep" />
-      <span class="lbl">Ramp</span>
-      <Field
-        label="from"
-        title="Velocity at the first attack of the selection"
-        value={E.rampFrom.value}
-        min={1}
-        max={127}
-        onChange={(n) => (E.rampFrom.value = n)}
-      />
-      <Field
-        label="to"
-        title="Velocity at the last attack of the selection"
-        value={E.rampTo.value}
-        min={1}
-        max={127}
-        onChange={(n) => (E.rampTo.value = n)}
-      />
-      <Dropdown
-        title="How the velocity changes along the passage"
-        value={E.rampShape.value}
-        opts={SHAPES}
-        onChange={(v) => (E.rampShape.value = v)}
-      />
-      <button
-        type="button"
-        disabled={none}
-        title="Give the selected notes velocities along the ramp, by where they start"
-        onClick={E.applyRamp}
-      >
-        Apply
-      </button>
     </>
   );
 }
