@@ -39,6 +39,7 @@ import {
   say,
   score,
   showExpression,
+  showHints,
   shownZoom,
   showProperties,
   showText,
@@ -275,6 +276,15 @@ function Toolbar() {
           onClick={() => (showText.value = !showText.value)}
         >
           Text
+        </button>
+        <button
+          type="button"
+          class="icon"
+          aria-pressed={showHints.value}
+          title="Show hint texts (palette, Expression pane)"
+          onClick={() => (showHints.value = !showHints.value)}
+        >
+          <Ui.hint />
         </button>
         <button
           type="button"

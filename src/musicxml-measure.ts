@@ -77,7 +77,7 @@ interface Reader {
 export function readPartMeasure(mx: XNode, part: PartState, mi: number, sink: MeasureSink, env: ReadEnv): void {
   const r: Reader = { env, part, sink, mi, cursor: 0, pendingGraces: new Map(), homeStaff: new Map() };
   if (part.index === 0 && mx.attrs.implicit === 'yes')
-    env.warn(`m${mi + 1}: implicit (pickup) measure not specially handled`);
+    env.warn(`m. ${mi + 1}: implicit (pickup) measure not specially handled`);
   if (part.index === 0 && part.ending) sink.measure.ending = part.ending;
   for (const el of mx.children) {
     switch (el.tag) {
@@ -104,7 +104,7 @@ export function readPartMeasure(mx: XNode, part: PartState, mi: number, sink: Me
         break;
     }
   }
-  if (r.pendingGraces.size) env.warn(`m${mi + 1}: grace notes at the end of a measure dropped`);
+  if (r.pendingGraces.size) env.warn(`m. ${mi + 1}: grace notes at the end of a measure dropped`);
 }
 
 /**
@@ -119,7 +119,7 @@ const staffIdOf = (r: Reader, n: number) => r.part.staffIds[Math.max(0, n - 1)];
 /** Source divisions -> ticks. */
 function ticksOf(r: Reader, div: number): number {
   const x = (div * PPQ) / r.part.divisions;
-  if (!Number.isInteger(x)) throw new Error(`m${r.mi + 1}: duration ${div}/${r.part.divisions} not representable`);
+  if (!Number.isInteger(x)) throw new Error(`m. ${r.mi + 1}: duration ${div}/${r.part.divisions} not representable`);
   return x;
 }
 
@@ -228,7 +228,7 @@ function readDirection(r: Reader, el: XNode): void {
   for (const directionType of children(el, 'direction-type'))
     for (const d of directionType.children) {
       const marks = directionMarks(d, placement, tick);
-      if (!marks) r.env.warn(`m${r.mi + 1}: unsupported direction <${d.tag}>`);
+      if (!marks) r.env.warn(`m. ${r.mi + 1}: unsupported direction <${d.tag}>`);
       else for (const mark of marks) r.sink.marks.push({ staffId, mark });
     }
 }
@@ -356,11 +356,11 @@ function readNote(r: Reader, el: XNode): void {
 /** The pitch of a <note>; a `cautionary` accidental in the source becomes a forced one. */
 function readPitch(el: XNode, mi: number): NotePitch {
   const p = child(el, 'pitch');
-  if (!p) throw new Error(`m${mi + 1}: unpitched notes not supported`);
+  if (!p) throw new Error(`m. ${mi + 1}: unpitched notes not supported`);
   const step = must(text(p, 'step')).toLowerCase() as Step;
   if (!STEPS.includes(step)) throw new Error('bad step');
   const pitch: Pitch = { step, alter: Number(text(p, 'alter') ?? 0), octave: Number(text(p, 'octave')) };
-  if (!Number.isInteger(pitch.alter)) throw new Error(`m${mi + 1}: microtones unsupported`);
+  if (!Number.isInteger(pitch.alter)) throw new Error(`m. ${mi + 1}: microtones unsupported`);
   const np: NotePitch = { pitch };
   if (children(el, 'tie').some((t) => t.attrs.type === 'start')) np.tie = true;
   const orientation = children(child(el, 'notations') ?? el, 'tied').find((t) => t.attrs.type === 'start')?.attrs

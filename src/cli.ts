@@ -124,7 +124,7 @@ try {
         const beat = beatOf(g.tick);
         const voices = voicesOf(g);
         const maybe = g.level === 'possible' ? ' (possible)' : '';
-        console.log(`${g.number}. m${g.mi + 1} beat ${beat}: ${g.kinds.join(' + ')} (${voices})${maybe}`);
+        console.log(`${g.number}. m. ${g.mi + 1} beat ${beat}: ${g.kinds.join(' + ')} (${voices})${maybe}`);
       }
       console.log(`${gs.length} group${gs.length === 1 ? '' : 's'} of consecutive fifths or octaves`);
     }

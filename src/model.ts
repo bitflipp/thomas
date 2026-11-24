@@ -610,7 +610,7 @@ function posOk(score: Score, p: Pos): boolean {
 const posBefore = (a: Pos, b: Pos) => a.mi < b.mi || (a.mi === b.mi && a.tick < b.tick);
 
 /** The label of a position in messages. */
-const posLabel = (p: Pos) => `m${p.mi + 1}+${p.tick}`;
+const posLabel = (p: Pos) => `m. ${p.mi + 1}+${p.tick}`;
 
 /** Problems with one performance curve: positions, order (strictly increasing) and the range of the values. */
 function curveProblems(score: Score, name: string, pts: CurvePoint[], lo: number, hi: number): string[] {
@@ -664,8 +664,8 @@ export function validate(score: Score): string[] {
   score.measures.forEach((m, mi) => {
     const len = measureTicks(timeAt(score, mi));
     for (const [sid, sm] of Object.entries(m.staves)) {
-      const at = `m${mi + 1} ${sid}`;
-      if (!staffIds.has(sid)) errs.push(`m${mi + 1}: unknown staff ${sid}`);
+      const at = `m. ${mi + 1} ${sid}`;
+      if (!staffIds.has(sid)) errs.push(`m. ${mi + 1}: unknown staff ${sid}`);
       for (const v of sm.voices) errs.push(...voiceProblems(v, sid, at, len, staffIds));
       for (const v of sm.voices)
         for (const b of v.end ?? [])

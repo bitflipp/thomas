@@ -338,7 +338,7 @@ function headTip(i: HeadInfo): string {
   const start = seq.peek().measureStart[i.head.mi] ?? 0;
   const set = (on: boolean) => (on ? '' : ' (from the notation)');
   return [
-    `${pitchName(i.midi)} · m${i.head.mi + 1} beat ${beatOf(i.at - start)}`,
+    `${pitchName(i.midi)} · m. ${i.head.mi + 1} beat ${beatOf(i.at - start)}`,
     `velocity ${i.vel}${set(i.has.vel)}`,
     `shift ${i.shift > 0 ? '+' : ''}${num(i.shift)} ms${set(i.has.shift)}`,
     `gate ${i.gate}${set(i.has.gate)}`,
@@ -827,7 +827,7 @@ function updateHover(g: Geo, x: number, y: number): void {
   }
 }
 
-/** A tick as `m<N> beat <b>`. */
+/** A tick as `m. <N> beat <b>`. */
 export function placeOf(tick: number): string {
   const ms = measures.peek();
   let lo = 0;
@@ -837,7 +837,7 @@ export function placeOf(tick: number): string {
     if (ms[mid].start <= tick) lo = mid;
     else hi = mid - 1;
   }
-  return `m${lo + 1} beat ${beatOf(tick - (ms[lo]?.start ?? 0))}`;
+  return `m. ${lo + 1} beat ${beatOf(tick - (ms[lo]?.start ?? 0))}`;
 }
 
 /** Called when the pointer leaves the canvas. */

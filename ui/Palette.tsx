@@ -14,6 +14,7 @@ import {
   dots,
   dur,
   dynText,
+  showHints,
   tempoArg,
   textArg,
   tool,
@@ -240,7 +241,7 @@ export function Palette() {
         </ToolBtn>
       </div>
       <PaletteArgs />
-      <p class="hint">{HINTS[t]}</p>
+      {showHints.value && <p class="hint">{HINTS[t]}</p>}
     </nav>
   );
 }

@@ -179,7 +179,7 @@ function cutAcross(n: RawNote, mlen: number, number: number, warn: (msg: string)
   const cut = (Math.floor(n.tick / mlen) + 1) * mlen;
   if (n.tick + n.ticks <= cut) return [n];
   if (n.tmRatio || n.tupStart?.length || n.tupStop || n.trem) {
-    warn(`m${number}: tuplet or tremolo note at tick ${n.tick} crosses the cut at ${cut}`);
+    warn(`m. ${number}: tuplet or tremolo note at tick ${n.tick} crosses the cut at ${cut}`);
     return [n];
   }
   const pieces: RawNote[] = [];
@@ -235,7 +235,7 @@ function splitOverfull(sink: MeasureSink, mlen: number, number: number, warn: (m
   for (const notes of sink.raws.values()) for (const n of notes) end = Math.max(end, n.tick + n.ticks);
   if (end <= mlen) return [sink];
   const count = Math.ceil(end / mlen);
-  warn(`m${number}: ${end} ticks in a ${mlen}-tick measure, split into ${count} measures`);
+  warn(`m. ${number}: ${end} ticks in a ${mlen}-tick measure, split into ${count} measures`);
   const parts: MeasureSink[] = Array.from({ length: count }, (_x, k) => ({
     measure: k === 0 ? sink.measure : { staves: {} },
     raws: new Map(),

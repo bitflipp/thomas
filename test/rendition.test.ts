@@ -135,7 +135,7 @@ test('notes without a counterpart are reported, muted ones are counted, and smal
   project.notes[2].startTick += 50; // Late, but near.
   const { report } = importRendition(parseText(TEXT), project);
   assert.equal(report.unmatchedCount, 1);
-  assert.match(report.unmatchedNotes[0], /^m1 beat 4 midi 72$/);
+  assert.match(report.unmatchedNotes[0], /^m. 1 beat 4 midi 72$/);
   assert.equal(report.muted, 1);
   assert.equal(report.headsWithoutNote, 1);
   assert.equal(report.matched, report.notes - 1);
@@ -155,7 +155,7 @@ test('repeated notes are matched in order', () => {
   assert.deepEqual(vels, [20, 21, 22, 23, 24, 25, 26, 27]);
 });
 
-test('a unison of two voices is one note in the project: the head with the same end gets it, the other one sounds alike', () => {
+test('a unison of two voices is one note in the project: the longest head gets it, the other one sounds alike (velocity only)', () => {
   const text = `# music typesetter score\npage 210x297 margin=10 space=1.75\nstaff rh clef=G2\n\nm1 time=4/4 key=0\n  rh.1: c4:2 d4:2\n  rh.2: c4:4 r:4 d4:2\n`;
   const project = plainProject(text);
   const unison = project.notes.filter((n) => n.pitch === 60);
@@ -168,7 +168,7 @@ test('a unison of two voices is one note in the project: the head with the same 
   const [v1, v2] = parseText(writeText(score)).measures[0].staves.rh.voices;
   assert.equal(v1.items[0].kind === 'note' && v1.items[0].pitches[0].vel, 55);
   assert.equal(v2.items[0].kind === 'note' && v2.items[0].pitches[0].vel, 55);
-  assert.equal(v2.items[0].kind === 'note' && v2.items[0].pitches[0].gate, 2);
+  assert.equal(v2.items[0].kind === 'note' && v2.items[0].pitches[0].gate, undefined);
   assert.equal(report.headsCopied, 1);
 });
 

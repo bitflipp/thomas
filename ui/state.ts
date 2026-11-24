@@ -180,6 +180,25 @@ export const showProperties = signal(true);
 export const showExpression = signal(false);
 
 /** The default height of the Expression pane in pixels, and the smallest one. */
+/** Whether the hint texts (under the palette, in the Expression pane) are shown; one setting for every score, kept for the next session when storage allows. */
+export const showHints = signal(
+  (() => {
+    try {
+      return localStorage.getItem('thomas.showHints') !== 'off';
+    } catch {
+      return true;
+    }
+  })(),
+);
+
+showHints.subscribe((on) => {
+  try {
+    localStorage.setItem('thomas.showHints', on ? 'on' : 'off');
+  } catch {
+    /* storage may be unavailable */
+  }
+});
+
 export const EXPR_HEIGHT = 400;
 
 export const EXPR_MIN_HEIGHT = 220;

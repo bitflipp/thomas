@@ -62,8 +62,7 @@ interface Span {
 /**
  * The sorted pairs of an optimal one-to-one matching of two lists sorted by start, where a pair starts at most
  * `tol` apart; it matches as many as possible, then the ones with the nearest starts, and of equal starts the
- * ones with the nearest ends (a unison written in two voices is one note of the project: it goes to the voice
- * whose note ends where it does).
+ * ones with the nearest ends.
  */
 function matchSorted(a: Span[], b: Span[], tol: number): [number, number][] {
   const n = a.length;
@@ -171,7 +170,7 @@ const headKey = (h: HeadAt) => `${h.mi}/${h.staff}/${h.voice}/${h.idx}/${h.pi}`;
 /** A readable place of a tick of the score, `m<N> beat <b>`. */
 function placeOf(score: Score, measureStart: number[], total: number, abs: number): string {
   const p = posOf(score, measureStart, total, abs);
-  return `m${p.mi + 1} beat ${Math.round((p.tick / PPQ + 1) * 100) / 100}`;
+  return `m. ${p.mi + 1} beat ${Math.round((p.tick / PPQ + 1) * 100) / 100}`;
 }
 
 /**
@@ -243,21 +242,34 @@ export function importRendition(
   // matched to its notes (a tremolo has many).
   const matches = new Map<
     string,
-    { note: Note; theirs: PianizerProject['notes'][number]; all: PianizerProject['notes'] }
+    { note: Note; theirs: PianizerProject['notes'][number]; all: PianizerProject['notes']; twin?: true }
   >();
   const headsSeen = new Set<string>();
   for (const [pitch, e] of byPitch) {
     e.mine.sort((a, b) => a.start - b.start || a.end - b.end);
     e.theirs.sort((a, b) => a.startTick - b.startTick || a.endTick - b.endTick);
+    // Of heads that start together (a unison written in several voices) the longest one is matched: the project keeps
+    // one note for them, and it is the one that sounds longest. The others copy it below.
+    const leaders = e.mine.flatMap((n, i) => {
+      const longer = e.mine.some(
+        (o) =>
+          o !== n && Math.abs(o.start - n.start) < 1 && (o.end > n.end || (o.end === n.end && e.mine.indexOf(o) < i)),
+      );
+      return longer ? [] : [i];
+    });
     const pairs = matchSorted(
-      e.mine.map((n) => ({ at: n.start, end: n.end })),
+      leaders.map((i) => ({ at: e.mine[i].start, end: e.mine[i].end })),
       e.theirs.map((n) => ({ at: n.startTick * scale, end: n.endTick * scale })),
       tol,
     );
     const matchedTheirs = new Set<number>();
+    const pairedMine = new Set<number>();
     const partner = new Map<number, number>(); // The note of the project of a note of the score.
-    for (const [i, j] of pairs) {
+    let pairCount = 0;
+    const pair = (i: number, j: number) => {
+      pairCount++;
       matchedTheirs.add(j);
+      pairedMine.add(i);
       partner.set(i, j);
       const note = e.mine[i];
       const key = headKey(must(note.head));
@@ -267,19 +279,31 @@ export function importRendition(
         prior.all.push(e.theirs[j]);
         if (note.start < prior.note.start) Object.assign(prior, { note, theirs: e.theirs[j] });
       }
-    }
+    };
+    for (const [li, j] of pairs) pair(leaders[li], j);
+    // A project that kept every note of a unison has a note left for the other heads.
+    e.mine.forEach((note, i) => {
+      if (pairedMine.has(i)) return;
+      let best = -1;
+      e.theirs.forEach((n, j) => {
+        if (matchedTheirs.has(j) || Math.abs(n.startTick * scale - note.start) > tol) return;
+        const d = Math.abs(n.endTick * scale - note.end);
+        if (best < 0 || d < Math.abs(e.theirs[best].endTick * scale - note.end)) best = j;
+      });
+      if (best >= 0) pair(i, best);
+    });
     // A unison of two voices at one instant is one note in the project: the other head sounds like it.
     e.mine.forEach((note, i) => {
-      if (partner.has(i)) return;
+      if (pairedMine.has(i)) return;
       const twin = e.mine.findIndex((o, k) => partner.has(k) && Math.abs(o.start - note.start) < 1);
       const key = headKey(must(note.head));
       if (twin >= 0 && !matches.has(key)) {
         const theirs = e.theirs[must(partner.get(twin))];
-        matches.set(key, { note, theirs, all: [theirs] });
+        matches.set(key, { note, theirs, all: [theirs], twin: true });
         report.headsCopied++;
       }
     });
-    report.matched += pairs.length;
+    report.matched += pairCount;
     e.theirs.forEach((n, j) => {
       if (matchedTheirs.has(j)) return;
       report.unmatchedCount++;
@@ -301,7 +325,7 @@ export function importRendition(
     const ev = evs[h.idx];
     return ev.kind === 'note' ? ev.pitches[h.pi] : undefined;
   };
-  for (const { note, theirs, all } of matches.values()) {
+  for (const { note, theirs, all, twin } of matches.values()) {
     const np = headOf(must(note.head));
     if (!np) continue;
     // A head has one velocity: the mean of the strokes of a tremolo.
@@ -319,7 +343,7 @@ export function importRendition(
     // The end of the note, when it is more than 20 ms from the one the notation gives (a tied head keeps its length).
     const end = theirs.endTick * scale;
     const length = note.end - note.start;
-    if (!np.tie && length > 0 && Math.abs(seq.tickToSec(end) - seq.tickToSec(note.end)) > 0.02) {
+    if (!(twin || np.tie) && length > 0 && Math.abs(seq.tickToSec(end) - seq.tickToSec(note.end)) > 0.02) {
       const gate = Math.round(((end - note.start) / length) * 100) / 100;
       if (gate > 0 && gate <= 4) {
         np.gate = gate;

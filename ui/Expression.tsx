@@ -17,7 +17,7 @@ import * as E from './expression.ts';
 import { Ui } from './icons.tsx';
 import { reveal } from './interact.ts';
 import { playing, playTick } from './player.ts';
-import { EXPR_HEIGHT, EXPR_MIN_HEIGHT, exprHeight, exprView, selection } from './state.ts';
+import { EXPR_HEIGHT, EXPR_MIN_HEIGHT, exprHeight, exprView, selection, showHints } from './state.ts';
 
 /** The zoom the view starts at, to show the zoom as a percentage of it. */
 const BASE_PPQ = 56;
@@ -433,7 +433,7 @@ function CurveBar({ which }: { which: 'tempo' | 'sustain' | 'soft' }) {
           onChange={(n) => E.setPointValue(n / (which === 'tempo' ? 100 : 100))}
         />
       )}
-      <span class="hint">{CURVE_HINTS[which]}</span>
+      {showHints.value && <span class="hint">{CURVE_HINTS[which]}</span>}
     </>
   );
 }
