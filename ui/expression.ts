@@ -381,13 +381,14 @@ export function scrollBy(g: Geo, dy: number): void {
   exprView.value = { ...v, top: clampTop(g, roll.peek(), v.top + dy) };
 }
 
-/** Scrolls the roll, if need be, so that pitch `midi` is in view. */
-export function revealPitch(g: Geo, midi: number): void {
+/** Moves the view at once so that the tick and pitch of `spot` are in the middle of the roll. */
+export function centerOn(g: Geo, spot: { tick: number; midi: number }): void {
   const v = exprView.peek();
-  const data = roll.peek();
-  const y = rollRow(g, data, v.top, midi);
-  if (y >= g.roll.y && y + ROW_H <= g.roll.y + g.roll.h) return;
-  exprView.value = { ...v, top: centeredOn(g, data, midi) };
+  exprView.value = {
+    ...v,
+    left: spot.tick - (((g.w - GUTTER) / 2) * PPQ) / v.ppq,
+    top: centeredOn(g, roll.peek(), spot.midi),
+  };
 }
 
 /** Moves the view the least that brings `tick` into the middle part of the canvas (width `w`). */

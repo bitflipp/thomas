@@ -147,17 +147,15 @@ function placeInView(ref: Ref): { box: Element; y0: number; y1: number } | undef
   return { box, y0: top + t.bbox.y0 * k, y1: top + t.bbox.y1 * k };
 }
 
-/** Scrolls the score pane so that the object `ref` is in view, a third of the way down (nothing happens when it is not drawn). */
-export function reveal(ref: Ref): void {
+/** Scrolls the score pane at once so that the object `ref` is a third of the way down, or in the middle (`center`); nothing happens when it is not drawn. */
+export function reveal(ref: Ref, center = false): void {
   const at = placeInView(ref);
-  if (at)
-    at.box.scrollTo({ top: Math.max(0, at.box.scrollTop + at.y0 - at.box.clientHeight / 3), behavior: 'instant' });
-}
-
-/** Like `reveal`, but leaves the score where it is when the object is in view already. */
-export function revealIfHidden(ref: Ref): void {
-  const at = placeInView(ref);
-  if (at && !(at.y0 >= 0 && at.y1 <= at.box.clientHeight)) reveal(ref);
+  if (!at) return;
+  const middle = center ? (at.y0 + at.y1) / 2 : at.y0;
+  at.box.scrollTo({
+    top: Math.max(0, at.box.scrollTop + middle - at.box.clientHeight / (center ? 2 : 3)),
+    behavior: 'instant',
+  });
 }
 
 /** Scrolls the score pane so that measure `mi` is in view (its system a third of the way down), at once. */

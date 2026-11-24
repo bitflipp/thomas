@@ -14,7 +14,7 @@ import type { Frame } from './exprDraw.ts';
 import { paint, RAMP_GRADIENT, readColors } from './exprDraw.ts';
 import * as E from './expression.ts';
 import { Ui } from './icons.tsx';
-import { revealIfHidden } from './interact.ts';
+import { reveal } from './interact.ts';
 import { playing, playTick } from './player.ts';
 import { EXPR_HEIGHT, EXPR_MIN_HEIGHT, exprHeight, exprView, selection } from './state.ts';
 
@@ -481,14 +481,11 @@ export function Expression() {
         void selection.value;
         const spot = E.selectionSpot();
         if (!spot) return;
-        // A selection made here brings the score to the notes, one made in the score brings this view to them; both at once, without easing, and only when the notes are out of sight.
-        if (inside.current) revealIfHidden(spot.ref);
-        else {
-          E.reveal(spot.tick, size.w);
-          E.revealPitch(g, spot.midi);
-        }
+        // A selection made here centers the score on the notes, one made in the score centers this view on them; both at once, without easing.
+        if (inside.current) reveal(spot.ref, true);
+        else E.centerOn(g, spot);
       }),
-    [size.w, g],
+    [g],
   );
 
   // The roll is first scrolled to the middle of the music's pitches.
