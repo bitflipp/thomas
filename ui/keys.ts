@@ -298,6 +298,7 @@ function onToolKey(e: KeyboardEvent): void {
   else if (letter === 'f') toggleOrnament('fermata');
   else if (letter === 't' && e.shiftKey) toggleOrnament('trill');
   else if (letter === 'x') flipStemOrTie();
+  else if (letter === 'q') chooseDots((shownDuration().dots + 1) % 3);
   else if (letter === 'w' && e.shiftKey) addChordTone();
 }
 

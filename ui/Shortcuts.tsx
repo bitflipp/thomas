@@ -8,7 +8,10 @@ export const showHelp = signal(false);
 const ROWS: [string, string][] = [
   ['N / V (Esc)', 'Note input / select'],
   ['W (note input)', 'Repeat the note or chord entered last (middle C when there is none)'],
-  ['Shift+W', 'Add a chord tone a third above the top of the note just entered (or selected); only that head is selected, so the arrows place it'],
+  [
+    'Shift+W',
+    'Add a chord tone a third above the top of the note just entered (or selected); only that head is selected, so the arrows place it',
+  ],
   ['Alt ↑ ↓', 'Select the next head up / down the chord'],
   ['R (note input)', 'Enter a rest'],
   ['S (note input)', 'Open a slur at the note entered last; S again closes it at the note entered last'],
@@ -22,7 +25,7 @@ const ROWS: [string, string][] = [
     '1 – 8',
     'Duration whole … 128th: the selection in select mode (the next note follows it), else the next note (nothing selected: starts note input)',
   ],
-  ['.', 'Cycle dots'],
+  ['Q or .', 'Cycle dots'],
   ['Shift+1 – 4', 'Voice for new notes (the caret keeps its position in time)'],
   ['↑ ↓', 'Selected notes: semitone up / down'],
   ['Ctrl ↑ ↓', 'Octave up / down (also in note input)'],

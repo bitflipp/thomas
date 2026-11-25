@@ -294,7 +294,11 @@ export function Palette() {
       <h4>{editsSelection() ? 'Duration of selection' : 'Duration of next note'}</h4>
       <div class="grid">
         <DurationButtons value={shownDuration().base} onPick={chooseDuration} />
-        <Btn on={shownDuration().dots > 0} title="Dot (.)" onClick={() => chooseDots((shownDuration().dots + 1) % 3)}>
+        <Btn
+          on={shownDuration().dots > 0}
+          title="Dot (Q or .)"
+          onClick={() => chooseDots((shownDuration().dots + 1) % 3)}
+        >
           {shownDuration().dots === 2 ? <Label size={26}>··</Label> : <Glyph cp={CPS.dot} cap={24} max={9} />}
         </Btn>
       </div>
