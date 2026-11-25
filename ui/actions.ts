@@ -10,7 +10,7 @@ import { alterBefore } from '../src/editor/context.ts';
 import { drawnTieSide } from '../src/editor/hit.ts';
 import type { BaseDur, Dur } from '../src/model.ts';
 import { evRefs, graceRefs, sameSystem } from './interact.ts';
-import { acc, commit, dots, dur, hit, run, say, score, selection } from './state.ts';
+import { acc, commit, dots, dur, entering, hit, run, say, score, selection, setTool } from './state.ts';
 
 /**
  * Orders event addresses from the end of the score backward, so that edits applied in this order keep earlier
@@ -33,20 +33,39 @@ function setDurationSel(d: Dur): void {
   }
 }
 
-/** Picks a note value for the input tool and applies it to the selected events. */
-export function chooseDuration(base: BaseDur): void {
-  dur.value = base;
-  if (evRefs().length) setDurationSel({ base, dots: dots.peek() });
+/** Whether the palette's duration, dot and accidental buttons act on the selected events (select mode, events selected). */
+export function editsSelection(): boolean {
+  return !entering() && evRefs().length > 0;
 }
 
-/** Picks the number of dots for the input tool and applies it to the selected events. */
-export function chooseDots(n: number): void {
-  dots.value = n;
-  const refs = evRefs();
-  if (refs.length) {
-    const e = eventOf(score.peek(), refs[0]);
-    setDurationSel({ base: e?.dur.base ?? dur.peek(), dots: n });
+/** The note value the duration buttons show: the first selected event's when they edit the selection, else the next note's. */
+export function shownDuration(): { base: BaseDur; dots: number } {
+  const e = editsSelection() ? eventOf(score.value, evRefs()[0]) : undefined;
+  return e ? { base: e.dur.base, dots: e.dur.dots } : { base: dur.value, dots: dots.value };
+}
+
+/**
+ * Picks a note value. In note and rest input it sets the next note's value and never touches the score. In select
+ * mode it changes the selected events and leaves the input value alone; with nothing selected it sets the next note's
+ * value and switches to note input.
+ */
+export function chooseDuration(base: BaseDur): void {
+  if (editsSelection()) {
+    setDurationSel({ base, dots: shownDuration().dots });
+    return;
   }
+  dur.value = base;
+  if (!entering()) setTool('note');
+}
+
+/** Picks the number of dots, by the same rule as `chooseDuration`. */
+export function chooseDots(n: number): void {
+  if (editsSelection()) {
+    setDurationSel({ base: shownDuration().base, dots: n });
+    return;
+  }
+  dots.value = n;
+  if (!entering()) setTool('note');
 }
 
 /**
@@ -89,7 +108,7 @@ export function selectedAlter(): number | 'mixed' | undefined {
  * becomes natural). The input tool is left alone then; without notes selected it toggles the input tool's accidental.
  */
 export function chooseAccidental(a: number): void {
-  const ps = selectedPitches();
+  const ps = entering() ? [] : selectedPitches();
   if (!ps.length) {
     acc.value = acc.value === a ? undefined : a;
     return;
@@ -143,6 +162,28 @@ export function flipStem(): void {
       else delete e.stem;
     }),
   );
+}
+
+/** The two voices (of one staff) that the selected events belong to, or undefined when it is not exactly two. */
+export function flippableVoices(): { staff: string; a: number; b: number; mis: number[] } | undefined {
+  const refs = evRefs();
+  if (!refs.length) return undefined;
+  const staff = refs[0].staff;
+  if (refs.some((r) => r.staff !== staff)) return undefined;
+  const voices = [...new Set(refs.map((r) => r.voice))].sort((x, y) => x - y);
+  if (voices.length !== 2) return undefined;
+  const mis = [...new Set(refs.map((r) => r.mi))].sort((x, y) => x - y);
+  return { staff, a: voices[0], b: voices[1], mis };
+}
+
+/** Exchanges the two voices of the selection in the measures it touches. */
+export function flipVoices(): void {
+  const f = flippableVoices();
+  if (!f) {
+    say('Select notes of two voices in one staff', true);
+    return;
+  }
+  run((s) => C.flipVoices(s, f.staff, f.a, f.b, f.mis));
 }
 
 /** Slurs the selected notes of one voice from the first to the last. */

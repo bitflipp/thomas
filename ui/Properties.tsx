@@ -15,7 +15,17 @@ import type { OrnamentKind } from '../src/editor/similar.ts';
 import { eventsInMeasures } from '../src/editor/similar.ts';
 import type { Event, Grace, MarkBody, MarkPlacement, NoteEvent, Score, Syllable } from '../src/model.ts';
 import { flattenVoice, keyAt, measureLabel, measureTicks, PPQ, timeAt } from '../src/model.ts';
-import { chooseDots, flipStem, lineSelection, slurSelection, tieSelection } from './actions.ts';
+
+import {
+  chooseDots,
+  flippableVoices,
+  flipStem,
+  flipVoices,
+  lineSelection,
+  slurSelection,
+  tieSelection,
+} from './actions.ts';
+
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
 import { deleteSelection, evRefs, measureRefs, select, selectSimilar, tupletsAround } from './interact.ts';
@@ -1204,6 +1214,11 @@ function EventActions({ ctx }: { ctx: EvSel }) {
             Rem. tremolo
           </button>
         )}
+        {flippableVoices() && (
+          <button type="button" title="Exchange the two selected voices in the selected measures" onClick={flipVoices}>
+            Flip voices
+          </button>
+        )}
         <button type="button" title="Flip stem (X)" onClick={flipStem}>
           Flip stem
         </button>
@@ -1551,11 +1566,7 @@ function TupletSection({ r }: { r: Extract<Ref, { t: 'tuplet' }> }) {
 
 /** Whether the selection mixes kinds of elements (notes, marks of different types, slurs, ...). */
 function isMixed(sc: Score, sel: Ref[]): boolean {
-  const kinds = new Set(
-    sel.map((r) =>
-      r.t === 'mark' ? `mark:${markOf(sc, r)?.type}` : r.t === 'ev' ? `ev:${eventOf(sc, r)?.kind}` : r.t,
-    ),
-  );
+  const kinds = new Set(sel.map((r) => (r.t === 'mark' ? `mark:${markOf(sc, r)?.type}` : r.t)));
   return kinds.size > 1;
 }
 

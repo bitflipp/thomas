@@ -13,6 +13,7 @@ import {
   chooseDuration,
   flipStemOrTie,
   nudge,
+  shownDuration,
   slurSelection,
   stepSelection,
   tieSelection,
@@ -27,12 +28,12 @@ import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
 
 import {
-  dots,
   redo,
   run,
   say,
   score,
   selection,
+  setTool,
   showExpression,
   showProperties,
   showText,
@@ -197,7 +198,7 @@ function onViewShortcut(e: KeyboardEvent): boolean {
 function onEscape(): void {
   showHelp.value = false;
   cancelDrag();
-  if (tool.value !== 'select') tool.value = 'select';
+  if (tool.value !== 'select') setTool('select');
   else selection.value = [];
 }
 
@@ -247,7 +248,7 @@ function onNavigationKey(e: KeyboardEvent): boolean {
       showHelp.value = !showHelp.value;
       return true;
     case '.':
-      chooseDots((dots.value + 1) % 3);
+      chooseDots((shownDuration().dots + 1) % 3);
       return true;
     default:
       return false;
@@ -262,7 +263,7 @@ function onToolKey(e: KeyboardEvent): void {
     return;
   }
   const letter = e.key.toLowerCase();
-  if (TOOL_KEYS[letter]) tool.value = TOOL_KEYS[letter];
+  if (TOOL_KEYS[letter]) setTool(TOOL_KEYS[letter]);
   else if (letter === 't' && !e.shiftKey) tieSelection();
   else if (letter === 's') slurSelection();
   else if (letter === 'f') toggleOrnament('fermata');

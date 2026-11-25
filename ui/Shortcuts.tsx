@@ -7,7 +7,10 @@ export const showHelp = signal(false);
 
 const ROWS: [string, string][] = [
   ['N / R / V (Esc)', 'Note input / rest input / select'],
-  ['1 – 8', 'Duration whole … 128th (also applies to the selection)'],
+  [
+    '1 – 8',
+    'Duration whole … 128th: the selection in select mode, else the next note (nothing selected: starts note input)',
+  ],
   ['.', 'Cycle dots'],
   ['Q / W', 'Previous / next voice for new notes'],
   ['↑ ↓', 'Selected notes: semitone up / down'],

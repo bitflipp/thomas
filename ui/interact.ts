@@ -38,6 +38,7 @@ import {
   say,
   score,
   selection,
+  setTool,
   showExpression,
   tempoArg,
   textArg,
@@ -425,7 +426,11 @@ export function onPointerDown(e: PointerEvent): void {
   if (!(w && h)) return;
   const t = tool.value;
   const target = asSelected(hitTest(h, w.page, w.x, w.y));
-  if (t === 'note' || t === 'rest') enter(w, e.altKey);
+  if ((t === 'note' || t === 'rest') && target?.ref.t === 'ev') {
+    // A click on an existing note leaves input and selects it.
+    setTool('select');
+    pressWithSelectTool(e, w, h, target);
+  } else if (t === 'note' || t === 'rest') enter(w, e.altKey);
   else if (SPAN_TOOLS.has(t)) startSpan(e, w, t as SpanTool, target);
   else if (MARK_TOOLS.has(t)) addMarkAt(w);
   else if (t === 'tuplet') makeTupletAt(target);

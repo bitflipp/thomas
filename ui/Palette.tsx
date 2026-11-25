@@ -4,18 +4,25 @@
 import { effect, signal } from '@preact/signals';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import type { BaseDur } from '../src/model.ts';
-import { chooseAccidental, chooseDots, chooseDuration, selectedAlter } from './actions.ts';
+
+import {
+  chooseAccidental,
+  chooseDots,
+  chooseDuration,
+  editsSelection,
+  selectedAlter,
+  shownDuration,
+} from './actions.ts';
+
 import { CPS, Glyph, Icon, Label } from './icons.tsx';
-import { evRefs } from './interact.ts';
 import { AccidentalButtons, DurationButtons } from './pickers.tsx';
 import type { Tool } from './state.ts';
 
 import {
   acc,
   clefArg,
-  dots,
-  dur,
   dynText,
+  setTool,
   tempoArg,
   textArg,
   tool,
@@ -111,7 +118,7 @@ function ToolBtn({ t, title, children }: { t: Tool; title: string; children: pre
       title={title}
       onClick={(e) => {
         if (tool.value === t && ARG_TOOLS.includes(t)) popupAt.value = { x: e.clientX, y: e.clientY };
-        else tool.value = tool.value === t && t !== 'select' ? 'select' : t;
+        else setTool(tool.value === t && t !== 'select' ? 'select' : t);
       }}
     >
       {children}
@@ -283,16 +290,16 @@ export function Palette() {
           <Icon.rest />
         </ToolBtn>
       </div>
-      <h4>Duration</h4>
+      <h4>{editsSelection() ? 'Duration of selection' : 'Duration of next note'}</h4>
       <div class="grid">
-        <DurationButtons value={dur.value} onPick={chooseDuration} />
-        <Btn on={dots.value > 0} title="Dot (.)" onClick={() => chooseDots((dots.value + 1) % 3)}>
-          {dots.value === 2 ? <Label size={26}>··</Label> : <Glyph cp={CPS.dot} cap={24} max={9} />}
+        <DurationButtons value={shownDuration().base} onPick={chooseDuration} />
+        <Btn on={shownDuration().dots > 0} title="Dot (.)" onClick={() => chooseDots((shownDuration().dots + 1) % 3)}>
+          {shownDuration().dots === 2 ? <Label size={26}>··</Label> : <Glyph cp={CPS.dot} cap={24} max={9} />}
         </Btn>
       </div>
       <h4>Accidental</h4>
       <div class="grid">
-        <AccidentalButtons value={evRefs().length ? selectedAlter() : acc.value} onPick={chooseAccidental} />
+        <AccidentalButtons value={editsSelection() ? selectedAlter() : acc.value} onPick={chooseAccidental} />
       </div>
       <h4>Voice</h4>
       <div class="grid">

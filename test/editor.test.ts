@@ -618,3 +618,13 @@ test('deleting every event of a voice in a measure clears it to a whole-measure 
   assert.equal(evs.length, 1);
   assert.equal(evs[0].ev.kind === 'rest' && evs[0].ev.style, 'measure');
 });
+
+test('flipVoices exchanges the contents of two voices and flipping again restores them', () => {
+  let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
+  s = C.enterNote(s, { ...loc, voice: 2 }, 0, { base: 2, dots: 0 }, { ...c4, step: 'g' });
+  const flipped = ok(C.flipVoices(s, 'rh', 1, 2, [0]));
+  const v = flattenVoice(flipped.measures[0].staves.rh.voices[0]);
+  assert.equal(v[0].ev.dur.base, 2);
+  assert.equal(flattenVoice(flipped.measures[0].staves.rh.voices[1])[0].ev.dur.base, 4);
+  assert.deepEqual(C.flipVoices(flipped, 'rh', 1, 2, [0]), s);
+});

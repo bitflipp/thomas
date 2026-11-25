@@ -553,6 +553,28 @@ export function updateNotes(score: Score, addrs: EvAddr[], fn: (e: Draft<NoteEve
   });
 }
 
+/**
+ * Exchanges the contents of voices `a` and `b` of one staff in the measures `mis` (events, tuplets and end marks;
+ * the voice ids and their order stay). A voice missing from a measure counts as a measure of rests.
+ */
+export function flipVoices(score: Score, staff: string, a: number, b: number, mis: number[]): Score {
+  if (a === b) throw new EditError('Flipping needs two different voices');
+  return edit(score, (d) => {
+    for (const mi of mis) {
+      const va = voiceIn(d, { mi, staff, voice: a }, true);
+      const vb = voiceIn(d, { mi, staff, voice: b }, true);
+      const items = va.items;
+      const end = va.end;
+      va.items = vb.items;
+      vb.items = items;
+      if (vb.end) va.end = vb.end;
+      else delete va.end;
+      if (end) vb.end = end;
+      else delete vb.end;
+    }
+  });
+}
+
 /** Sets pitch number `pi` of the chord at `a` and keeps the chord sorted by pitch. */
 export function setPitch(score: Score, a: EvAddr, pi: number, pitch: Pitch): Score {
   return updateNotes(score, [a], (n) => {

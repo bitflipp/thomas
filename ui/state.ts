@@ -273,6 +273,16 @@ export type Tool =
   | 'grace';
 
 export const tool = signal<Tool>('select');
+
+/** Whether the pointer enters notes or rests, in which case the palette sets the next note and never the selection. */
+export const entering = (): boolean => tool.value === 'note' || tool.value === 'rest';
+
+/** Switches the tool. Entering note or rest input clears the selection, so that nothing selected is changed by accident. */
+export function setTool(t: Tool): void {
+  tool.value = t;
+  if (t === 'note' || t === 'rest') selection.value = [];
+}
+
 export const dur = signal<BaseDur>(8);
 export const dots = signal(0);
 
