@@ -4,13 +4,14 @@
 
 import { signal } from '@preact/signals';
 import type { EvAddr } from '../src/editor/addr.ts';
-import { voiceOf } from '../src/editor/addr.ts';
+import { eventOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
-import { plainAlter, transposeSteps } from '../src/editor/context.ts';
+import { comparePitch, plainAlter, transposeSteps } from '../src/editor/context.ts';
 import { xOfTick } from '../src/editor/hit.ts';
 import { eventAtTick } from '../src/editor/voice.ts';
 import type { Pitch, Score } from '../src/model.ts';
 import { flattenVoice, lengthOf } from '../src/model.ts';
+import { editHeads } from './actions.ts';
 import { pageEls, selectEventAt } from './interact.ts';
 import type { Caret } from './state.ts';
 import { acc, caret, dots, dur, engraved, run, say, score, selection, voice } from './state.ts';
@@ -188,21 +189,45 @@ export function toggleSlur(): void {
 export function stepNotes(d: 1 | -1): void {
   const refs = selection.peek().filter((r) => r.t === 'ev');
   if (!refs.length) return;
-  const onlyHead = refs.find((r) => r.pi !== undefined)?.pi;
-  const _ok = run((s0) =>
+  editHeads((s0) =>
     refs.reduce((s, r) => {
       const v = voiceOf(s, r);
       const te = v && flattenVoice(v)[r.idx];
       if (te?.ev.kind !== 'note') return s;
-      return C.updateNotes(s, [r], (n) =>
+      return C.updateNotes(s, [r], (n) => {
         n.pitches.forEach((np, i) => {
-          if (onlyHead !== undefined && i !== onlyHead) return;
+          if (r.pi !== undefined && i !== r.pi) return;
           const q = transposeSteps(np.pitch, d);
           np.pitch = { ...q, alter: plainAlter(s, r.staff, r.mi, te.start, q.step, q.octave) };
-        }),
-      );
+        });
+        n.pitches.sort((x, y) => comparePitch(x.pitch, y.pitch));
+      });
     }, s0),
   );
+}
+
+/**
+ * Adds a tone a third above the top of the note just entered (or the selected note), in the key, and selects only that
+ * head, so that the arrow keys put it in place. The caret stays, so W then repeats the whole chord.
+ */
+export function addChordTone(): void {
+  const sc = score.peek();
+  const sel = selection.peek().find((r) => r.t === 'ev');
+  const at = prev ? addrAt(sc, prev) : sel?.t === 'ev' ? sel : undefined;
+  const v = at && voiceOf(sc, at);
+  const te = v && at && flattenVoice(v)[at.idx];
+  if (!(at && te && te.ev.kind === 'note')) {
+    say('Enter or select a note first', true);
+    return;
+  }
+  const top = te.ev.pitches[te.ev.pitches.length - 1].pitch;
+  const q = transposeSteps(top, 2);
+  const pitch = { ...q, alter: plainAlter(sc, at.staff, at.mi, te.start, q.step, q.octave) };
+  const loc = { mi: at.mi, staff: at.staff, voice: at.voice };
+  if (!run((s) => C.enterNote(s, loc, te.start, te.ev.dur, pitch, { chord: true }))) return;
+  const e = eventOf(score.peek(), at);
+  const pi = e?.kind === 'note' ? e.pitches.findIndex((p) => comparePitch(p.pitch, pitch) === 0) : -1;
+  selection.value = [{ t: 'ev', ...loc, idx: at.idx, ...(pi >= 0 ? { pi } : {}) }];
 }
 
 /** Enters a rest at the caret and moves the caret on (key R). */

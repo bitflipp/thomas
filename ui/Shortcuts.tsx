@@ -8,6 +8,8 @@ export const showHelp = signal(false);
 const ROWS: [string, string][] = [
   ['N / V (Esc)', 'Note input / select'],
   ['W (note input)', 'Repeat the note or chord entered last (middle C when there is none)'],
+  ['Shift+W', 'Add a chord tone a third above the top of the note just entered (or selected); only that head is selected, so the arrows place it'],
+  ['Alt ↑ ↓', 'Select the next head up / down the chord'],
   ['R (note input)', 'Enter a rest'],
   ['S (note input)', 'Open a slur at the note entered last; S again closes it at the note entered last'],
   ['↑ ↓ (note input)', 'Move the note just entered a step up / down the staff (accidental from key and bar)'],

@@ -17,12 +17,14 @@ import {
   selectVoice,
   shownDuration,
   slurSelection,
+  stepHead,
   stepSelection,
   tieSelection,
   toggleOrnament,
 } from './actions.ts';
 
 import {
+  addChordTone,
   alterLast,
   backspaceAtCaret,
   caretToMeasureStart,
@@ -296,14 +298,17 @@ function onToolKey(e: KeyboardEvent): void {
   else if (letter === 'f') toggleOrnament('fermata');
   else if (letter === 't' && e.shiftKey) toggleOrnament('trill');
   else if (letter === 'x') flipStemOrTie();
+  else if (letter === 'w' && e.shiftKey) addChordTone();
 }
 
 /** Keys of note input with the caret: letters enter notes, R a rest, arrows move the caret. Returns true if the key was one of them. */
 function onCaretKey(e: KeyboardEvent): boolean {
   if (e.altKey) return false;
   const k = e.key.toLowerCase();
-  if (k === 'w') repeatNote();
-  else if (k === 'r') enterRestAtCaret();
+  if (k === 'w') {
+    if (e.shiftKey) addChordTone();
+    else repeatNote();
+  } else if (k === 'r') enterRestAtCaret();
   else if (k === 's') toggleSlur();
   else if (e.key === 'ArrowLeft') moveCaret(-1);
   else if (e.key === 'ArrowRight') moveCaret(1);
@@ -330,6 +335,12 @@ function onKey(e: KeyboardEvent): void {
   }
   if (mod && !typing(e) && onEditShortcut(e)) return;
   if (mod && onViewShortcut(e)) return;
+  if (!(typing(e) || mod) && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    // Alt+Up/Down selects the next head up or down the chord.
+    e.preventDefault();
+    stepHead(e.key === 'ArrowUp' ? 1 : -1);
+    return;
+  }
   if (typing(e) || mod || (e.altKey && e.key.length > 1)) return;
   if (entering() && onCaretKey(e)) return;
   if (!onNavigationKey(e)) onToolKey(e);

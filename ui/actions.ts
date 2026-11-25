@@ -7,9 +7,9 @@ import { effect } from '@preact/signals';
 import type { EvAddr, Ref } from '../src/editor/addr.ts';
 import { eventOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
-import { alterBefore } from '../src/editor/context.ts';
+import { alterBefore, comparePitch } from '../src/editor/context.ts';
 import { drawnTieSide } from '../src/editor/hit.ts';
-import type { BaseDur, Dur } from '../src/model.ts';
+import type { BaseDur, Dur, Score } from '../src/model.ts';
 import { flattenVoice } from '../src/model.ts';
 import { evRefs, graceRefs, sameSystem } from './interact.ts';
 import { acc, caret, commit, dots, dur, entering, hit, run, say, score, selection, setTool, voice } from './state.ts';
@@ -165,7 +165,45 @@ export function nudge(semis?: number, steps?: number): void {
   }
   const refs = evRefs();
   if (!refs.length) return;
-  run((s) => C.transpose(s, refs, { semis, steps }));
+  editHeads((s) => C.transpose(s, refs, { semis, steps }));
+}
+
+/**
+ * Runs an edit that moves selected heads of chords, then selects each moved head again. A chord is kept in pitch order,
+ * so a head that passes another changes its index; it is found as the pitch that is not one of the others.
+ */
+export function editHeads(edit: (s: Score) => Score): boolean {
+  const before = selection.peek();
+  const sc0 = score.peek();
+  if (!run(edit)) return false;
+  const sc = score.peek();
+  selection.value = before.map((r) => {
+    if (r.t !== 'ev' || r.pi === undefined) return r;
+    const a = eventOf(sc0, r);
+    const b = eventOf(sc, r);
+    if (a?.kind !== 'note' || b?.kind !== 'note') return r;
+    const others = a.pitches.filter((_, i) => i !== r.pi).map((p) => p.pitch);
+    const pi = b.pitches.findIndex((p) => {
+      const k = others.findIndex((o) => comparePitch(o, p.pitch) === 0);
+      if (k < 0) return true;
+      others.splice(k, 1);
+      return false;
+    });
+    return { ...r, pi: pi < 0 ? Math.min(r.pi, b.pitches.length - 1) : pi };
+  });
+  return true;
+}
+
+/** Selects the next head up or down the chord of the selected note (the top or bottom one when the whole note is selected). */
+export function stepHead(d: 1 | -1): void {
+  const refs = evRefs();
+  if (refs.length !== 1) return;
+  const r = refs[0];
+  const e = eventOf(score.peek(), r);
+  if (e?.kind !== 'note') return;
+  const n = e.pitches.length;
+  const pi = r.pi === undefined ? (d > 0 ? n - 1 : 0) : Math.max(0, Math.min(n - 1, r.pi + d));
+  selection.value = [{ ...r, pi }];
 }
 
 /** Cycles the stem direction of the selected events: up, down, automatic. */
