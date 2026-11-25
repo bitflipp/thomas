@@ -345,6 +345,17 @@ button.mini {
   background: var(--panel);
   border-top: 1px solid var(--line);
 }
+/* In the Text mode the score collapses the same way and the text takes the whole width. */
+.scorecol.tmax {
+  flex: 0 0 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+.scorecol.tmax + .textpane {
+  flex: 1;
+  width: auto;
+  border-left: none;
+}
 .modal .prompt {
   display: flex;
   flex-direction: column;
@@ -719,6 +730,11 @@ button.mini {
     padding: 0;
     background: #fff;
   }
+  /* The score is printed from every mode, also where it is collapsed on screen. */
+  .scorecol,
+  .scorecol > .scroll {
+    visibility: visible !important;
+  }
   .page {
     box-shadow: none;
     margin: 0;
@@ -945,32 +961,16 @@ button.dd {
   flex-direction: column;
   background: var(--panel);
 }
-.expression .xbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  padding: var(--sp-2);
-  border-bottom: 1px solid var(--line);
-}
-.expression .xbar .sep {
-  width: 1px;
-  align-self: stretch;
-  background: var(--line);
-  margin: 0;
-}
-.expression .xbar .lbl,
-.expression .xf > span {
+.xf > span {
   color: var(--muted);
 }
-.expression .xf {
+.xf {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
 }
-.expression .xf input {
-  width: 5.5em;
+.xf input {
+  width: 4em;
 }
 .expression .xcanvas {
   position: relative;

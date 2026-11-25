@@ -61,8 +61,8 @@ const ROWS: [string, string][] = [
   ['Ctrl + / −  (wheel)', 'Zoom'],
   ['Alt + wheel over findings', 'Step through stacked findings'],
   ['Ctrl G', 'Go to a measure: asks for its number, Enter selects it and shows it'],
-  ['Ctrl E', 'Show the score as text, editable'],
-  ['Ctrl I', 'Properties panel'],
+  ['Ctrl E', 'Text mode: the score as text, editable (again: back to the score)'],
+  ['Ctrl I', 'Show or hide the Properties panel (Score mode)'],
   [
     'Ctrl Space  (or Ctrl M)',
     'Switch between the score and the Expression view (velocity, timing and pedals of the performance)',

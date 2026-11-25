@@ -8,7 +8,8 @@ import { useEffect } from 'preact/hooks';
 import { importMusicXml } from '../src/musicxml.ts';
 import { writeText } from '../src/textformat.ts';
 import { Dropdown } from './Dropdown.tsx';
-import { Expression } from './Expression.tsx';
+import { Expression, ExpressionTools } from './Expression.tsx';
+import { fitRoll, zoomRoll } from './expression.ts';
 import { Ui } from './icons.tsx';
 import { zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
@@ -22,17 +23,21 @@ import { Properties } from './Properties.tsx';
 import { chooseOutput, midiOut, midiPorts, playing, toggle } from './player.ts';
 import { ScorePane } from './ScorePane.tsx';
 import { Shortcuts, showHelp } from './Shortcuts.tsx';
+import type { Mode } from './state.ts';
 
 import {
   dirty,
+  EXPR_BASE_PPQ,
   engraved,
   engraveError,
+  exprView,
   fileName,
   filePath,
   fit,
   histLen,
   load,
   loadText,
+  mode,
   NEW_SCORE_TEXT,
   printing,
   redo,
@@ -41,7 +46,6 @@ import {
   showExpression,
   shownZoom,
   showProperties,
-  showText,
   timing,
   toast,
   undo,
@@ -128,8 +132,65 @@ function useGlobalHandlers(): void {
   }, []);
 }
 
-/** The toolbar: file, playback, undo, zoom, view menu, status and pane switches. */
+/**
+ * The zoom of the view that is shown: the score (Fit is a mode that keeps the pages fitted to the window) or the
+ * Expression roll (zoom as a percentage of the one it starts at, Fit shows the whole piece once).
+ */
+function ZoomControls() {
+  if (showExpression.value) {
+    return (
+      <div class="seg">
+        <button type="button" class="icon" title="Zoom out (Ctrl -)" onClick={() => zoomRoll(1 / 1.2)}>
+          <Ui.minus />
+        </button>
+        <span class="val">{Math.round((exprView.value.ppq / EXPR_BASE_PPQ) * 100)}%</span>
+        <button type="button" class="icon" title="Zoom in (Ctrl +)" onClick={() => zoomRoll(1.2)}>
+          <Ui.plus />
+        </button>
+        <button type="button" title="Show the whole piece" onClick={fitRoll}>
+          Fit
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div class="seg">
+      <button type="button" class="icon" title="Zoom out" onClick={() => zoomBy(1 / 1.2)}>
+        <Ui.minus />
+      </button>
+      <span class="val">{Math.round((fit.value ? shownZoom.value : zoom.value) * 100)}%</span>
+      <button type="button" class="icon" title="Zoom in" onClick={() => zoomBy(1.2)}>
+        <Ui.plus />
+      </button>
+      <button
+        type="button"
+        aria-pressed={fit.value}
+        title="Fit the pages to the window"
+        onClick={() => {
+          fit.value = !fit.value;
+          zoom.value = 1;
+        }}
+      >
+        Fit
+      </button>
+    </div>
+  );
+}
+
+/** The modes of the main area, in the order of the toolbar's mode selector. */
+const MODES: { mode: Mode; label: string; title: string }[] = [
+  { mode: 'score', label: 'Score', title: 'The score, with the palette and Properties' },
+  {
+    mode: 'expression',
+    label: 'Expression',
+    title: 'How the piece is played: velocities, timing, tempo and pedals (Ctrl Space)',
+  },
+  { mode: 'text', label: 'Text', title: 'The score as text (Ctrl E)' },
+];
+
+/** The toolbar: file, playback, undo, the controls of the mode (zoom, menus, tools), status, mode selector and help. */
 function Toolbar() {
+  const m = mode.value;
   const res = engraved.value;
   const h = histLen.value;
   return (
@@ -182,21 +243,26 @@ function Toolbar() {
           onChange={chooseOutput}
         />
       )}
-      <button
-        type="button"
-        aria-pressed={midiIn.value !== null}
-        title="Enter notes from a MIDI keyboard: select where to start, then play"
-        onClick={() => chooseInput(midiIn.value === null ? undefined : null)}
-      >
-        MIDI in
-      </button>
-      {midiIn.value !== null && midiInPorts.value.length > 1 && (
-        <Dropdown
-          title="MIDI input"
-          value={midiIn.value}
-          opts={midiInPorts.value.map((p) => ({ value: p.id, label: p.name }))}
-          onChange={(id) => chooseInput(id)}
-        />
+      {/* Note entry from a MIDI keyboard is for the score; the other modes leave it out. */}
+      {m === 'score' && (
+        <>
+          <button
+            type="button"
+            aria-pressed={midiIn.value !== null}
+            title="Enter notes from a MIDI keyboard: select where to start, then play"
+            onClick={() => chooseInput(midiIn.value === null ? undefined : null)}
+          >
+            MIDI in
+          </button>
+          {midiIn.value !== null && midiInPorts.value.length > 1 && (
+            <Dropdown
+              title="MIDI input"
+              value={midiIn.value}
+              opts={midiInPorts.value.map((p) => ({ value: p.id, label: p.name }))}
+              onChange={(id) => chooseInput(id)}
+            />
+          )}
+        </>
       )}
       <span class="sep" />
       <div class="seg">
@@ -207,105 +273,100 @@ function Toolbar() {
           <Ui.redo />
         </button>
       </div>
-      <span class="sep" />
-      <div class="seg">
-        <button type="button" class="icon" title="Zoom out" onClick={() => zoomBy(1 / 1.2)}>
-          <Ui.minus />
-        </button>
-        <span class="val">{Math.round((fit.value ? shownZoom.value : zoom.value) * 100)}%</span>
-        <button type="button" class="icon" title="Zoom in" onClick={() => zoomBy(1.2)}>
-          <Ui.plus />
-        </button>
-        <button
-          type="button"
-          aria-pressed={fit.value}
-          title="Fit the pages to the window"
-          onClick={() => {
-            fit.value = !fit.value;
-            zoom.value = 1;
-          }}
-        >
-          Fit
-        </button>
-      </div>
-      <div class="viewmenu" onPointerDown={(e) => e.stopPropagation()}>
-        <button type="button" aria-pressed={viewOpen.value} onClick={() => (viewOpen.value = !viewOpen.value)}>
-          View ▾
-        </button>
-        {viewOpen.value && (
-          <div class="popover">
-            <label>
-              <input
-                type="checkbox"
-                checked={voiceColors.value}
-                onChange={(e) => (voiceColors.value = (e.target as HTMLInputElement).checked)}
-              />{' '}
-              Voice colors
-            </label>
+      {/* The middle of the toolbar belongs to the mode: zoom, View and Layers for the score, zoom and the tools of the
+          Expression view there, nothing for the text. */}
+      {m === 'score' && (
+        <>
+          <span class="sep" />
+          <ZoomControls />
+          <div class="viewmenu" onPointerDown={(e) => e.stopPropagation()}>
+            <button type="button" aria-pressed={viewOpen.value} onClick={() => (viewOpen.value = !viewOpen.value)}>
+              View ▾
+            </button>
+            {viewOpen.value && (
+              <div class="popover">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={showProperties.value}
+                    onChange={(e) => (showProperties.value = (e.target as HTMLInputElement).checked)}
+                  />{' '}
+                  Properties (Ctrl I)
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={voiceColors.value}
+                    onChange={(e) => (voiceColors.value = (e.target as HTMLInputElement).checked)}
+                  />{' '}
+                  Voice colors
+                </label>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      <LayersMenu />
+          <LayersMenu />
+        </>
+      )}
+      {m === 'expression' && (
+        <>
+          <span class="sep" />
+          <ZoomControls />
+          <span class="sep" />
+          <ExpressionTools />
+        </>
+      )}
       <span class="grow" />
-      <span class={`status${engraveError.value ? ' err' : ''}`}>
-        {engraveError.value ||
-          (res ? `${res.systems} systems · ${res.pages.length} pages · ${Math.round(timing.value)} ms` : '')}
-      </span>
-      <div class="seg">
-        <button
-          type="button"
-          aria-pressed={showProperties.value}
-          title="Properties (Ctrl I)"
-          onClick={() => (showProperties.value = !showProperties.value)}
-        >
-          Properties
-        </button>
-        <button
-          type="button"
-          aria-pressed={showExpression.value}
-          title="Switch between score and Expression view (Ctrl Space)"
-          onClick={() => (showExpression.value = !showExpression.value)}
-        >
-          Expression
-        </button>
-        <button
-          type="button"
-          aria-pressed={showText.value}
-          title="Text view (Ctrl E)"
-          onClick={() => (showText.value = !showText.value)}
-        >
-          Text
-        </button>
-        <button
-          type="button"
-          class="icon"
-          aria-pressed={showHelp.value}
-          title="Keyboard shortcuts (?)"
-          onClick={() => (showHelp.value = !showHelp.value)}
-        >
-          <Ui.help />
-        </button>
+      {(engraveError.value || (res && m === 'score')) && (
+        <span class={`status${engraveError.value ? ' err' : ''}`}>
+          {engraveError.value ||
+            (res ? `${res.systems} systems · ${res.pages.length} pages · ${Math.round(timing.value)} ms` : '')}
+        </span>
+      )}
+      <div class="seg" title="Mode">
+        {MODES.map((x) => (
+          <button
+            key={x.mode}
+            type="button"
+            aria-pressed={m === x.mode}
+            title={x.title}
+            onClick={() => (mode.value = x.mode)}
+          >
+            {x.label}
+          </button>
+        ))}
       </div>
+      <button
+        type="button"
+        class="icon"
+        aria-pressed={showHelp.value}
+        title="Keyboard shortcuts (?)"
+        onClick={() => (showHelp.value = !showHelp.value)}
+      >
+        <Ui.help />
+      </button>
     </header>
   );
 }
 
-/** The editor window: toolbar, palette, score pane, text pane and Properties. */
+/** The editor window: the toolbar and the main area of the mode (palette, score and Properties; Expression; Text). */
 export function App() {
   useGlobalHandlers();
+  const m = mode.value;
   const tst = toast.value;
   return (
     <div class="app">
       <Toolbar />
       <div class="main">
-        <Palette />
-        <div class={`scorecol${showExpression.value ? ' xmax' : ''}`}>
+        {/* The palette and Properties act on the score; the other modes take the whole width. The score pane stays
+            mounted (collapsed) so that its scroll position survives. */}
+        {m === 'score' && <Palette />}
+        <div class={`scorecol${m === 'expression' ? ' xmax' : m === 'text' ? ' tmax' : ''}`}>
           <ScorePane />
-          {showExpression.value && <Expression />}
-          <Overview />
+          {m === 'expression' && <Expression />}
+          {m !== 'text' && <Overview />}
         </div>
-        {showProperties.value && <Properties />}
-        {showText.value && (
+        {m === 'score' && showProperties.value && <Properties />}
+        {m === 'text' && (
           <Suspense fallback={null}>
             <TextPane />
           </Suspense>

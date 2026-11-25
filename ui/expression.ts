@@ -373,6 +373,25 @@ export function zoomAt(factor: number, x: number): void {
   exprView.value = { ...v, ppq, left: tick - ((x - GUTTER) * PPQ) / ppq };
 }
 
+/** The width of the canvas in pixels, kept by the pane for the zoom of the main toolbar and the keys. */
+let canvasW = 0;
+
+/** Records the width of the canvas (the pane calls it whenever its size changes). */
+export function setCanvasWidth(w: number): void {
+  canvasW = w;
+}
+
+/** Zooms by `factor` around the middle of the canvas (the main toolbar and Ctrl +/- in the Expression view). */
+export function zoomRoll(factor: number): void {
+  zoomAt(factor, canvasW / 2);
+}
+
+/** Zooms so that the whole piece fits the width of the canvas. */
+export function fitRoll(): void {
+  const ppq = Math.max(PPQ_MIN, Math.min(PPQ_MAX, ((canvasW - GUTTER - 8) * PPQ) / Math.max(PPQ, total.peek())));
+  exprView.value = { ...exprView.peek(), ppq, left: 0 };
+}
+
 /** Scrolls the roll by `dy` pixels (positive: towards lower pitches). */
 export function scrollBy(g: Geo, dy: number): void {
   const v = exprView.peek();

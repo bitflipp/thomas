@@ -174,18 +174,34 @@ export function loadText(t: string, name?: string): boolean {
 export const zoom = signal(1);
 export const shownZoom = signal(1); // This is the zoom the pages are displayed at (it differs from `zoom` while fitting).
 export const fit = signal(true); // When set, the pages are fitted to the pane width.
-export const showText = signal(false);
 export const showProperties = signal(true);
 
+/** What the main area shows: the score (with the palette and Properties), the Expression view, or the score as text. */
+export type Mode = 'score' | 'expression' | 'text';
+
+/** The mode of the main area, chosen in the toolbar (Ctrl Space or Ctrl M: Expression, Ctrl E: Text). */
+export const mode = signal<Mode>('score');
+
 /** Whether the Expression view is shown in place of the score. */
-export const showExpression = signal(false);
+export const showExpression = computed(() => mode.value === 'expression');
+
+/** Whether the score is shown as text in place of the score. */
+export const showText = computed(() => mode.value === 'text');
+
+/** Switches to `m`, or back to the score when `m` is shown already (the shortcuts of the modes). */
+export function toggleMode(m: Mode): void {
+  mode.value = mode.peek() === m ? 'score' : m;
+}
+
+/** The zoom of the Expression roll at the start, in pixels per quarter note; the toolbar shows the zoom as a percentage of it. */
+export const EXPR_BASE_PPQ = 56;
 
 /**
  * The part of the piece the Expression pane shows: the tick at its left edge, the width of a quarter note in pixels (the
  * zoom, which changes only the width of the notes) and how far the roll is scrolled down from its highest pitch in pixels
  * (negative until the pane has placed it on the music).
  */
-export const exprView = signal({ left: 0, ppq: 56, top: -1 });
+export const exprView = signal({ left: 0, ppq: EXPR_BASE_PPQ, top: -1 });
 
 export const space = signal<number | null>(null);
 

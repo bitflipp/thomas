@@ -1,7 +1,7 @@
 // The Expression view: how the piece is played, as opposed to how it is written. It takes the place of the score (Ctrl Space)
 // and shows a roll with every sounding note where it is heard (shifted attacks included) and its velocity as the color of the
 // bar, with the three performance curves (tempo, sustain, una corda) stacked under it in lanes that are always in view. The
-// notes are selected here and in the score alike, and the toolbar acts on that selection. All expression editing is done
+// notes are selected here and in the score alike, and the main toolbar (`ExpressionTools`) acts on that selection. All expression editing is done
 // here; the state, the pointer handling and the actions are in expression.ts, the drawing of the canvas in exprDraw.ts.
 
 import { effect } from '@preact/signals';
@@ -361,7 +361,7 @@ function ToolWindow({ tool, place, onClose }: { tool: Tool; place: Place; onClos
   );
 }
 
-/** The tools of the selected notes (keys 1 to 6 in the view) and the exact values. */
+/** The tools of the selected notes (keys 1 to 6 in the view); the windows of Set, Shift and Gate also show the values of the notes. */
 function NoteBar({ none }: { none: boolean }) {
   const [open, setOpen] = useState<({ tool: Tool } & Place) | null>(null);
   const tools: { tool: Tool; key: string; label: string; title: string }[] = [
@@ -436,34 +436,6 @@ function NoteBar({ none }: { none: boolean }) {
           }}
         />
       )}
-      <Field
-        label="Velocity"
-        title="The velocity of the selected notes (1–127). Notes without one follow the dynamics."
-        value={E.sharedValue('vel')}
-        min={1}
-        max={127}
-        disabled={none}
-        onChange={E.setVelocity}
-      />
-      <Field
-        label="Shift"
-        title="Milliseconds the selected notes are struck later (negative: earlier) than written"
-        value={E.sharedValue('shift')}
-        min={-2000}
-        max={2000}
-        disabled={none}
-        onChange={E.setShift}
-      />
-      <Field
-        label="Gate"
-        title="How long the selected notes sound, as a factor of the length the notation gives (below 1 shorter, above 1 held on)"
-        value={E.sharedValue('gate')}
-        min={0.05}
-        max={4}
-        step={0.05}
-        disabled={none}
-        onChange={E.setGate}
-      />
     </>
   );
 }
@@ -502,15 +474,18 @@ function CurveBar() {
 /** The lane of the selected curve point or region. */
 const pointSelLane = () => E.pointSel.value?.lane;
 
-/** The row of controls: the tools and values of the selected notes, and those of the curves. */
-function Toolbar() {
+/**
+ * The controls of the Expression view, which the main toolbar shows in place of the score's View and Layers menus: the
+ * tools and values of the selected notes, and those of the curves.
+ */
+export function ExpressionTools() {
   const none = E.selected.value.size === 0;
   return (
-    <div class="xbar">
+    <>
       <NoteBar none={none} />
       <span class="sep" />
       <CurveBar />
-    </div>
+    </>
   );
 }
 
@@ -544,8 +519,12 @@ export function Expression() {
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setSize({ w: el.clientWidth, h: el.clientHeight }));
-    setSize({ w: el.clientWidth, h: el.clientHeight });
+    const measure = () => {
+      setSize({ w: el.clientWidth, h: el.clientHeight });
+      E.setCanvasWidth(el.clientWidth);
+    };
+    const ro = new ResizeObserver(measure);
+    measure();
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -622,7 +601,6 @@ export function Expression() {
   const tip = E.tip.value;
   return (
     <section class="expression" aria-label="Expression">
-      <Toolbar />
       <div class="xcanvas" ref={wrap}>
         <canvas
           ref={canvas}

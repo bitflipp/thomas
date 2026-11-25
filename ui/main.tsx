@@ -10,7 +10,7 @@ import * as interact from './interact.ts';
 import * as midiin from './midiin.ts';
 import { hasRealPaths } from './native.ts';
 import * as state from './state.ts';
-import { fileName, filePath, loadText, NEW_SCORE_TEXT, ready, restore, restoreFile, showText } from './state.ts';
+import { fileName, filePath, loadText, mode, NEW_SCORE_TEXT, ready, restore, restoreFile } from './state.ts';
 
 initFonts().then(() => {
   ready.value = true;
@@ -23,7 +23,7 @@ initFonts().then(() => {
       fileName.value = file.name;
     }
   } else loadText(NEW_SCORE_TEXT, 'untitled.txt');
-  if (location.hash === '#text') showText.value = true;
+  if (location.hash === '#text') mode.value = 'text';
   if (import.meta.env.DEV) Object.assign(window, { __t: { ...state, interact, midiin } }); // These are handles for scripted tests.
   render(<App />, must(document.getElementById('app')));
 });

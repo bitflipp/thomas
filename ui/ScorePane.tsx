@@ -43,10 +43,10 @@ import {
   entering,
   fit,
   hit,
+  mode,
   printing,
   score,
   selection,
-  showExpression,
   shownZoom,
   tool,
   VOICE_COLORS,
@@ -403,13 +403,13 @@ export function ScorePane() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  // Coming back from the Expression pane, the score is scrolled so that the selection is in the middle.
-  const expressionOpen = showExpression.value;
+  // Coming back from the Expression or the Text mode, the score is scrolled so that the selection is in the middle.
+  const away = mode.value !== 'score';
   useLayoutEffect(() => {
-    if (expressionOpen) return;
+    if (away) return;
     const first = selection.peek()[0];
     if (first) reveal(first, true);
-  }, [expressionOpen]);
+  }, [away]);
   useEffect(() => {
     // Panning: dragging with the right button scrolls the pane.
     const el = must(box.current);

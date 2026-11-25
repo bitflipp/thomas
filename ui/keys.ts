@@ -36,6 +36,7 @@ import {
   toggleSlur,
 } from './caret.ts';
 
+import { zoomRoll } from './expression.ts';
 import { stepFindings } from './Findings.tsx';
 import { cancelDrag, deleteSelection, evRefs, graceRefs, measureRefs, selectSimilar, zoomBy } from './interact.ts';
 import { focusGoto } from './Overview.tsx';
@@ -45,6 +46,7 @@ import type { Tool } from './state.ts';
 
 import {
   entering,
+  mode,
   redo,
   run,
   say,
@@ -53,7 +55,7 @@ import {
   setTool,
   showExpression,
   showProperties,
-  showText,
+  toggleMode,
   tool,
   undo,
   voice,
@@ -179,26 +181,29 @@ function onViewShortcut(e: KeyboardEvent): boolean {
   };
   // Ctrl Space is told by its physical key, since an input method may report another `key` for it.
   if (e.code === 'Space') {
-    toggleSignal(showExpression);
+    toggleMode('expression');
     e.preventDefault();
     return true;
   }
   switch (e.key.toLowerCase()) {
     case 'e':
-      toggleSignal(showText);
+      toggleMode('text');
       break;
     case '+':
     case '=':
-      zoomBy(ZOOM_STEP);
+      if (showExpression.peek()) zoomRoll(ZOOM_STEP);
+      else if (mode.peek() === 'score') zoomBy(ZOOM_STEP);
       break;
     case '-':
-      zoomBy(1 / ZOOM_STEP);
+      if (showExpression.peek()) zoomRoll(1 / ZOOM_STEP);
+      else if (mode.peek() === 'score') zoomBy(1 / ZOOM_STEP);
       break;
     case 'i':
-      toggleSignal(showProperties);
+      // Properties belongs to the score, so it is toggled only there.
+      if (mode.peek() === 'score') toggleSignal(showProperties);
       break;
     case 'm':
-      toggleSignal(showExpression);
+      toggleMode('expression');
       break;
     case 'g':
       focusGoto();
