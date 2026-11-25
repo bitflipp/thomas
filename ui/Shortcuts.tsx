@@ -7,7 +7,10 @@ export const showHelp = signal(false);
 
 const ROWS: [string, string][] = [
   ['N / V (Esc)', 'Note input / select'],
-  ['W (note input)', 'Repeat the note or chord entered last (middle C when there is none)'],
+  [
+    'W (note input)',
+    'Repeat the note entered last (of a chord its selected head, else its top note; middle C when there is none)',
+  ],
   [
     'Shift+W',
     'Add a chord tone a third above the top of the note just entered (or selected); only that head is selected, so the arrows place it',

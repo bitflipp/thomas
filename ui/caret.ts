@@ -101,14 +101,13 @@ function advance(sc: Score, c: Caret, ticks: number): { score: Score; caret: Car
   return { score: s, caret: { ...c, mi: c.mi + 1, tick: 0 } };
 }
 
-/** Enters a note (a chord with several pitches) at the caret and moves the caret on. Returns whether it was entered. */
-function enterPitches(c: Caret, pitches: Pitch[]): boolean {
+/** Enters a note at the caret and moves the caret on. Returns whether it was entered. */
+function enterPitch(c: Caret, pitch: Pitch): boolean {
   const loc = { mi: c.mi, staff: c.staff, voice: voice.peek() };
   const d = { base: dur.peek(), dots: dots.peek() };
   let next: Caret | undefined;
   const ok = run((s) => {
-    let s1 = C.enterNote(s, loc, c.tick, d, pitches[0]);
-    for (const p of pitches.slice(1)) s1 = C.enterNote(s1, loc, c.tick, d, p, { chord: true });
+    const s1 = C.enterNote(s, loc, c.tick, d, pitch);
     const r = advance(s1, c, ticksAt(s1, loc, c.tick));
     next = r.caret;
     return r.score;
@@ -143,13 +142,19 @@ function noteBefore(sc: Score, c: Caret): Pitch[] | undefined {
 /** The note W enters when there is nothing to repeat. */
 const MIDDLE_C: Pitch = { step: 'c', octave: 4, alter: 0 };
 
-/** Enters the note (or chord) entered last again at the caret, in the current duration; middle C when there is none (key W). */
+/**
+ * Enters one note at the caret in the current duration (key W): the pitch of the note entered last, of its selected
+ * head when it is a chord with one head selected, else its top note; middle C when there is nothing to repeat.
+ */
 export function repeatNote(): void {
   const sc = score.peek();
   const c = current(sc);
   if (!c) return;
   const n = noteBefore(sc, c);
-  enterPitches(c, n ?? [MIDDLE_C]);
+  const sel = selection.peek();
+  const head = sel.length === 1 && sel[0].t === 'ev' ? sel[0].pi : undefined;
+  const pitch = n ? (n[head ?? n.length - 1] ?? n[n.length - 1]) : MIDDLE_C;
+  enterPitch(c, pitch);
 }
 
 /**
@@ -208,7 +213,7 @@ export function stepNotes(d: 1 | -1): void {
 
 /**
  * Adds a tone a third above the top of the note just entered (or the selected note), in the key, and selects only that
- * head, so that the arrow keys put it in place. The caret stays, so W then repeats the whole chord.
+ * head, so that the arrow keys put it in place. The caret stays where it is.
  */
 export function addChordTone(): void {
   const sc = score.peek();
