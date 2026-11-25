@@ -426,8 +426,8 @@ export function onPointerDown(e: PointerEvent): void {
   if (!(w && h)) return;
   const t = tool.value;
   const target = asSelected(hitTest(h, w.page, w.x, w.y));
-  if ((t === 'note' || t === 'rest') && target?.ref.t === 'ev') {
-    // A click on an existing note leaves input and selects it.
+  if ((t === 'note' || t === 'rest') && target?.ref.t === 'ev' && eventOf(score.peek(), target.ref)?.kind === 'note') {
+    // A click on an existing note leaves input and selects it; a rest is entered over.
     setTool('select');
     pressWithSelectTool(e, w, h, target);
   } else if (t === 'note' || t === 'rest') enter(w, e.altKey);

@@ -9,7 +9,7 @@ const ROWS: [string, string][] = [
   ['N / R / V (Esc)', 'Note input / rest input / select'],
   [
     '1 – 8',
-    'Duration whole … 128th: the selection in select mode, else the next note (nothing selected: starts note input)',
+    'Duration whole … 128th: the selection in select mode (the next note follows it), else the next note (nothing selected: starts note input)',
   ],
   ['.', 'Cycle dots'],
   ['Q / W', 'Previous / next voice for new notes'],

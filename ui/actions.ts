@@ -3,6 +3,7 @@
 // event and commits the result as one undoable step; a refusal (`EditError`) is shown in the status
 // line instead of changing anything.
 
+import { effect } from '@preact/signals';
 import type { EvAddr, Ref } from '../src/editor/addr.ts';
 import { eventOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
@@ -33,6 +34,19 @@ function setDurationSel(d: Dur): void {
   }
 }
 
+// The next note's value follows the selection: selecting a note or rest makes its duration and dots the input
+// settings, so that entering notes afterwards continues with the value last seen.
+
+effect(() => {
+  const sel = selection.value;
+  if (entering()) return;
+  const r = sel.find((x) => x.t === 'ev');
+  const e = r && eventOf(score.peek(), r);
+  if (!e) return;
+  dur.value = e.dur.base;
+  dots.value = e.dur.dots;
+});
+
 /** Whether the palette's duration, dot and accidental buttons act on the selected events (select mode, events selected). */
 export function editsSelection(): boolean {
   return !entering() && evRefs().length > 0;
@@ -46,11 +60,12 @@ export function shownDuration(): { base: BaseDur; dots: number } {
 
 /**
  * Picks a note value. In note and rest input it sets the next note's value and never touches the score. In select
- * mode it changes the selected events and leaves the input value alone; with nothing selected it sets the next note's
+ * mode it changes the selected events and the next note follows; with nothing selected it sets the next note's
  * value and switches to note input.
  */
 export function chooseDuration(base: BaseDur): void {
   if (editsSelection()) {
+    dur.value = base;
     setDurationSel({ base, dots: shownDuration().dots });
     return;
   }
@@ -61,6 +76,7 @@ export function chooseDuration(base: BaseDur): void {
 /** Picks the number of dots, by the same rule as `chooseDuration`. */
 export function chooseDots(n: number): void {
   if (editsSelection()) {
+    dots.value = n;
     setDurationSel({ base: shownDuration().base, dots: n });
     return;
   }
