@@ -14,7 +14,7 @@ import { flattenVoice, lengthOf } from '../src/model.ts';
 import { editHeads } from './actions.ts';
 import { pageEls, selectEventAt } from './interact.ts';
 import type { Caret } from './state.ts';
-import { acc, caret, dots, dur, engraved, run, say, score, selection, voice } from './state.ts';
+import { acc, caret, dots, dur, engraved, entering, run, say, score, selection, voice } from './state.ts';
 
 /** The note entered last: where it is, so that W repeats it and S puts a slur end on it. */
 let prev: { mi: number; staff: string; voice: number; tick: number } | null = null;
@@ -28,6 +28,14 @@ function forgetPrev(): void {
   const e = v && flattenVoice(v).find((t) => t.start === prev?.tick)?.ev;
   if (e?.kind === 'note') remembered = e.pitches.map((p) => ({ ...p.pitch }));
   prev = null;
+}
+
+/** The caret the last entry left; the note entered last only counts while the caret is still there. */
+let entryCaret: Caret | null = null;
+
+/** The note entered last, while the caret stays where that entry left it and the voice is unchanged; else null. */
+function lastEntered(): typeof prev {
+  return prev && caret.peek() === entryCaret && prev.voice === voice.peek() ? prev : null;
 }
 
 /** The caret, kept inside the score (measures may have been deleted since it was set). */
@@ -118,6 +126,7 @@ function enterPitch(c: Caret, pitch: Pitch): boolean {
   prev = { ...loc, tick: c.tick };
   if (slurFrom.peek() === 'next') slurFrom.value = prev;
   if (next) caret.value = next;
+  entryCaret = next ?? null;
   revealCaret();
   return true;
 }
@@ -132,8 +141,9 @@ function noteBefore(sc: Score, c: Caret): Pitch[] | undefined {
     const v = voiceOf(sc, { mi, staff: c.staff, voice: vid });
     return v && [...flattenVoice(v)].reverse().find((t) => t.start < before && t.ev.kind === 'note')?.ev;
   };
-  const at = prev && voiceOf(sc, prev);
-  const p = at && flattenVoice(at).find((t) => t.start === prev?.tick)?.ev;
+  const le = lastEntered();
+  const at = le && voiceOf(sc, le);
+  const p = at && flattenVoice(at).find((t) => t.start === le?.tick)?.ev;
   const e = p ?? find(c.mi, c.tick) ?? (c.mi > 0 ? find(c.mi - 1, Number.POSITIVE_INFINITY) : undefined);
   if (e?.kind === 'note') return e.pitches.map((x) => ({ ...x.pitch }));
   return remembered ?? undefined;
@@ -173,20 +183,20 @@ function addrAt(sc: Score, p: { mi: number; staff: string; voice: number; tick: 
 /** Opens a slur at the note entered last, or closes the open one there. */
 export function toggleSlur(): void {
   const from = slurFrom.peek();
+  const to = lastEntered();
   if (!from) {
-    slurFrom.value = prev ?? 'next';
+    slurFrom.value = to ?? 'next';
     return;
   }
   slurFrom.value = null;
-  if (from === 'next' || !prev) return;
+  if (from === 'next' || !to) return;
   const sc = score.peek();
   const a = addrAt(sc, from);
-  const b = addrAt(sc, prev);
+  const b = addrAt(sc, to);
   if (!(a && b)) {
     say('The slur lost its notes', true);
     return;
   }
-  const to = prev;
   if (run((s) => C.addSlur(s, a, b))) selectEventAt(to, to.tick);
 }
 
@@ -212,13 +222,32 @@ export function stepNotes(d: 1 | -1): void {
 }
 
 /**
- * Adds a tone a third above the top of the note just entered (or the selected note), in the key, and selects only that
- * head, so that the arrow keys put it in place. The caret stays where it is.
+ * The note Shift+W adds to. In note input: the note just entered while the caret is still behind it, else the note at
+ * the caret, else the one before it in the voice. In select mode: the selected note.
+ */
+function chordTarget(sc: Score): EvAddr | undefined {
+  if (!entering()) {
+    const sel = selection.peek().find((r) => r.t === 'ev');
+    return sel?.t === 'ev' ? sel : undefined;
+  }
+  const le = lastEntered();
+  if (le) return addrAt(sc, le);
+  const c = current(sc);
+  const v = c && voiceOf(sc, { mi: c.mi, staff: c.staff, voice: voice.peek() });
+  if (!(c && v)) return undefined;
+  const te =
+    flattenVoice(v).find((t) => t.start === c.tick && t.ev.kind === 'note') ??
+    [...flattenVoice(v)].reverse().find((t) => t.start < c.tick && t.ev.kind === 'note');
+  return te && { mi: c.mi, staff: c.staff, voice: voice.peek(), idx: te.index };
+}
+
+/**
+ * Adds a tone a third above the top of the target note (`chordTarget`), in the key, and selects only that head, so
+ * that the arrow keys put it in place. The caret stays where it is.
  */
 export function addChordTone(): void {
   const sc = score.peek();
-  const sel = selection.peek().find((r) => r.t === 'ev');
-  const at = prev ? addrAt(sc, prev) : sel?.t === 'ev' ? sel : undefined;
+  const at = chordTarget(sc);
   const v = at && voiceOf(sc, at);
   const te = v && at && flattenVoice(v)[at.idx];
   if (!(at && te && te.ev.kind === 'note')) {
