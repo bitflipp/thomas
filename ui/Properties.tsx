@@ -22,6 +22,8 @@ import {
   flipStem,
   flipVoices,
   lineSelection,
+  moveSelectionToVoice,
+  selectVoice,
   slurSelection,
   tieSelection,
 } from './actions.ts';
@@ -1219,6 +1221,15 @@ function EventActions({ ctx }: { ctx: EvSel }) {
             Flip voices
           </button>
         )}
+        {[1, 2, 3, 4].map((n) => (
+          <button
+            type="button"
+            title={`Move the selected notes to voice ${n} (Alt+${n}); Shift+click selects voice ${n} here (Alt+Shift+${n})`}
+            onClick={(e) => (e.shiftKey ? selectVoice(n) : moveSelectionToVoice(n))}
+          >
+            To v{n}
+          </button>
+        ))}
         <button type="button" title="Flip stem (X)" onClick={flipStem}>
           Flip stem
         </button>

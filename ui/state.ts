@@ -7,13 +7,14 @@
 import { batch, computed, effect, signal } from '@preact/signals';
 
 import type { Ref } from '../src/editor/addr.ts';
+import { voiceOf } from '../src/editor/addr.ts';
 import { EditError } from '../src/editor/commands.ts';
 import type { HitIndex } from '../src/editor/hit.ts';
 import { buildHitIndex } from '../src/editor/hit.ts';
 import type { Engraved, EngraveOptions } from '../src/engrave/system.ts';
 import { createEngraveCache, engrave } from '../src/engrave/system.ts';
-import type { BaseDur, Clef, Score } from '../src/model.ts';
-import { validate } from '../src/model.ts';
+import type { BaseDur, Clef, Pitch, Score } from '../src/model.ts';
+import { flattenVoice, validate } from '../src/model.ts';
 import { parseText, writeText, writeTextMap } from '../src/textformat.ts';
 
 // The document: the score signal with its undo/redo history, the file name and dirty flag, toast
@@ -277,10 +278,35 @@ export const tool = signal<Tool>('select');
 /** Whether the pointer enters notes or rests, in which case the palette sets the next note and never the selection. */
 export const entering = (): boolean => tool.value === 'note' || tool.value === 'rest';
 
-/** Switches the tool. Entering note or rest input clears the selection, so that nothing selected is changed by accident. */
+/**
+ * The caret of note input: the position in the staff and measure where the next note goes. The voice is the palette's
+ * `voice`, so that changing voice keeps the position in time.
+ */
+export interface Caret {
+  mi: number;
+  staff: string;
+  tick: number;
+}
+
+export const caret = signal<Caret | null>(null);
+
+/** The pitch of the note entered last, which the octave of the next letter key is chosen near. */
+export const lastPitch = signal<Pitch | null>(null);
+
+/**
+ * Switches the tool. Entering note or rest input puts the caret on the first selected event (or leaves it where it was)
+ * and clears the selection, so that nothing selected is changed by accident.
+ */
 export function setTool(t: Tool): void {
+  if (t === 'note' || t === 'rest') {
+    const r = selection.peek().find((x) => x.t === 'ev');
+    const v = r && voiceOf(score.peek(), r);
+    const te = v && r && flattenVoice(v)[r.idx];
+    if (r && te) caret.value = { mi: r.mi, staff: r.staff, tick: te.start };
+    else if (!caret.peek()) caret.value = { mi: 0, staff: score.peek().staves[0].id, tick: 0 };
+    selection.value = [];
+  }
   tool.value = t;
-  if (t === 'note' || t === 'rest') selection.value = [];
 }
 
 export const dur = signal<BaseDur>(8);

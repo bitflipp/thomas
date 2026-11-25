@@ -628,3 +628,22 @@ test('flipVoices exchanges the contents of two voices and flipping again restore
   assert.equal(flattenVoice(flipped.measures[0].staves.rh.voices[1])[0].ev.dur.base, 4);
   assert.deepEqual(C.flipVoices(flipped, 'rh', 1, 2, [0]), s);
 });
+
+test('moveToVoice moves notes to another voice at the same tick and leaves rests behind', () => {
+  let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
+  s = C.enterNote(s, loc, PPQ4, { base: 4, dots: 0 }, { ...c4, step: 'e' });
+  const moved = ok(C.moveToVoice(s, [{ ...loc, idx: 1 }], 2));
+  const v1 = flattenVoice(moved.measures[0].staves.rh.voices.find((v) => v.id === 1) as never);
+  const v2 = flattenVoice(moved.measures[0].staves.rh.voices.find((v) => v.id === 2) as never);
+  assert.equal(v1[0].ev.kind, 'note');
+  assert.equal(v1[1].ev.kind, 'rest');
+  const n = v2.find((t) => t.ev.kind === 'note');
+  assert.equal(n?.start, PPQ4);
+  assert.equal(n?.ev.kind === 'note' && n.ev.pitches[0].pitch.step, 'e');
+});
+
+test('moveToVoice refuses to land on notes of the target voice', () => {
+  let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
+  s = C.enterNote(s, { ...loc, voice: 2 }, 0, { base: 4, dots: 0 }, { ...c4, step: 'g' });
+  assert.throws(() => C.moveToVoice(s, [{ ...loc, idx: 0 }], 2), C.EditError);
+});

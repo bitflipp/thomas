@@ -5,14 +5,16 @@
 import type { Ref } from '../src/editor/addr.ts';
 import { voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
-import type { MarkBody } from '../src/model.ts';
+import type { MarkBody, Step } from '../src/model.ts';
 import { flattenVoice } from '../src/model.ts';
 
 import {
   chooseDots,
   chooseDuration,
   flipStemOrTie,
+  moveSelectionToVoice,
   nudge,
+  selectVoice,
   shownDuration,
   slurSelection,
   stepSelection,
@@ -20,6 +22,7 @@ import {
   toggleOrnament,
 } from './actions.ts';
 
+import { alterLast, backspaceAtCaret, caretToMeasureStart, enterLetter, enterRestAtCaret, moveCaret } from './caret.ts';
 import { stepFindings } from './Findings.tsx';
 import { cancelDrag, deleteSelection, evRefs, graceRefs, measureRefs, selectSimilar, zoomBy } from './interact.ts';
 import { focusGoto } from './Overview.tsx';
@@ -28,6 +31,7 @@ import { showHelp } from './Shortcuts.tsx';
 import type { Tool } from './state.ts';
 
 import {
+  entering,
   redo,
   run,
   say,
@@ -257,6 +261,13 @@ function onNavigationKey(e: KeyboardEvent): boolean {
 
 /** Single letter and digit keys: durations, tools, ties, slurs, stem flip and the voice. */
 function onToolKey(e: KeyboardEvent): void {
+  const vd = /^Digit([1-4])$/.exec(e.code);
+  if (e.altKey && vd) {
+    // Alt+1..4 moves the selected notes to that voice, Alt+Shift+1..4 selects the voice.
+    if (e.shiftKey) selectVoice(Number(vd[1]));
+    else moveSelectionToVoice(Number(vd[1]));
+    return;
+  }
   const digit = '12345678'.indexOf(e.key);
   if (digit >= 0 && !e.shiftKey) {
     chooseDuration(DURATION_KEYS[digit]);
@@ -273,12 +284,30 @@ function onToolKey(e: KeyboardEvent): void {
   else if (letter === 'w') voice.value = Math.min(MAX_VOICE, voice.value + 1);
 }
 
+/** Keys of note input with the caret: letters enter notes, R a rest, arrows move the caret. Returns true if the key was one of them. */
+function onCaretKey(e: KeyboardEvent): boolean {
+  if (e.altKey) return false;
+  const k = e.key.toLowerCase();
+  if (e.key.length === 1 && k >= 'a' && k <= 'g') enterLetter(k as Step, e.shiftKey);
+  else if (k === 'r') enterRestAtCaret();
+  else if (e.key === 'ArrowLeft') moveCaret(-1);
+  else if (e.key === 'ArrowRight') moveCaret(1);
+  else if (e.key === 'Backspace') backspaceAtCaret();
+  else if (e.key === 'Home') caretToMeasureStart();
+  else if (e.key === '+' || e.key === '=') alterLast(1);
+  else if (e.key === '-') alterLast(-1);
+  else return false;
+  e.preventDefault();
+  return true;
+}
+
 /** The global key handler: editing and view shortcuts with Ctrl or Cmd, then the single-key bindings. */
 function onKey(e: KeyboardEvent): void {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && !typing(e) && onEditShortcut(e)) return;
   if (mod && onViewShortcut(e)) return;
   if (typing(e) || mod || (e.altKey && e.key.length > 1)) return;
+  if (entering() && onCaretKey(e)) return;
   if (!onNavigationKey(e)) onToolKey(e);
 }
 

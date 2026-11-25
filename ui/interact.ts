@@ -25,6 +25,7 @@ import { showHelp } from './Shortcuts.tsx';
 
 import {
   acc,
+  caret,
   clefArg,
   commit,
   dots,
@@ -34,6 +35,7 @@ import {
   exprView,
   fit,
   hit,
+  lastPitch,
   run,
   say,
   score,
@@ -430,7 +432,7 @@ export function onPointerDown(e: PointerEvent): void {
     // A click on an existing note leaves input and selects it; a rest is entered over.
     setTool('select');
     pressWithSelectTool(e, w, h, target);
-  } else if (t === 'note' || t === 'rest') enter(w, e.altKey);
+  } else if (t === 'note' || t === 'rest') enter(w, e.altKey, e.shiftKey);
   else if (SPAN_TOOLS.has(t)) startSpan(e, w, t as SpanTool, target);
   else if (MARK_TOOLS.has(t)) addMarkAt(w);
   else if (t === 'tuplet') makeTupletAt(target);
@@ -705,7 +707,7 @@ export function onPointerUp(e: PointerEvent): void {
  * Enters a note or rest at the pointer. With `alt` a tuplet under it is replaced as a whole instead of being
  * entered.
  */
-function enter(w: Where, alt: boolean): void {
+function enter(w: Where, alt: boolean, placeOnly = false): void {
   const h = hit.peek();
   if (!h) return;
   const sc = score.peek();
@@ -715,8 +717,16 @@ function enter(w: Where, alt: boolean): void {
   const loc = { mi: g.mi, staff: id, voice: voice.value };
   const d = { base: dur.value, dots: dots.value };
   const sn = snapTick(g, lenOf(sc, g.mi), w.x, durTicks());
+  if (placeOnly) {
+    // Shift+click puts the caret there without entering anything.
+    caret.value = { mi: g.mi, staff: id, tick: sn.tick };
+    return;
+  }
   if (tool.value === 'rest') {
-    if (run((s) => C.enterRest(s, loc, sn.tick, d, !alt))) selectEventAt(loc, sn.tick);
+    if (run((s) => C.enterRest(s, loc, sn.tick, d, !alt))) {
+      selectEventAt(loc, sn.tick);
+      afterPointerEntry(loc, sn.tick);
+    }
     return;
   }
   const pos = Math.max(-9, Math.min(17, posAtY(g.y, w.y)));
@@ -732,8 +742,23 @@ function enter(w: Where, alt: boolean): void {
   );
   if (run((s) => C.enterNote(s, loc, sn.tick, d, pitch, { chord, descend: !alt }))) {
     selectEventAt(loc, sn.tick);
-    acc.value = undefined;
-  } // An accidental applies to one note.
+    lastPitch.value = pitch;
+    acc.value = undefined; // An accidental applies to one note.
+    afterPointerEntry(loc, sn.tick);
+  }
+}
+
+/** After a click entered an event at `tick`, the caret goes to the end of that event, as after a key entry. */
+function afterPointerEntry(loc: { mi: number; staff: string; voice: number }, tick: number): void {
+  const sc = score.peek();
+  const v = voiceOf(sc, { ...loc });
+  const te = v && flattenVoice(v).find((t) => t.start === tick);
+  if (!te) return;
+  const end = tick + te.ticks;
+  caret.value =
+    end < lenOf(sc, loc.mi) || loc.mi + 1 >= sc.measures.length
+      ? { mi: loc.mi, staff: loc.staff, tick: Math.min(end, lenOf(sc, loc.mi)) }
+      : { mi: loc.mi + 1, staff: loc.staff, tick: 0 };
 }
 
 /** Puts a grace note in front of the note at the pointer, on the pitch of the clicked position, and selects it. */

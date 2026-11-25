@@ -17,6 +17,7 @@ import type { Engraved } from '../src/engrave/system.ts';
 import { pageToSvg } from '../src/render.ts';
 import { loadSmufl } from '../src/smufl.ts';
 import { must } from '../src/util.ts';
+import { caretGeom } from './caret.ts';
 import type { Ghost } from './interact.ts';
 
 import {
@@ -34,11 +35,12 @@ import {
 } from './interact.ts';
 
 import { hoverShape, LAYER_COLORS, layerNotes, shapeById, shapeParts, wheelFinding } from './layers.ts';
-
 import { playhead, playing } from './player.ts';
 
 import {
+  caret,
   engraved,
+  entering,
   fit,
   hit,
   printing,
@@ -48,6 +50,7 @@ import {
   shownZoom,
   tool,
   VOICE_COLORS,
+  voice,
   voiceColors,
   zoom,
 } from './state.ts';
@@ -116,6 +119,22 @@ function BarGhost({ g }: { g: GhostOf<'bar'> }) {
           {g.label}
         </text>
       )}
+    </g>
+  );
+}
+
+/** The input caret on page `page`: a bar through its staff with the input voice, shown while notes are entered. */
+function CaretSvg({ page }: { page: number }) {
+  const c = caret.value;
+  if (!(c && entering())) return null;
+  const at = caretGeom(c);
+  if (!at || at.page !== page) return null;
+  return (
+    <g>
+      <rect x={at.x - 0.15} y={at.y - 0.8} width="0.3" height="5.6" fill={SEL} opacity="0.85" />
+      <text x={at.x + 0.4} y={at.y - 1} font-size="1.4" fill={SEL} font-family={GHOST_FONT}>
+        {voice.value}
+      </text>
     </g>
   );
 }
@@ -330,6 +349,7 @@ function PageView({
         })}
         <NotesSvg page={i} h={h} />
         <FindingsSvg page={i} />
+        <CaretSvg page={i} />
         <GhostSvg g={ghost.value} page={i} />
         <PlayheadSvg page={i} />
       </svg>

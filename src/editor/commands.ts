@@ -554,6 +554,53 @@ export function updateNotes(score: Score, addrs: EvAddr[], fn: (e: Draft<NoteEve
 }
 
 /**
+ * Moves the selected notes to voice `target` of their staff, at the same ticks. They become rests where they were (marks
+ * such as dynamics stay on the rest); the target voice is created if needed. Refuses when the target voice has notes
+ * where they land, or when a note is inside a tuplet.
+ */
+export function moveToVoice(score: Score, addrs: EvAddr[], target: number): Score {
+  return edit(score, (d) => {
+    const moves = new Map<
+      string,
+      { mi: number; staff: string; list: { from: number; ev: Event; start: number; ticks: number }[] }
+    >();
+    for (const a of addrs) {
+      if (a.voice === target) continue;
+      const te = flattenVoice(voiceIn(d, a) as Voice)[a.idx];
+      if (te?.ev.kind !== 'note') continue;
+      if (te.tuplets.length) throw new EditError('Notes in a tuplet cannot be moved to another voice');
+      const key = `${a.mi}/${a.staff}`;
+      const g = moves.get(key) ?? { mi: a.mi, staff: a.staff, list: [] };
+      moves.set(key, g);
+      if (!g.list.some((m) => m.from === a.voice && m.start === te.start))
+        g.list.push({
+          from: a.voice,
+          ev: JSON.parse(JSON.stringify(te.ev)) as Event,
+          start: te.start,
+          ticks: te.ticks,
+        });
+    }
+    if (!moves.size) throw new EditError('Select notes to move');
+    for (const g of moves.values()) {
+      const loc = { mi: g.mi, staff: g.staff, voice: target };
+      const tv = voiceIn(d, loc, true);
+      for (const m of g.list)
+        for (const t of flattenVoice(tv as Voice))
+          if (t.ev.kind !== 'rest' && t.start < m.start + m.ticks && t.start + t.ticks > m.start)
+            throw new EditError(`Voice ${target} already has notes there`);
+      for (const m of g.list) {
+        const sv = voiceIn(d, { ...loc, voice: m.from });
+        const te = flattenVoice(sv as Voice).find((t) => t.start === m.start);
+        if (te) replaceItem(sv.items as Draft<Item>[], te.ev, toRest(te.ev as Draft<Event>));
+        const moved = m.ev as Event;
+        delete moved.marks;
+        tv.items = putEvent(tv.items as Item[], m.start, moved) as Draft<Item>[];
+      }
+    }
+  });
+}
+
+/**
  * Exchanges the contents of voices `a` and `b` of one staff in the measures `mis` (events, tuplets and end marks;
  * the voice ids and their order stay). A voice missing from a measure counts as a measure of rests.
  */

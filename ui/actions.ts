@@ -5,13 +5,14 @@
 
 import { effect } from '@preact/signals';
 import type { EvAddr, Ref } from '../src/editor/addr.ts';
-import { eventOf } from '../src/editor/addr.ts';
+import { eventOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
 import { alterBefore } from '../src/editor/context.ts';
 import { drawnTieSide } from '../src/editor/hit.ts';
 import type { BaseDur, Dur } from '../src/model.ts';
+import { flattenVoice } from '../src/model.ts';
 import { evRefs, graceRefs, sameSystem } from './interact.ts';
-import { acc, commit, dots, dur, entering, hit, run, say, score, selection, setTool, voice } from './state.ts';
+import { acc, caret, commit, dots, dur, entering, hit, run, say, score, selection, setTool, voice } from './state.ts';
 
 /**
  * Orders event addresses from the end of the score backward, so that edits applied in this order keep earlier
@@ -288,4 +289,52 @@ export function stepSelection(dir: -1 | 1, extend = false): void {
 /** The number of events in an item (a tuplet or beam counts its members). */
 function countEvents(it: import('../src/model.ts').Item): number {
   return 'items' in it ? it.items.reduce((n, x) => n + countEvents(x), 0) : 1;
+}
+
+/** Moves the selected notes to voice `n` of their staff (same ticks), leaves rests behind, and selects them there. */
+export function moveSelectionToVoice(n: number): void {
+  const sc = score.peek();
+  const refs = evRefs();
+  if (!refs.length) {
+    say('Select notes to move', true);
+    return;
+  }
+  const starts = refs.flatMap((r) => {
+    const v = voiceOf(sc, r);
+    const te = v && flattenVoice(v)[r.idx];
+    return te && te.ev.kind === 'note' && r.voice !== n ? [{ mi: r.mi, staff: r.staff, tick: te.start }] : [];
+  });
+  if (!run((s) => C.moveToVoice(s, refs, n))) return;
+  const after = score.peek();
+  voice.value = n;
+  selection.value = starts.flatMap((p) => {
+    const v = voiceOf(after, { mi: p.mi, staff: p.staff, voice: n });
+    const te = v && flattenVoice(v).find((t) => t.start === p.tick);
+    return te ? [{ t: 'ev' as const, mi: p.mi, staff: p.staff, voice: n, idx: te.index }] : [];
+  });
+}
+
+/**
+ * Selects every event of voice `n` in the measures of the selection (the whole score when nothing is selected), on
+ * the staff of the selection or of the caret, and makes `n` the input voice.
+ */
+export function selectVoice(n: number): void {
+  const sc = score.peek();
+  const sel = selection.peek();
+  const mis = sel.flatMap((r) => (r.t === 'measure' || 'mi' in r ? [r.mi] : []));
+  const first = sel.find((r) => r.t === 'ev');
+  const staff = first?.t === 'ev' ? first.staff : (caret.peek()?.staff ?? sc.staves[0].id);
+  const a = mis.length ? Math.min(...mis) : 0;
+  const b = mis.length ? Math.max(...mis) : sc.measures.length - 1;
+  const refs: Ref[] = [];
+  for (let mi = a; mi <= b; mi++) {
+    const v = voiceOf(sc, { mi, staff, voice: n });
+    if (v) for (const te of flattenVoice(v)) refs.push({ t: 'ev', mi, staff, voice: n, idx: te.index });
+  }
+  if (!refs.length) {
+    say(`Voice ${n} has nothing there`, true);
+    return;
+  }
+  voice.value = n;
+  selection.value = refs;
 }

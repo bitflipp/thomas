@@ -7,6 +7,13 @@ export const showHelp = signal(false);
 
 const ROWS: [string, string][] = [
   ['N / R / V (Esc)', 'Note input / rest input / select'],
+  ['A – G (note input)', 'Enter the note at the caret, in the octave nearest to the last one; Shift adds a chord tone'],
+  ['R (note input)', 'Enter a rest at the caret'],
+  ['← → Home Backspace (note input)', 'Move the caret by event / to the measure start / step back and clear'],
+  ['+ / - (note input)', 'Sharpen / flatten the note just entered'],
+  ['Alt+1 – 4', 'Move the selected notes to that voice'],
+  ['Alt+Shift+1 – 4', 'Select everything of that voice in the selected measures'],
+  ['Shift+click (note input)', 'Put the caret there without entering a note'],
   [
     '1 – 8',
     'Duration whole … 128th: the selection in select mode (the next note follows it), else the next note (nothing selected: starts note input)',
