@@ -474,10 +474,31 @@ export function enterRest(score: Score, loc: Loc, tick: number, dur: Dur, descen
   });
 }
 
-/** Notes become rests of the same value (a chord pitch `pi` is removed instead). */
+/**
+ * Notes become rests of the same value (a chord pitch `pi` is removed instead). When every event of a voice in a
+ * measure is selected, even if they are all rests, that part of the measure is cleared to one whole-measure rest.
+ */
 export function deleteEvents(score: Score, addrs: (EvAddr & { pi?: number })[]): Score {
   return edit(score, (d) => {
+    const whole = new Map<string, Set<number>>();
     for (const a of addrs) {
+      if (a.pi !== undefined) continue;
+      const key = `${a.mi}/${a.staff}/${a.voice}`;
+      const set = whole.get(key) ?? new Set<number>();
+      whole.set(key, set);
+      set.add(a.idx);
+    }
+    const cleared = new Set<string>();
+    for (const [key, idxs] of whole) {
+      const a = must(addrs.find((x) => x.pi === undefined && `${x.mi}/${x.staff}/${x.voice}` === key));
+      const v = voiceIn(d, a);
+      const n = flattenVoice(v as Voice).length;
+      if (idxs.size < n) continue;
+      v.items = measureRest(lengthOf(d as Score, a.mi)) as Draft<Item>[];
+      cleared.add(key);
+    }
+    for (const a of addrs) {
+      if (cleared.has(`${a.mi}/${a.staff}/${a.voice}`)) continue;
       const e = eventIn(d, a);
       if (e.kind !== 'note') continue;
       if (a.pi !== undefined && e.pitches.length > 1) {

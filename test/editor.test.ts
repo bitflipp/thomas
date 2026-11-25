@@ -605,3 +605,16 @@ test('slur shape: skewed flag in the text format, a command, and the drawn slur 
   s = ok(C.setSlurSkewed(s, { ...loc, idx: 0 }, 1, true));
   assert.match(show(s), /\(\^\/ ?c5/);
 });
+
+test('deleting every event of a voice in a measure clears it to a whole-measure rest, even rests', () => {
+  let s = load(base('  rh.1: r:4 r:4\n  lh.1: R:2'));
+  s = ok(
+    C.deleteEvents(
+      s,
+      [0, 1].map((idx) => ({ ...loc, idx })),
+    ),
+  );
+  const evs = flattenVoice(s.measures[0].staves.rh.voices[0]);
+  assert.equal(evs.length, 1);
+  assert.equal(evs[0].ev.kind === 'rest' && evs[0].ev.style, 'measure');
+});
