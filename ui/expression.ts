@@ -280,7 +280,7 @@ export interface Scale {
 export function scaleOf(l: Lane): Scale {
   switch (l) {
     case 'tempo':
-      return { min: 0.7, max: 1.3, marks: [0.8, 1, 1.2], base: 1, fmt: (v) => `${Math.round(v * 100)}%` };
+      return { min: 0.8, max: 1.2, marks: [0.8, 0.9, 1, 1.1, 1.2], base: 1, fmt: (v) => `${Math.round(v * 100)}%` };
     case 'sustain':
       return { min: 0, max: 1, marks: [0, 0.5, 1], base: 0, fmt: (v) => `${Math.round(v * 100)}%` };
     case 'soft':
@@ -462,12 +462,12 @@ function tickOfX(x: number, free: boolean): number {
   return Math.max(0, Math.min(m.start + m.len, m.start + Math.round((tick - m.start) / g) * g));
 }
 
-/** The value of a curve at a pixel row, snapped to steps (10% for the tempo, 25% for the pedal) unless `free`. */
+/** The value of a curve at a pixel row, snapped to steps (5% for the tempo, 25% for the pedal) unless `free`. */
 function curveValueAt(l: CurveName, g: Geo, y: number, free: boolean): number {
   const v = valueAt(g[l], scaleOf(l), y);
-  const raw = Math.max(l === 'tempo' ? 0.7 : 0, Math.min(l === 'tempo' ? 1.3 : 1, v));
+  const raw = Math.max(l === 'tempo' ? 0.8 : 0, Math.min(l === 'tempo' ? 1.2 : 1, v));
   if (free) return P.curveValue(l, Math.round(raw * 100) / 100);
-  const step = l === 'tempo' ? 0.1 : 0.25;
+  const step = l === 'tempo' ? 0.05 : 0.25;
   return P.curveValue(l, Math.round(Math.round(raw / step) * step * 100) / 100);
 }
 

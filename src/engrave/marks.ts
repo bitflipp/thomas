@@ -14,7 +14,7 @@ import { D, geomOf, xAtTick } from './draw.ts';
 import type { EvL, Prepared } from './prep.ts';
 import type { Kind, Prim } from './scene.ts';
 import { oid } from './scene.ts';
-import { HEAD_SCALE, headWidth, STEM_T } from './spacing.ts';
+import { flagGlyph, HEAD_SCALE, headGlyph, headWidth, STEM_T } from './spacing.ts';
 
 const sm = loadSmufl();
 
@@ -233,9 +233,10 @@ function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' })
 function tempoItem(m: Mark & { type: 'tempo' }, x0: number): Item {
   let x = x0;
   // Drawn exactly like a staff note: the same head glyph and scale, stem 3.5 long.
-  const head = m.unit === 2 ? 'noteheadHalf' : 'noteheadBlack';
-  const hw = headWidth(m.unit === 2 ? 2 : 4);
-  const noteBox = { x1: hw };
+  const head = headGlyph(m.unit);
+  const hw = headWidth(m.unit);
+  const flags = m.unit >= 8 ? Math.log2(m.unit) - 2 : 0;
+  const noteBox = { x1: hw + (flags ? 0.9 : 0) };
   const label = `= ${m.bpm}`;
   const size = 2.5;
   const textWidth = label.length * size * 0.55;
@@ -256,10 +257,12 @@ function tempoItem(m: Mark & { type: 'tempo' }, x0: number): Item {
     row: 0,
     order: 0,
     draw: (ref) => {
-      const out: Prim[] = [
-        { t: 'glyph', name: head, x, y: ref, sx: HEAD_SCALE, sy: 1 },
-        { t: 'line', x1: x + hw - STEM_T / 2, y1: ref - 0.17, x2: x + hw - STEM_T / 2, y2: ref - 3.5, w: STEM_T },
-      ];
+      const out: Prim[] = [{ t: 'glyph', name: head, x, y: ref, sx: HEAD_SCALE, sy: 1 }];
+      if (m.unit >= 2) {
+        const sx = x + hw - STEM_T / 2;
+        out.push({ t: 'line', x1: sx, y1: ref - 0.17, x2: sx, y2: ref - 3.5, w: STEM_T });
+        if (flags) out.push({ t: 'glyph', name: flagGlyph(flags, true), x: sx, y: ref - 3.5 });
+      }
       for (let k = 0; k < m.dots; k++)
         out.push({ t: 'glyph', name: 'augmentationDot', x: x + noteBox.x1 + 0.2 + k * 0.5, y: ref });
       out.push({ t: 'text', x: x + noteBox.x1 + dotsWidth + 0.75, y: ref + 0.5, s: label, size, bold: true });

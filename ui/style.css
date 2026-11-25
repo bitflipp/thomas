@@ -272,17 +272,44 @@ button.mini {
   line-height: 1;
   font-weight: 700;
 }
-.args {
-  width: 0; /* The fields fill the width the button groups give the palette instead of widening it. */
-  min-width: 100%;
-  margin-top: var(--sp-2);
-  display: flex;
-  flex-direction: column;
+.toolpopup {
+  position: fixed;
+  z-index: 30;
+  padding: var(--sp-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+.toolpopup input {
+  width: 10em;
+}
+.toolpopup .choices {
+  display: grid;
   gap: var(--sp-1);
 }
-.args .dd,
-.args input {
-  width: 100%;
+.toolpopup .choices.dyn {
+  grid-template-columns: repeat(4, auto);
+}
+.toolpopup .tempoargs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.toolpopup .choices.units {
+  grid-template-columns: repeat(6, var(--h-lg));
+}
+.toolpopup .choices.units button {
+  height: var(--h-lg);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.toolpopup .choices button {
+  min-width: var(--h-lg);
+  height: var(--h-sm);
+  padding: 0 var(--sp-2);
+  white-space: nowrap;
 }
 .hint {
   color: var(--muted);

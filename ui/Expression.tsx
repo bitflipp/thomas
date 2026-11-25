@@ -484,8 +484,8 @@ function CurveBar() {
               ? Math.round(value * 1000) / 10
               : Math.round(value * 100)
         }
-        min={sel === 'tempo' ? 10 : 0}
-        max={sel === 'tempo' ? 1000 : 100}
+        min={sel === 'tempo' ? 80 : 0}
+        max={sel === 'tempo' ? 120 : 100}
         disabled={value === undefined}
         onChange={(n) => E.setPointValue(n / 100)}
       />
