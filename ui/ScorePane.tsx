@@ -17,7 +17,7 @@ import type { Engraved } from '../src/engrave/system.ts';
 import { pageToSvg } from '../src/render.ts';
 import { loadSmufl } from '../src/smufl.ts';
 import { must } from '../src/util.ts';
-import { caretGeom } from './caret.ts';
+import { caretGeom, slurFrom } from './caret.ts';
 import type { Ghost } from './interact.ts';
 
 import {
@@ -65,36 +65,13 @@ type GhostOf<K extends Ghost['kind']> = Extract<Ghost, { kind: K }>;
 const BAD = '#d33';
 const GHOST_FONT = 'system-ui, sans-serif';
 
-const ACCIDENTAL_GLYPHS = [
+const _ACCIDENTAL_GLYPHS = [
   'accidentalDoubleFlat',
   'accidentalFlat',
   'accidentalNatural',
   'accidentalSharp',
   'accidentalDoubleSharp',
 ];
-
-/** A note about to be entered: head, ledger lines, accidental and pitch label. */
-function NoteGhost({ g }: { g: GhostOf<'note'> }) {
-  const sm = loadSmufl();
-  const col = g.bad ? BAD : SEL;
-  const ledgers: number[] = [];
-  for (let p = -2; p >= g.pos; p -= 2) ledgers.push(p);
-  for (let p = 10; p <= g.pos; p += 2) ledgers.push(p);
-  const accGlyph = g.acc === undefined ? null : ACCIDENTAL_GLYPHS[g.acc + 2];
-  const head = g.base === 1 ? 'noteheadWhole' : g.base === 2 ? 'noteheadHalf' : 'noteheadBlack';
-  return (
-    <g opacity="0.75" fill={col} stroke={col}>
-      {ledgers.map((p) => (
-        <line x1={g.x - 0.4} x2={g.x + 1.6} y1={g.top + 4 - p / 2} y2={g.top + 4 - p / 2} stroke-width="0.16" />
-      ))}
-      <path d={sm.path(head)} transform={`translate(${g.x} ${g.y})`} stroke="none" />
-      {accGlyph && <path d={sm.path(accGlyph)} transform={`translate(${g.x - 1.2} ${g.y})`} stroke="none" />}
-      <text x={g.x + 1.9} y={g.y - 0.9} font-size="1.5" stroke="none" font-family={GHOST_FONT}>
-        {g.label}
-      </text>
-    </g>
-  );
-}
 
 /** A head being dragged to another pitch. */
 function HeadGhost({ g }: { g: GhostOf<'head'> }) {
@@ -133,7 +110,7 @@ function CaretSvg({ page }: { page: number }) {
     <g>
       <rect x={at.x - 0.15} y={at.y - 0.8} width="0.3" height="5.6" fill={SEL} opacity="0.85" />
       <text x={at.x + 0.4} y={at.y - 1} font-size="1.4" fill={SEL} font-family={GHOST_FONT}>
-        {voice.value}
+        {slurFrom.value ? `${voice.value} slur` : voice.value}
       </text>
     </g>
   );
@@ -176,8 +153,6 @@ function GhostSvg({ g, page }: { g: Ghost | null; page: number }) {
   if (g.kind === 'span') return <SpanGhost g={g} page={page} />;
   if (g.page !== page) return null;
   switch (g.kind) {
-    case 'note':
-      return <NoteGhost g={g} />;
     case 'head':
       return <HeadGhost g={g} />;
     case 'bar':

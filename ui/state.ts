@@ -257,7 +257,6 @@ export const selection = signal<Ref[]>([]);
 export type Tool =
   | 'select'
   | 'note'
-  | 'rest'
   | 'slur'
   | 'line'
   | 'cresc'
@@ -275,8 +274,8 @@ export type Tool =
 
 export const tool = signal<Tool>('select');
 
-/** Whether the pointer enters notes or rests, in which case the palette sets the next note and never the selection. */
-export const entering = (): boolean => tool.value === 'note' || tool.value === 'rest';
+/** Whether notes are being entered (the caret is shown), in which case the palette sets the next note and never the selection. */
+export const entering = (): boolean => tool.value === 'note';
 
 /**
  * The caret of note input: the position in the staff and measure where the next note goes. The voice is the palette's
@@ -298,7 +297,7 @@ export const lastPitch = signal<Pitch | null>(null);
  * and clears the selection, so that nothing selected is changed by accident.
  */
 export function setTool(t: Tool): void {
-  if (t === 'note' || t === 'rest') {
+  if (t === 'note') {
     const r = selection.peek().find((x) => x.t === 'ev');
     const v = r && voiceOf(score.peek(), r);
     const te = v && r && flattenVoice(v)[r.idx];

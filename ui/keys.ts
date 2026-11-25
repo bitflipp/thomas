@@ -5,6 +5,7 @@
 import type { Ref } from '../src/editor/addr.ts';
 import { voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
+import { transposeSteps } from '../src/editor/context.ts';
 import type { MarkBody, Step } from '../src/model.ts';
 import { flattenVoice } from '../src/model.ts';
 
@@ -22,7 +23,19 @@ import {
   toggleOrnament,
 } from './actions.ts';
 
-import { alterLast, backspaceAtCaret, caretToMeasureStart, enterLetter, enterRestAtCaret, moveCaret } from './caret.ts';
+import {
+  alterLast,
+  backspaceAtCaret,
+  caretToMeasureStart,
+  enterLetter,
+  enterRestAtCaret,
+  moveCaret,
+  repeatNote,
+  slurFrom,
+  stepNotes,
+  toggleSlur,
+} from './caret.ts';
+
 import { stepFindings } from './Findings.tsx';
 import { cancelDrag, deleteSelection, evRefs, graceRefs, measureRefs, selectSimilar, zoomBy } from './interact.ts';
 import { focusGoto } from './Overview.tsx';
@@ -32,6 +45,7 @@ import type { Tool } from './state.ts';
 
 import {
   entering,
+  lastPitch,
   redo,
   run,
   say,
@@ -122,7 +136,7 @@ function paste(): void {
 }
 
 const DURATION_KEYS = [1, 2, 4, 8, 16, 32, 64, 128] as const;
-const TOOL_KEYS: Record<string, Tool> = { n: 'note', r: 'rest', v: 'select', l: 'slur' };
+const TOOL_KEYS: Record<string, Tool> = { n: 'note', v: 'select', l: 'slur' };
 const MAX_VOICE = 4;
 const ZOOM_STEP = 1.2;
 
@@ -202,6 +216,7 @@ function onViewShortcut(e: KeyboardEvent): boolean {
 function onEscape(): void {
   showHelp.value = false;
   cancelDrag();
+  slurFrom.value = null;
   if (tool.value !== 'select') setTool('select');
   else selection.value = [];
 }
@@ -225,7 +240,7 @@ function onNavigationKey(e: KeyboardEvent): boolean {
       e.preventDefault();
       const d = e.key === 'ArrowUp' ? 1 : -1;
       if (e.shiftKey) nudge(undefined, d);
-      else nudge(e.ctrlKey ? 12 * d : d);
+      else nudge(d);
       return true;
     }
     case 'ArrowLeft':
@@ -289,9 +304,13 @@ function onCaretKey(e: KeyboardEvent): boolean {
   if (e.altKey) return false;
   const k = e.key.toLowerCase();
   if (e.key.length === 1 && k >= 'a' && k <= 'g') enterLetter(k as Step, e.shiftKey);
-  else if (k === 'r') enterRestAtCaret();
+  else if (k === 'r') repeatNote();
+  else if (k === '0') enterRestAtCaret();
+  else if (k === 's') toggleSlur();
   else if (e.key === 'ArrowLeft') moveCaret(-1);
   else if (e.key === 'ArrowRight') moveCaret(1);
+  else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.ctrlKey)
+    stepNotes(e.key === 'ArrowUp' ? 1 : -1);
   else if (e.key === 'Backspace') backspaceAtCaret();
   else if (e.key === 'Home') caretToMeasureStart();
   else if (e.key === '+' || e.key === '=') alterLast(1);
@@ -304,6 +323,15 @@ function onCaretKey(e: KeyboardEvent): boolean {
 /** The global key handler: editing and view shortcuts with Ctrl or Cmd, then the single-key bindings. */
 function onKey(e: KeyboardEvent): void {
   const mod = e.ctrlKey || e.metaKey;
+  if (mod && !typing(e) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    // Ctrl+Up/Down moves the selected notes an octave, keeping their spelling.
+    e.preventDefault();
+    const d = e.key === 'ArrowUp' ? 7 : -7;
+    nudge(undefined, d);
+    const lp = lastPitch.peek();
+    if (entering() && lp) lastPitch.value = transposeSteps(lp, d);
+    return;
+  }
   if (mod && !typing(e) && onEditShortcut(e)) return;
   if (mod && onViewShortcut(e)) return;
   if (typing(e) || mod || (e.altKey && e.key.length > 1)) return;

@@ -6,14 +6,17 @@ import { signal } from '@preact/signals';
 export const showHelp = signal(false);
 
 const ROWS: [string, string][] = [
-  ['N / R / V (Esc)', 'Note input / rest input / select'],
+  ['N / V (Esc)', 'Note input / select'],
   ['A – G (note input)', 'Enter the note at the caret, in the octave nearest to the last one; Shift adds a chord tone'],
-  ['R (note input)', 'Enter a rest at the caret'],
+  ['R (note input)', 'Repeat the note or chord entered last'],
+  ['0 (note input)', 'Enter a rest'],
+  ['S (note input)', 'Open a slur at the note entered last; S again closes it at the note entered last'],
+  ['↑ ↓ (note input)', 'Move the note just entered a step up / down the staff (accidental from key and bar)'],
   ['← → Home Backspace (note input)', 'Move the caret by event / to the measure start / step back and clear'],
   ['+ / - (note input)', 'Sharpen / flatten the note just entered'],
+  ['Click (note input)', 'Put the caret there; a click on a note selects it and leaves note input'],
   ['Alt+1 – 4', 'Move the selected notes to that voice'],
   ['Alt+Shift+1 – 4', 'Select everything of that voice in the selected measures'],
-  ['Shift+click (note input)', 'Put the caret there without entering a note'],
   [
     '1 – 8',
     'Duration whole … 128th: the selection in select mode (the next note follows it), else the next note (nothing selected: starts note input)',
@@ -21,7 +24,7 @@ const ROWS: [string, string][] = [
   ['.', 'Cycle dots'],
   ['Q / W', 'Previous / next voice for new notes'],
   ['↑ ↓', 'Selected notes: semitone up / down'],
-  ['Ctrl ↑ ↓', 'Octave up / down'],
+  ['Ctrl ↑ ↓', 'Octave up / down (also in note input)'],
   ['Shift ↑ ↓', 'Letter name up / down (keeps the accidental)'],
   ['← →', 'Select previous / next note (Shift extends)'],
   ['T', 'Tie to the next note'],

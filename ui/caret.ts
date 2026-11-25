@@ -2,13 +2,15 @@
 // back, and altering the note just entered. The caret keeps its position in time when the voice changes, so that
 // one voice can be entered after the other over the same bars. The pointer entry in `interact.ts` sets the same state.
 
-import { voiceOf } from '../src/editor/addr.ts';
+import { signal } from '@preact/signals';
+import type { EvAddr } from '../src/editor/addr.ts';
+import { eventOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
-import { clefAt, pitchAtPos } from '../src/editor/context.ts';
+import { clefAt, pitchAtPos, plainAlter, transposeSteps } from '../src/editor/context.ts';
 import { xOfTick } from '../src/editor/hit.ts';
 import { eventAtTick } from '../src/editor/voice.ts';
 import { clefBottomStep } from '../src/engrave/prep.ts';
-import type { Pitch, Score, Step } from '../src/model.ts';
+import type { NoteEvent, Pitch, Score, Step } from '../src/model.ts';
 import { flattenVoice, lengthOf, pitchStep, STEPS } from '../src/model.ts';
 import { pageEls, selectEventAt } from './interact.ts';
 import type { Caret } from './state.ts';
@@ -120,27 +122,118 @@ export function enterLetter(step: Step, chord: boolean): void {
     }
     return;
   }
+  if (enterPitches(c, [pitch])) lastPitch.value = pitch;
+}
+
+/** Enters a note (a chord with several pitches) at the caret and moves the caret on. Returns whether it was entered. */
+function enterPitches(c: Caret, pitches: Pitch[]): boolean {
   const loc = { mi: c.mi, staff: c.staff, voice: voice.peek() };
   const d = { base: dur.peek(), dots: dots.peek() };
   let next: Caret | undefined;
-  if (
-    !run((s) => {
-      const s1 = C.enterNote(s, loc, c.tick, d, pitch);
-      const r = advance(s1, c, ticksAt(s1, loc, c.tick));
-      next = r.caret;
-      return r.score;
-    })
-  )
-    return;
+  const ok = run((s) => {
+    let s1 = C.enterNote(s, loc, c.tick, d, pitches[0]);
+    for (const p of pitches.slice(1)) s1 = C.enterNote(s1, loc, c.tick, d, p, { chord: true });
+    const r = advance(s1, c, ticksAt(s1, loc, c.tick));
+    next = r.caret;
+    return r.score;
+  });
+  if (!ok) return false;
   selectEventAt(loc, c.tick);
-  lastPitch.value = pitch;
   acc.value = undefined;
   prev = { ...loc, tick: c.tick };
+  if (slurFrom.peek() === 'next') slurFrom.value = prev;
   if (next) caret.value = next;
   revealCaret();
+  return true;
 }
 
-/** Enters a rest at the caret and moves the caret on. */
+/** The note to repeat: the one entered last, else the last note before the caret in the voice (this or the previous measure). */
+function noteBefore(sc: Score, c: Caret): NoteEvent | undefined {
+  const vid = voice.peek();
+  const find = (mi: number, before: number) => {
+    const v = voiceOf(sc, { mi, staff: c.staff, voice: vid });
+    return v && [...flattenVoice(v)].reverse().find((t) => t.start < before && t.ev.kind === 'note')?.ev;
+  };
+  const at = prev && voiceOf(sc, prev);
+  const p = at && flattenVoice(at).find((t) => t.start === prev?.tick)?.ev;
+  const e = p ?? find(c.mi, c.tick) ?? (c.mi > 0 ? find(c.mi - 1, Number.POSITIVE_INFINITY) : undefined);
+  return e?.kind === 'note' ? e : undefined;
+}
+
+/** Enters the note (or chord) entered last again at the caret, in the current duration. */
+export function repeatNote(): void {
+  const sc = score.peek();
+  const c = current(sc);
+  if (!c) return;
+  const n = noteBefore(sc, c);
+  if (!n) {
+    say('No note to repeat', true);
+    return;
+  }
+  enterPitches(
+    c,
+    n.pitches.map((p) => ({ ...p.pitch })),
+  );
+}
+
+/**
+ * Where an open slur starts: a note, `'next'` for the next note entered, or null. S opens it at the note entered last
+ * (or at the next one when nothing was entered yet) and closes it at the note entered last.
+ */
+export const slurFrom = signal<{ mi: number; staff: string; voice: number; tick: number } | 'next' | null>(null);
+
+/** The address of the event that starts at `p.tick` in its voice. */
+function addrAt(sc: Score, p: { mi: number; staff: string; voice: number; tick: number }): EvAddr | undefined {
+  const v = voiceOf(sc, p);
+  const te = v && flattenVoice(v).find((t) => t.start === p.tick);
+  return te && { mi: p.mi, staff: p.staff, voice: p.voice, idx: te.index };
+}
+
+/** Opens a slur at the note entered last, or closes the open one there. */
+export function toggleSlur(): void {
+  const from = slurFrom.peek();
+  if (!from) {
+    slurFrom.value = prev ?? 'next';
+    return;
+  }
+  slurFrom.value = null;
+  if (from === 'next' || !prev) return;
+  const sc = score.peek();
+  const a = addrAt(sc, from);
+  const b = addrAt(sc, prev);
+  if (!(a && b)) {
+    say('The slur lost its notes', true);
+    return;
+  }
+  const to = prev;
+  if (run((s) => C.addSlur(s, a, b))) selectEventAt(to, to.tick);
+}
+
+/** Moves the selected notes (a selected head only) a step up or down the staff; the alteration is what the key and the measure give there. */
+export function stepNotes(d: 1 | -1): void {
+  const refs = selection.peek().filter((r) => r.t === 'ev');
+  if (!refs.length) return;
+  const onlyHead = refs.find((r) => r.pi !== undefined)?.pi;
+  const ok = run((s0) =>
+    refs.reduce((s, r) => {
+      const v = voiceOf(s, r);
+      const te = v && flattenVoice(v)[r.idx];
+      if (te?.ev.kind !== 'note') return s;
+      return C.updateNotes(s, [r], (n) =>
+        n.pitches.forEach((np, i) => {
+          if (onlyHead !== undefined && i !== onlyHead) return;
+          const q = transposeSteps(np.pitch, d);
+          np.pitch = { ...q, alter: plainAlter(s, r.staff, r.mi, te.start, q.step, q.octave) };
+        }),
+      );
+    }, s0),
+  );
+  if (!ok) return;
+  const e = eventOf(score.peek(), refs[0]);
+  if (refs.length === 1 && e?.kind === 'note') lastPitch.value = { ...e.pitches[onlyHead ?? 0].pitch };
+}
+
+/** Enters a rest at the caret and moves the caret on (key 0). */
 export function enterRestAtCaret(): void {
   const sc = score.peek();
   const c = current(sc);

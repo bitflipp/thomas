@@ -76,6 +76,11 @@ export function alterBefore(score: Score, a: EvAddr, pitch: Pitch): number {
   return alterIn(score, a.staff, a.mi, te.start, pitch.step, pitch.octave, true);
 }
 
+/** The alteration a plain note on `step` and `octave` has at `tick`: the key signature and accidentals earlier in the measure. */
+export function plainAlter(score: Score, staff: string, mi: number, tick: number, step: Step, octave: number): number {
+  return alterIn(score, staff, mi, tick, step, octave, true);
+}
+
 /** Pitch (sounding) for a click at staff position `pos`; `acc` forces an alteration (undefined: whatever is in force). */
 export function pitchAtPos(score: Score, staff: string, mi: number, tick: number, pos: number, acc?: number): Pitch {
   const clef = clefAt(score, staff, mi, tick);

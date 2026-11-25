@@ -14,18 +14,17 @@ import type { Box, HitIndex, Target } from '../src/editor/hit.ts';
 import { eventAtX, hitTest, marquee, measureAt, measureAtStaff, posAtY, snapTick } from '../src/editor/hit.ts';
 import type { OrnamentKind } from '../src/editor/similar.ts';
 import { similarTo } from '../src/editor/similar.ts';
-import { eventAtTick } from '../src/editor/voice.ts';
 import type { MeasureGeom } from '../src/engrave/system.ts';
 import type { Event, MarkBody, NoteEvent, Pitch, Score } from '../src/model.ts';
 import { baseTicks, flattenVoice, lengthOf, marksOf, PPQ, STEPS } from '../src/model.ts';
 import { must } from '../src/util.ts';
+import { placeCaret } from './caret.ts';
 import { hoverFinding } from './layers.ts';
 import { measureTick, seek } from './player.ts';
 import { showHelp } from './Shortcuts.tsx';
 
 import {
   acc,
-  caret,
   clefArg,
   commit,
   dots,
@@ -35,7 +34,6 @@ import {
   exprView,
   fit,
   hit,
-  lastPitch,
   run,
   say,
   score,
@@ -54,19 +52,6 @@ import {
 // below shows on top of the engraved pages. They are not part of the score.
 
 export type Ghost =
-  | {
-      kind: 'note';
-      page: number;
-      x: number;
-      y: number;
-      pos: number;
-      top: number;
-      bad: boolean;
-      label: string;
-      base: number;
-      acc?: number;
-      rest?: boolean;
-    }
   | { kind: 'bar'; page: number; x: number; top: number; bad: boolean; label?: string }
   | {
       kind: 'span';
@@ -217,36 +202,14 @@ export function selectEventAt(loc: { mi: number; staff: string; voice: number },
   if (te) selection.value = [{ t: 'ev', ...loc, idx: te.index }];
 }
 
-/** The preview for note or rest input at the pointer: the bar with the target tick and, for notes, the pitch name. */
+/** The preview for note input at the pointer: the bar where a click puts the caret. */
 function ghostFor(w: Where): Ghost | null {
   const h = hit.peek();
   if (!h) return null;
-  const sc = score.peek();
   const g = measureAt(h.layout, w.page, w.x, w.y);
   if (!g) return null;
-  const len = lenOf(sc, g.mi);
-  const dT = durTicks();
-  const sn = snapTick(g, len, w.x, dT);
-  const id = staffId(sc, g.staff);
-  const v = sc.measures[g.mi].staves[id]?.voices.find((x) => x.id === voice.value);
-  const at = v ? eventAtTick(v.items, sn.tick) : undefined;
-  const bad = sn.tick + dT > len && !at?.inTuplet;
-  if (tool.value === 'rest') return { kind: 'bar', page: g.page, x: sn.x, top: g.y, bad, label: 'rest' };
-  const pos = Math.max(-9, Math.min(17, posAtY(g.y, w.y)));
-  const p = pitchAtPos(sc, id, g.mi, sn.tick, pos, acc.value);
-  const label = `${p.step.toUpperCase()}${p.alter > 0 ? '#'.repeat(p.alter) : p.alter < 0 ? 'b'.repeat(-p.alter) : ''}${p.octave}`;
-  return {
-    kind: 'note',
-    page: g.page,
-    x: sn.x,
-    y: g.y + 4 - pos / 2,
-    pos,
-    top: g.y,
-    bad,
-    label,
-    base: dur.value,
-    acc: p.alter !== 0 || acc.value !== undefined ? p.alter : undefined,
-  };
+  const sn = snapTick(g, lenOf(score.peek(), g.mi), w.x, durTicks());
+  return { kind: 'bar', page: g.page, x: sn.x, top: g.y, bad: false };
 }
 
 // The pointer state machine: press, move and release are interpreted according to the current tool
@@ -428,11 +391,11 @@ export function onPointerDown(e: PointerEvent): void {
   if (!(w && h)) return;
   const t = tool.value;
   const target = asSelected(hitTest(h, w.page, w.x, w.y));
-  if ((t === 'note' || t === 'rest') && target?.ref.t === 'ev' && eventOf(score.peek(), target.ref)?.kind === 'note') {
-    // A click on an existing note leaves input and selects it; a rest is entered over.
+  if (t === 'note' && target?.ref.t === 'ev' && eventOf(score.peek(), target.ref)?.kind === 'note') {
+    // A click on an existing note leaves input and selects it; anywhere else it puts the caret there.
     setTool('select');
     pressWithSelectTool(e, w, h, target);
-  } else if (t === 'note' || t === 'rest') enter(w, e.altKey, e.shiftKey);
+  } else if (t === 'note') placeCaretAt(w);
   else if (SPAN_TOOLS.has(t)) startSpan(e, w, t as SpanTool, target);
   else if (MARK_TOOLS.has(t)) addMarkAt(w);
   else if (t === 'tuplet') makeTupletAt(target);
@@ -524,7 +487,7 @@ export function onPointerMove(e: PointerEvent): void {
             : undefined;
   if (drag.k !== 'mark') setHover(ht ?? null);
   if (drag.k === 'none') {
-    if (t === 'note' || t === 'rest') ghost.value = ghostFor(w);
+    if (t === 'note') ghost.value = ghostFor(w);
     else ghost.value = null;
     return;
   }
@@ -703,62 +666,14 @@ export function onPointerUp(e: PointerEvent): void {
   else finishMarkMove(d, w, h);
 }
 
-/**
- * Enters a note or rest at the pointer. With `alt` a tuplet under it is replaced as a whole instead of being
- * entered.
- */
-function enter(w: Where, alt: boolean, placeOnly = false): void {
+/** Puts the input caret at the pointer: the staff and measure under it, the nearest column or grid position. */
+function placeCaretAt(w: Where): void {
   const h = hit.peek();
   if (!h) return;
   const sc = score.peek();
   const g = measureAt(h.layout, w.page, w.x, w.y);
   if (!g) return;
-  const id = staffId(sc, g.staff);
-  const loc = { mi: g.mi, staff: id, voice: voice.value };
-  const d = { base: dur.value, dots: dots.value };
-  const sn = snapTick(g, lenOf(sc, g.mi), w.x, durTicks());
-  if (placeOnly) {
-    // Shift+click puts the caret there without entering anything.
-    caret.value = { mi: g.mi, staff: id, tick: sn.tick };
-    return;
-  }
-  if (tool.value === 'rest') {
-    if (run((s) => C.enterRest(s, loc, sn.tick, d, !alt))) {
-      selectEventAt(loc, sn.tick);
-      afterPointerEntry(loc, sn.tick);
-    }
-    return;
-  }
-  const pos = Math.max(-9, Math.min(17, posAtY(g.y, w.y)));
-  const pitch = pitchAtPos(sc, id, g.mi, sn.tick, pos, acc.value);
-  const v = voiceOf(sc, loc);
-  const at = v ? eventAtTick(v.items, sn.tick) : undefined;
-  const chord = !!(
-    at &&
-    at.start === sn.tick &&
-    at.ev.kind === 'note' &&
-    at.ev.dur.base === d.base &&
-    at.ev.dur.dots === d.dots
-  );
-  if (run((s) => C.enterNote(s, loc, sn.tick, d, pitch, { chord, descend: !alt }))) {
-    selectEventAt(loc, sn.tick);
-    lastPitch.value = pitch;
-    acc.value = undefined; // An accidental applies to one note.
-    afterPointerEntry(loc, sn.tick);
-  }
-}
-
-/** After a click entered an event at `tick`, the caret goes to the end of that event, as after a key entry. */
-function afterPointerEntry(loc: { mi: number; staff: string; voice: number }, tick: number): void {
-  const sc = score.peek();
-  const v = voiceOf(sc, { ...loc });
-  const te = v && flattenVoice(v).find((t) => t.start === tick);
-  if (!te) return;
-  const end = tick + te.ticks;
-  caret.value =
-    end < lenOf(sc, loc.mi) || loc.mi + 1 >= sc.measures.length
-      ? { mi: loc.mi, staff: loc.staff, tick: Math.min(end, lenOf(sc, loc.mi)) }
-      : { mi: loc.mi + 1, staff: loc.staff, tick: 0 };
+  placeCaret({ mi: g.mi, staff: staffId(sc, g.staff), tick: snapTick(g, lenOf(sc, g.mi), w.x, durTicks()).tick });
 }
 
 /** Puts a grace note in front of the note at the pointer, on the pitch of the clicked position, and selects it. */

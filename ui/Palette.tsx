@@ -283,11 +283,8 @@ export function Palette() {
         <ToolBtn t="select" title="Select (Esc)">
           <Icon.select />
         </ToolBtn>
-        <ToolBtn t="note" title="Enter notes (N): click on a staff">
+        <ToolBtn t="note" title="Note input (N): click to put the caret, then type A-G, R repeats, 0 rest, S slur">
           <Glyph cp={CPS.quarter} />
-        </ToolBtn>
-        <ToolBtn t="rest" title="Enter rests (R)">
-          <Icon.rest />
         </ToolBtn>
       </div>
       <h4>{editsSelection() ? 'Duration of selection' : 'Duration of next note'}</h4>
