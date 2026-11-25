@@ -11,7 +11,7 @@ import { alterBefore } from '../src/editor/context.ts';
 import { drawnTieSide } from '../src/editor/hit.ts';
 import type { BaseDur, Dur } from '../src/model.ts';
 import { evRefs, graceRefs, sameSystem } from './interact.ts';
-import { acc, commit, dots, dur, entering, hit, run, say, score, selection, setTool } from './state.ts';
+import { acc, commit, dots, dur, entering, hit, run, say, score, selection, setTool, voice } from './state.ts';
 
 /**
  * Orders event addresses from the end of the score backward, so that edits applied in this order keep earlier
@@ -35,7 +35,7 @@ function setDurationSel(d: Dur): void {
 }
 
 // The next note's value follows the selection: selecting a note or rest makes its duration and dots the input
-// settings, so that entering notes afterwards continues with the value last seen.
+// settings, and its voice the input voice, so that entering notes afterwards continues with what was last seen.
 
 effect(() => {
   const sel = selection.value;
@@ -45,6 +45,7 @@ effect(() => {
   if (!e) return;
   dur.value = e.dur.base;
   dots.value = e.dur.dots;
+  voice.value = r.voice;
 });
 
 /** Whether the palette's duration, dot and accidental buttons act on the selected events (select mode, events selected). */
