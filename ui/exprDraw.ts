@@ -191,7 +191,7 @@ function drawRuler(ctx: CanvasRenderingContext2D, f: Frame, c: Colors, ms: Numbe
       ctx.fillStyle = c.muted;
       ctx.fillRect(Math.round(x), SP1, 1, g.ruler.h - SP1 - 1);
       if (x - lastLabel >= 34) {
-        centeredText(ctx, String(m.mi + 1), x + SP1, g.ruler.h / 2, c.muted);
+        centeredText(ctx, String(m.label), x + SP1, g.ruler.h / 2, c.muted);
         lastLabel = x;
       }
       const beatPx = (m.beat * f.view.ppq) / PPQ;

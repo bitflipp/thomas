@@ -10,7 +10,7 @@ import type { Draft } from 'immer';
 
 import { produce } from 'immer';
 import type { BeamMode, BeamPlan } from '../beams.ts';
-import { beamGroups, beamLinks, beatTicks, planBeams } from '../beams.ts';
+import { beamGroups, beamLinks, beatPhase, beatTicks, planBeams } from '../beams.ts';
 
 import type {
   Articulation,
@@ -42,6 +42,7 @@ import {
   isEvent,
   isTremolo,
   keyAt,
+  lengthOf,
   lineEnds,
   marksOf,
   measureTicks,
@@ -113,7 +114,7 @@ function voiceIn(d: Draft<Score>, loc: Loc, create = false): Draft<Voice> {
   let v = sm.voices.find((x) => x.id === loc.voice);
   if (!v) {
     if (!create) throw new EditError('No such voice');
-    sm.voices.push({ id: loc.voice, items: measureRest(measureTicks(timeAt(d as Score, loc.mi))) });
+    sm.voices.push({ id: loc.voice, items: measureRest(lengthOf(d as Score, loc.mi)) });
     sm.voices.sort((a, b) => a.id - b.id);
     v = must(sm.voices.find((x) => x.id === loc.voice));
   }
@@ -449,7 +450,7 @@ export function enterNote(
       } else insertPitch(n, np);
       return;
     }
-    if (tick + baseTicks(dur) > measureTicks(timeAt(d as Score, loc.mi)) && !at?.inTuplet)
+    if (tick + baseTicks(dur) > lengthOf(d as Score, loc.mi) && !at?.inTuplet)
       throw new EditError('The note does not fit into the measure');
     v.items = putEvent(
       v.items as Item[],
@@ -467,10 +468,7 @@ export function enterNote(
 export function enterRest(score: Score, loc: Loc, tick: number, dur: Dur, descend = true): Score {
   return edit(score, (d) => {
     const v = voiceIn(d, loc, true);
-    if (
-      tick + baseTicks(dur) > measureTicks(timeAt(d as Score, loc.mi)) &&
-      !eventAtTick(v.items as Item[], tick)?.inTuplet
-    )
+    if (tick + baseTicks(dur) > lengthOf(d as Score, loc.mi) && !eventAtTick(v.items as Item[], tick)?.inTuplet)
       throw new EditError('The rest does not fit into the measure');
     v.items = putEvent(v.items as Item[], tick, rest(dur), descend) as Draft<Item>[];
   });
@@ -508,13 +506,13 @@ export function setDuration(score: Score, a: EvAddr, dur: Dur): Score {
       }
       throw new EditError('Cannot change the duration inside a tremolo');
     }
-    if (te.start + baseTicks(dur) > measureTicks(timeAt(d as Score, a.mi)))
+    if (te.start + baseTicks(dur) > lengthOf(d as Score, a.mi))
       throw new EditError('The note does not fit into the measure');
     const copy = JSON.parse(JSON.stringify(te.ev)) as Event;
     copy.dur = { ...dur };
     // A whole-measure rest given a shorter value becomes an ordinary rest; `putEvent` fills the rest of
     // the bar with more rests.
-    if (copy.kind === 'rest' && copy.style === 'measure' && baseTicks(dur) !== measureTicks(timeAt(d as Score, a.mi)))
+    if (copy.kind === 'rest' && copy.style === 'measure' && baseTicks(dur) !== lengthOf(d as Score, a.mi))
       copy.style = 'normal';
     v.items = putEvent(v.items as Item[], te.start, copy) as Draft<Item>[];
   });
@@ -1244,6 +1242,30 @@ function refit(d: Draft<Score>, mi: number, len: number): void {
     }
 }
 
+/** Removes the own length of measure `mi` when it is no longer shorter than the time signature in force. */
+function dropLongLength(d: Draft<Score>, mi: number): void {
+  const m = d.measures[mi];
+  if (m.length !== undefined && m.length >= measureTicks(timeAt(d as Score, mi))) delete m.length;
+}
+
+/**
+ * Gives measure `mi` its own length in ticks (a pickup, or a short measure), or with `undefined` the full length of
+ * the time signature again; the voices are padded with rests or cut to fit. A pickup is the first measure with a
+ * length and is numbered 0.
+ */
+export function setMeasureLength(score: Score, mi: number, length: number | undefined): Score {
+  return edit(score, (d) => {
+    const full = measureTicks(timeAt(d as Score, mi));
+    if (length === undefined || length === full) delete d.measures[mi].length;
+    else {
+      if (!Number.isInteger(length) || length <= 0 || length > full)
+        throw new EditError('A measure cannot be longer than its time signature');
+      d.measures[mi].length = length;
+    }
+    refit(d, mi, lengthOf(d as Score, mi));
+  });
+}
+
 /**
  * A measure of whole-measure rests on every staff, as long as the time signature in force at (or before) measure
  * `at`.
@@ -1285,7 +1307,7 @@ export function copyMeasures(score: Score, from: number, to: number): MeasureCli
   const ms = score.measures.slice(from, to + 1);
   return {
     measures: JSON.parse(JSON.stringify(ms.map((m) => m.staves))),
-    lengths: ms.map((_, i) => measureTicks(timeAt(score, from + i))),
+    lengths: ms.map((_, i) => lengthOf(score, from + i)),
   };
 }
 
@@ -1319,7 +1341,7 @@ export function pasteMeasures(score: Score, at: number, clip: MeasureClip): Scor
   if (at < 0 || at >= score.measures.length) throw new EditError('No such measure');
   clip.lengths.forEach((len, i) => {
     const mi = at + i;
-    if (mi < score.measures.length && measureTicks(timeAt(score, mi)) !== len)
+    if (mi < score.measures.length && lengthOf(score, mi) !== len)
       throw new EditError(`Measure ${mi + 1} has a different length than the copied one`);
   });
   const copy: MeasureClip = JSON.parse(JSON.stringify(clip));
@@ -1380,7 +1402,8 @@ export function setTimeSigRange(score: Score, from: number, to: number, ts: Time
     if (after && !same && !d.measures[to + 1].time) d.measures[to + 1].time = { ...after };
     for (let m = from; m < d.measures.length; m++) {
       if (m > to + 1) break;
-      refit(d, m, measureTicks(timeAt(d as Score, m)));
+      dropLongLength(d, m);
+      refit(d, m, lengthOf(d as Score, m));
     }
   });
 }
@@ -1411,7 +1434,7 @@ export function deleteMeasures(score: Score, from: number, to: number): Score {
     if (from === 0 && !d.measures[0].time) d.measures[0].time = gone[0].time ?? { beats: 4, beatType: 4 };
     // A measure that lost its time change now has the length of the previous time signature, so
     // every measure is refitted.
-    for (let mi = 0; mi < d.measures.length; mi++) refit(d, mi, measureTicks(timeAt(d as Score, mi)));
+    for (let mi = 0; mi < d.measures.length; mi++) refit(d, mi, lengthOf(d as Score, mi));
   });
 }
 
@@ -1428,7 +1451,8 @@ export function setTimeSig(score: Score, mi: number, ts: TimeSig | undefined): S
     else delete d.measures[mi].time;
     for (let m = mi; m < d.measures.length; m++) {
       if (m > mi && d.measures[m].time) break;
-      refit(d, m, measureTicks(timeAt(d as Score, m)));
+      dropLongLength(d, m);
+      refit(d, m, lengthOf(d as Score, m));
     }
   });
 }
@@ -1573,7 +1597,7 @@ export function addStaff(score: Score, o: { clef: Clef; name?: string; abbr?: st
       nc.slice(0, d.staves.length - 1),
     ) as Draft<Score['groups']>;
     d.measures.forEach((m, mi) => {
-      m.staves[id] = { voices: [{ id: 1, items: measureRest(measureTicks(timeAt(d as Score, mi))) as Draft<Item>[] }] };
+      m.staves[id] = { voices: [{ id: 1, items: measureRest(lengthOf(d as Score, mi)) as Draft<Item>[] }] };
     });
   });
 }
@@ -1917,7 +1941,7 @@ export function pasteEvents(score: Score, loc: Loc, tick: number, source: Event[
   );
   return edit(score, (d) => {
     const v = voiceIn(d, loc, true);
-    const len = measureTicks(timeAt(d as Score, loc.mi));
+    const len = lengthOf(d as Score, loc.mi);
     renumberHairpins(d, loc.staff, clip);
     let t = tick;
     let all = true;
@@ -2021,7 +2045,7 @@ function wrapEvents(items: Draft<Item>[], ea: Event, eb: Event): boolean {
  * all groups are dissolved, then a group is written for every wanted beam that the automatic rules
  * would not produce, and a flag for every note that is wanted alone but would be beamed to a neighbor.
  */
-function realizeBeams(v: Draft<Voice>, beatLen: number, plan: BeamPlan, preferred: Set<number>): void {
+function realizeBeams(v: Draft<Voice>, beatLen: number, phase: number, plan: BeamPlan, preferred: Set<number>): void {
   const dissolve = (items: Draft<Item>[]) => {
     for (let i = 0; i < items.length; i++) {
       const it = items[i] as Item;
@@ -2043,7 +2067,7 @@ function realizeBeams(v: Draft<Voice>, beatLen: number, plan: BeamPlan, preferre
     if (plan.flags[i]) e.noBeam = true;
     else if (e.noBeam) delete e.noBeam;
   });
-  const auto = new Set(beamGroups(v as Voice, beatLen).map((g) => g.map((e) => at.get(e)).join(',')));
+  const auto = new Set(beamGroups(v as Voice, beatLen, phase).map((g) => g.map((e) => at.get(e)).join(',')));
   const wanted = new Set<number>();
   for (let i = 0; i < flat.length; ) {
     let j = i;
@@ -2066,14 +2090,14 @@ function realizeBeams(v: Draft<Voice>, beatLen: number, plan: BeamPlan, preferre
   // Notes that should stand alone but that the automatic rules would join to a neighbor now get a
   // flag, one at a time (the flag of one often frees its partner), the notes the user chose first.
   for (;;) {
-    const joined = beamGroups(v as Voice, beatLen)
+    const joined = beamGroups(v as Voice, beatLen, phase)
       .flat()
       .filter((e) => e.kind === 'note' && !wanted.has(must(at.get(e))));
     if (!joined.length) break;
     const pick = joined.find((e) => preferred.has(must(at.get(e)))) ?? joined[0];
     (pick as Draft<Event> & { noBeam?: boolean }).noBeam = true;
   }
-  const got = beamLinks(v as Voice, beatLen);
+  const got = beamLinks(v as Voice, beatLen, phase);
   flat.forEach((t, i) => {
     if (i > 0 && t.ev.kind === 'note' && flat[i - 1].ev.kind === 'note' && got[i] !== plan.links[i])
       throw new EditError('These notes cannot be beamed that way');
@@ -2095,13 +2119,14 @@ export function setBeamMode(score: Score, addrs: EvAddr[], mode: BeamMode): Scor
     for (const list of byVoice.values()) {
       const v = voiceIn(d, list[0]);
       const beatLen = beatTicks(timeAt(d as Score, list[0].mi));
-      const plan = planBeams(v as Voice, beatLen, new Map(list.map((a) => [a.idx, mode])));
+      const phase = beatPhase(d as Score, list[0].mi);
+      const plan = planBeams(v as Voice, beatLen, new Map(list.map((a) => [a.idx, mode])), phase);
       if (typeof plan === 'string') throw new EditError(plan);
-      const links = beamLinks(v as Voice, beatLen);
+      const links = beamLinks(v as Voice, beatLen, phase);
       const same =
         plan.links.every((l, i) => l === links[i]) &&
         flattenVoice(v as Voice).every((t, i) => plan.flags[i] === (t.ev.kind === 'note' && !!t.ev.noBeam));
-      if (!same) realizeBeams(v, beatLen, plan, new Set(list.map((a) => a.idx)));
+      if (!same) realizeBeams(v, beatLen, phase, plan, new Set(list.map((a) => a.idx)));
     }
   });
 }

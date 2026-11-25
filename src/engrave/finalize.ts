@@ -2,7 +2,7 @@
 // clefs and signatures, measure numbers, barlines and the brace or bracket. All in system coordinates.
 
 import type { Score } from '../model.ts';
-import { groupStaffIndices } from '../model.ts';
+import { groupStaffIndices, measureLabel } from '../model.ts';
 
 import { loadSmufl } from '../smufl.ts';
 import type { SysCtx } from './draw.ts';
@@ -84,7 +84,7 @@ function drawMeasureNumbers(P: Prim[], ctx: SysCtx, numbering: MeasureNumbering)
   const measures = numbering === 'all' ? Array.from({ length: ctx.b - ctx.a + 1 }, (_, k) => ctx.a + k) : [ctx.a];
   for (const mi of measures) {
     if (mi === 0 || ctx.prep.absorbed?.has(mi)) continue;
-    const label = String(mi + 1);
+    const label = String(measureLabel(ctx.prep.score, mi));
     const x = mi === ctx.a ? 0.2 : ctx.mx[mi] + 0.3;
     const w = label.length * size * 0.5 + 0.4;
     let y = Math.min(-0.8, ctx.sky[0].top(x, x + w, 0) - 0.5);

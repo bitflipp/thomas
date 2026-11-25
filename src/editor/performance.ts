@@ -7,7 +7,7 @@
 import type { Draft } from 'immer';
 import { produce } from 'immer';
 import type { CurvePoint, Performance, Pos, Score, SoftRegion } from '../model.ts';
-import { measureTicks, timeAt } from '../model.ts';
+import { lengthOf } from '../model.ts';
 import { measureStarts } from '../playback/sequence.ts';
 import { EditError } from './voice.ts';
 
@@ -32,7 +32,7 @@ function posAt(score: Score, starts: number[], total: number, abs: number): Pos 
     if (starts[mid] <= tick) lo = mid;
     else hi = mid - 1;
   }
-  if (tick >= total) return { mi: lo, tick: measureTicks(timeAt(score, lo)) };
+  if (tick >= total) return { mi: lo, tick: lengthOf(score, lo) };
   return { mi: lo, tick: tick - starts[lo] };
 }
 
@@ -189,7 +189,7 @@ export function fitPerformance(score: Score): Score {
   const n = score.measures.length;
   const lens = new Map<number, number>();
   const len = (mi: number) => {
-    const l = lens.get(mi) ?? measureTicks(timeAt(score, mi));
+    const l = lens.get(mi) ?? lengthOf(score, mi);
     lens.set(mi, l);
     return l;
   };

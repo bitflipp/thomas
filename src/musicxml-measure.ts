@@ -52,6 +52,8 @@ export interface MeasureSink {
   /** Raw notes keyed `staffId|sourceVoice`. */
   raws: Map<string, RawNote[]>;
   marks: RawMark[];
+  /** The source marks the measure `implicit="yes"` (a pickup, or the second half of a split bar). */
+  implicit?: true;
 }
 
 /** The state of reading one measure of one part. */
@@ -76,8 +78,7 @@ interface Reader {
 /** Reads one measure of a part into `sink`. */
 export function readPartMeasure(mx: XNode, part: PartState, mi: number, sink: MeasureSink, env: ReadEnv): void {
   const r: Reader = { env, part, sink, mi, cursor: 0, pendingGraces: new Map(), homeStaff: new Map() };
-  if (part.index === 0 && mx.attrs.implicit === 'yes')
-    env.warn(`m. ${mi + 1}: implicit (pickup) measure not specially handled`);
+  if (part.index === 0 && mx.attrs.implicit === 'yes') sink.implicit = true;
   if (part.index === 0 && part.ending) sink.measure.ending = part.ending;
   for (const el of mx.children) {
     switch (el.tag) {

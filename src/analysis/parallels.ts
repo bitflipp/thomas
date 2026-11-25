@@ -21,7 +21,7 @@
 
 import type { EvAddr } from '../editor/addr.ts';
 import type { Score } from '../model.ts';
-import { flattenVoice, measureTicks, pitchMidi, timeAt } from '../model.ts';
+import { flattenVoice, lengthOf, pitchMidi } from '../model.ts';
 import { must } from '../util.ts';
 
 export type ParallelKind = 'fifths' | 'octaves';
@@ -151,7 +151,7 @@ function collectNotes(score: Score): Note[] {
       }
     }
     tiedInto = next;
-    base += measureTicks(timeAt(score, mi));
+    base += lengthOf(score, mi);
   });
   dropDanglingTies(notes);
   markDoublings(notes);

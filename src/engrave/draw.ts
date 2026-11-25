@@ -1038,7 +1038,8 @@ function drawRestPrims(ctx: SysCtx, e: EvL, s: number, ghost: boolean): void {
   ctx.prims[s].push({ t: 'glyph', name, x: e.x, y });
   const b = sm.bbox(name);
   if (!ghost) pushBox(ctx, s, e.x, e.x + b.x1, y - b.y1, y - b.y0);
-  const dots = e.te.ev.dur.dots;
+  // A whole-measure rest is a whole rest whatever the length of the bar (3/4 is a dotted half), so it has no dots.
+  const dots = e.ev.kind === 'rest' && e.ev.style === 'measure' ? 0 : e.te.ev.dur.dots;
   for (let k = 0; k < dots; k++)
     ctx.prims[s].push({ t: 'glyph', name: 'augmentationDot', x: e.x + b.x1 + 0.4 + k * DOT_STEP, y: y - 0.5 });
   // Rests with a display pitch far outside the staff would need ledger lines of their own.

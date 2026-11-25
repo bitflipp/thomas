@@ -5,7 +5,7 @@
 import { signal } from '@preact/signals';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { BeamMode } from '../src/beams.ts';
-import { beamModes, beatTicks, canJoin } from '../src/beams.ts';
+import { beamModes, beatPhase, beatTicks, canJoin } from '../src/beams.ts';
 import type { EvAddr, Ref } from '../src/editor/addr.ts';
 import { eventOf, markOf, refKey, tupletOf, voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
@@ -14,7 +14,7 @@ import { neighborNote, syllableText } from '../src/editor/lyrics.ts';
 import type { OrnamentKind } from '../src/editor/similar.ts';
 import { eventsInMeasures } from '../src/editor/similar.ts';
 import type { Event, Grace, MarkBody, MarkPlacement, NoteEvent, Score, Syllable } from '../src/model.ts';
-import { flattenVoice, keyAt, timeAt } from '../src/model.ts';
+import { flattenVoice, keyAt, measureLabel, measureTicks, PPQ, timeAt } from '../src/model.ts';
 import { chooseDots, flipStem, lineSelection, slurSelection, tieSelection } from './actions.ts';
 import { Dropdown } from './Dropdown.tsx';
 import { Ui } from './icons.tsx';
@@ -398,6 +398,23 @@ function StavesSection() {
   );
 }
 
+/** The lengths a measure can be given: the full one (value 0), then every sixteenth shorter, and its own if odd. */
+function lengthOptions(s: Score, mi: number): { value: number; label: string }[] {
+  const full = measureTicks(timeAt(s, mi));
+  const unit = PPQ / 4;
+  const frac = (t: number) => {
+    let a = t;
+    let b = PPQ * 4;
+    while (b) [a, b] = [b, a % b];
+    return `${t / a}/${(PPQ * 4) / a}`;
+  };
+  const opts = [{ value: 0, label: `Full (${frac(full)})` }];
+  for (let t = unit; t < full; t += unit) opts.push({ value: t, label: frac(t) });
+  const own = s.measures[mi].length;
+  if (own !== undefined && !opts.some((o) => o.value === own)) opts.push({ value: own, label: frac(own) });
+  return opts;
+}
+
 /** The time and key signature that start at a measure, with a button to inherit them again. */
 function MeasureSignatures({ mi, to }: { mi: number; to: number }) {
   const s = score.value;
@@ -440,6 +457,14 @@ function MeasureSignatures({ mi, to }: { mi: number; to: number }) {
             ×
           </button>
         )}
+      </Row>
+      <Row label="Length">
+        <Dropdown
+          title="A shorter measure: a pickup (numbered 0) when it is the first one"
+          value={m.length ?? 0}
+          opts={lengthOptions(s, mi)}
+          onChange={(len) => run((x) => C.setMeasureLength(x, mi, len || undefined))}
+        />
       </Row>
       <Row label="Key">
         <Dropdown
@@ -650,7 +675,7 @@ function beamState(sc: Score, refs: Ref[]) {
   const modes = notes.map(({ r, v }) => {
     let m = cache.get(v);
     if (!m) {
-      m = beamModes(v, beatTicks(timeAt(sc, r.mi)));
+      m = beamModes(v, beatTicks(timeAt(sc, r.mi)), beatPhase(sc, r.mi));
       cache.set(v, m);
     }
     return m[r.idx];
@@ -857,7 +882,7 @@ function GraceSection({ r }: { r: Extract<Ref, { t: 'grace' }> }) {
     <section>
       <Group title="Grace note">
         <div class="ctx">
-          m. {r.mi + 1} · {name}
+          m. {measureLabel(score.value, r.mi)} · {name}
         </div>
         <Row label="Grace">
           <GraceControls ref0={r} g={g} i={r.gi} />
@@ -885,7 +910,7 @@ function EventInfo({ ctx }: { ctx: EvSel }) {
   return (
     <Group title="Info">
       <div class="ctx">
-        m. {r0.mi + 1} · {staffName?.name || r0.staff} · voice {r0.voice}
+        m. {measureLabel(sc, r0.mi)} · {staffName?.name || r0.staff} · voice {r0.voice}
         {notes.length === 1 &&
           notes[0].pitches.map((p) => (
             <span class="chip">
@@ -1325,7 +1350,7 @@ function MarkSection({ r }: { r: Extract<Ref, { t: 'mark' }> }) {
           </Row>
         )}
         {group.length === 1 && (
-          <Row label="Position">{`measure ${r.mi + 1}, ${(m.tick / 3360).toFixed(2).replace(/\.?0+$/, '')} quarters`}</Row>
+          <Row label="Position">{`measure ${measureLabel(score.value, r.mi)}, ${(m.tick / 3360).toFixed(2).replace(/\.?0+$/, '')} quarters`}</Row>
         )}
       </Group>
       <Group title="Actions">
@@ -1577,7 +1602,12 @@ export function Properties() {
   const lo = rangeOnly ? picked[0] : mi;
   const hi = rangeOnly ? picked[picked.length - 1] : mi;
   if (mi !== undefined && mi < sc.measures.length)
-    tabs.push(['measure', hi !== lo ? `Measures ${(lo ?? 0) + 1}–${(hi ?? 0) + 1}` : `Measure ${mi + 1}`]);
+    tabs.push([
+      'measure',
+      hi !== lo
+        ? `Measures ${measureLabel(sc, lo ?? 0)}–${measureLabel(sc, hi ?? 0)}`
+        : `Measure ${measureLabel(sc, mi)}`,
+    ]);
   tabs.push(['score', 'Score']);
   const want = userTab.value;
   const active = tabs.find(([id]) => id === want)?.[0] ?? tabs[0][0];

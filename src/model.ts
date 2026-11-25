@@ -216,6 +216,12 @@ export interface Clef {
 export interface Measure {
   /** Set where the time signature changes (always on the first measure). */
   time?: TimeSig;
+  /**
+   * The written length in ticks when it differs from the time signature's: a pickup (anacrusis) at the start of the
+   * piece or a short measure elsewhere. Absent: the full length. A pickup is the first measure with a length; it is
+   * numbered 0.
+   */
+  length?: number;
   /** Key signature in fifths (negative: flats); set where it changes. */
   key?: number;
   breakBefore?: 'system' | 'page';
@@ -338,6 +344,16 @@ export function baseTicks(d: Dur): number {
 /** The length of a measure of time signature `t` in ticks. */
 export function measureTicks(t: TimeSig): number {
   return (t.beats * PPQ * 4) / t.beatType;
+}
+
+/** The length of measure `mi` in ticks: its own `length` (a pickup or short measure), else that of the time signature. */
+export function lengthOf(score: Score, mi: number): number {
+  return score.measures[mi].length ?? measureTicks(timeAt(score, mi));
+}
+
+/** The number printed for measure `mi`: a pickup in the first measure is number 0, the next measure is 1. */
+export function measureLabel(score: Score, mi: number): number {
+  return mi + (score.measures[0].length === undefined ? 1 : 0);
 }
 
 /** Type guard: whether an item is a tuplet group. */
@@ -602,7 +618,7 @@ function posOk(score: Score, p: Pos): boolean {
     p.mi < score.measures.length &&
     Number.isInteger(p.tick) &&
     p.tick >= 0 &&
-    p.tick <= measureTicks(timeAt(score, p.mi))
+    p.tick <= lengthOf(score, p.mi)
   );
 }
 
@@ -662,7 +678,9 @@ export function validate(score: Score): string[] {
   if (score.performance) errs.push(...performanceProblems(score, score.performance));
   const staffIds = new Set(score.staves.map((s) => s.id));
   score.measures.forEach((m, mi) => {
-    const len = measureTicks(timeAt(score, mi));
+    const len = lengthOf(score, mi);
+    if (m.length !== undefined && !(Number.isInteger(m.length) && m.length > 0))
+      errs.push(`m. ${mi + 1}: invalid length ${m.length}`);
     for (const [sid, sm] of Object.entries(m.staves)) {
       const at = `m. ${mi + 1} ${sid}`;
       if (!staffIds.has(sid)) errs.push(`m. ${mi + 1}: unknown staff ${sid}`);

@@ -24,7 +24,7 @@ import type {
   Voice,
 } from '../model.ts';
 
-import { baseTicks, flattenVoice, keyAt, marksOf, measureTicks, PPQ, pitchMidi, STEPS, timeAt } from '../model.ts';
+import { baseTicks, flattenVoice, keyAt, lengthOf, marksOf, PPQ, pitchMidi, STEPS } from '../model.ts';
 import type { CurvePt } from './curves.ts';
 import { rampEvents, ratioFunction, simpson } from './curves.ts';
 
@@ -119,7 +119,7 @@ export function measureStarts(score: Score): { measureStart: number[]; total: nu
   let total = 0;
   score.measures.forEach((_, mi) => {
     measureStart.push(total);
-    total += measureTicks(timeAt(score, mi));
+    total += lengthOf(score, mi);
   });
   return { measureStart, total };
 }

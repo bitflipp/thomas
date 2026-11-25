@@ -5,7 +5,7 @@
 // results back onto the same objects (x, head offsets, stem tips). `prepare` works one measure at a
 // time but carries state across measures where notation does (clefs, ottava, ties into the next measure).
 
-import { beamGroups, beatTicks } from '../beams.ts';
+import { beamGroups, beatPhase, beatTicks } from '../beams.ts';
 
 import type {
   Clef,
@@ -416,10 +416,10 @@ function markCrossStaffBeams(v: VoiceL): void {
 }
 
 /** Beams, tremolo pairs, stem directions and chord head displacement for the voices of one staff. */
-function prepareStaffVoices(voices: VoiceL[], sm: StaffMeasure, beatLen: number): void {
+function prepareStaffVoices(voices: VoiceL[], sm: StaffMeasure, beatLen: number, phase: number): void {
   // Explicit groups plus the automatic grouping of src/beams.ts become `BeamL`s attached to their
   // member events; direction and cross-staff handling come in the later steps.
-  for (const v of voices) assignBeams(v, must(sm.voices.find((x) => x.id === v.id)), beatLen);
+  for (const v of voices) assignBeams(v, must(sm.voices.find((x) => x.id === v.id)), beatLen, phase);
   for (const v of voices) linkTremoloPairs(v);
   for (const v of voices) decideStems(v);
   // A beam's direction wins over its notes' own.
@@ -454,7 +454,7 @@ export function prepare(score: Score, cache?: PrepCache): Prepared {
   const { keyOf, timeOf } = signaturesOf(score);
   env.keyOf = keyOf;
   env.timeOf = timeOf;
-  const measureLen = timeOf.map((t) => measureTicks(t));
+  const measureLen = timeOf.map((t, mi) => score.measures[mi].length ?? measureTicks(t));
   const measures: StaffMeasureL[][] = [];
   const entries: MeasureEntry[] = [];
   score.measures.forEach((m, mi) => {
@@ -531,7 +531,7 @@ function prepareMeasure(env: PrepEnv, m: Measure, mi: number): StaffMeasureL[] {
   carryTies(env, voicesOf);
   const row: StaffMeasureL[] = score.staves.map((staff, si) => {
     const sm = m.staves[staff.id] ?? { voices: [] };
-    prepareStaffVoices(voicesOf[si], sm, beatTicks(env.timeOf[mi]));
+    prepareStaffVoices(voicesOf[si], sm, beatTicks(env.timeOf[mi]), beatPhase(score, mi));
     const byTime = voicesOf[si].flatMap((v) => v.evs).sort((p, q) => p.start - q.start || p.voice - q.voice);
     return { evs: [], voices: voicesOf[si], byTime, marks: marksOf(sm) };
   });
@@ -575,9 +575,9 @@ function displaceHeads(e: EvL): void {
 }
 
 /** Attaches the beam groups of a voice (explicit and automatic) to its events. */
-function assignBeams(vl: { id: number; evs: EvL[] }, voice: Voice, beatLen: number): void {
+function assignBeams(vl: { id: number; evs: EvL[] }, voice: Voice, beatLen: number, phase: number): void {
   const byEv = new Map(vl.evs.map((e) => [e.ev, e]));
-  for (const g of beamGroups(voice, beatLen)) {
+  for (const g of beamGroups(voice, beatLen, phase)) {
     const ems = g.map((ev) => must(byEv.get(ev)));
     const b: BeamL = { evs: ems, notes: ems.filter((x) => x.ev.kind === 'note'), dir: 'up' };
     for (const x of ems) x.beam = b;

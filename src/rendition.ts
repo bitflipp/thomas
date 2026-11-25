@@ -7,7 +7,7 @@
 // that it can be tested; `cli.ts` reads and writes the files.
 
 import type { CurvePoint, Event, Pos, Score, SoftRegion } from './model.ts';
-import { flattenVoice, measureTicks, PPQ, timeAt, validate } from './model.ts';
+import { flattenVoice, lengthOf, PPQ, validate } from './model.ts';
 import type { HeadAt, Note } from './playback/sequence.ts';
 import { buildSequence, measureStarts } from './playback/sequence.ts';
 import { must } from './util.ts';
@@ -126,7 +126,7 @@ function posOf(score: Score, measureStart: number[], total: number, abs: number)
   const tick = Math.max(0, Math.min(total, Math.round(abs)));
   let mi = measureStart.length - 1;
   while (mi > 0 && measureStart[mi] > tick) mi--;
-  if (tick >= total) return { mi, tick: measureTicks(timeAt(score, mi)) };
+  if (tick >= total) return { mi, tick: lengthOf(score, mi) };
   return { mi, tick: tick - measureStart[mi] };
 }
 

@@ -3,7 +3,7 @@
 // changes the score lives here so that it can be tested with `node --test`.
 
 import type { Dur, Pitch, Score, Step } from '../model.ts';
-import { baseTicks, keyAt, measureTicks, timeAt } from '../model.ts';
+import { baseTicks, keyAt, lengthOf } from '../model.ts';
 import { enterNote, insertMeasures } from './commands.ts';
 
 /** Where the next note goes: a position in one voice of one staff. */
@@ -60,7 +60,7 @@ export function enterMidi(score: Score, cur: Cursor, dur: Dur, midi: number, cho
 /** The cursor after a note of `dur` entered at `cur`: later in the measure, or at the start of the next one (added when the score ends). */
 export function advanceCursor(score: Score, cur: Cursor, dur: Dur): { score: Score; cursor: Cursor } {
   const tick = cur.tick + baseTicks(dur);
-  if (tick < measureTicks(timeAt(score, cur.mi))) return { score, cursor: { ...cur, tick } };
+  if (tick < lengthOf(score, cur.mi)) return { score, cursor: { ...cur, tick } };
   const s = cur.mi + 1 >= score.measures.length ? insertMeasures(score, score.measures.length) : score;
   return { score: s, cursor: { ...cur, mi: cur.mi + 1, tick: 0 } };
 }

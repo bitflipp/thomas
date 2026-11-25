@@ -2,9 +2,9 @@
 // Shared by the engraver (prep.ts) and the importer, which uses it to leave out explicit groups
 // that the automatic rules would produce anyway.
 
-import type { Event, Item, TimeSig, TupletGroup, Voice } from './model.ts';
+import type { Event, Item, Score, TimeSig, TupletGroup, Voice } from './model.ts';
 
-import { flattenVoice, isBeam, isEvent, isTuplet, PPQ } from './model.ts';
+import { flattenVoice, isBeam, isEvent, isTuplet, PPQ, timeAt } from './model.ts';
 import { must } from './util.ts';
 
 /** Length of one beaming unit: the beat, except that compound meters (6/8, 9/8, ...) beam in dotted quarters. */
@@ -13,11 +13,27 @@ export function beatTicks(ts: TimeSig): number {
   return (PPQ * 4) / ts.beatType;
 }
 
+/**
+ * How far the beat grid of measure `mi` is shifted against the measure start: a pickup (the first measure with its
+ * own length) is aligned to its end, so that its last beat boundary is the barline; every other measure starts on a
+ * beat. Beat `k` of the measure is the span [k * beat - phase, (k + 1) * beat - phase).
+ */
+export function beatPhase(score: Score, mi: number): number {
+  return mi === 0 ? pickupPhase(score.measures[0].length, timeAt(score, 0)) : 0;
+}
+
+/** The beat shift of a first measure of own length `len` (undefined: none) in time signature `ts`. */
+export function pickupPhase(len: number | undefined, ts: TimeSig): number {
+  if (len === undefined) return 0;
+  const beat = beatTicks(ts);
+  return (beat - (len % beat)) % beat;
+}
+
 /** All events below `items`, descending into tuplets and beam groups. */
 const members = (items: Item[]): Event[] => items.flatMap((i) => (isEvent(i) ? [i] : members(i.items)));
 
 /** Beam groups of a voice (events incl. the rests inside, in order); only groups with at least two notes. */
-export function beamGroups(v: Voice, beatLen: number): Event[][] {
+export function beamGroups(v: Voice, beatLen: number, phase = 0): Event[][] {
   const flat = flattenVoice(v);
   const grouped = new Set<Event>();
   const out: Event[][] = [];
@@ -33,7 +49,7 @@ export function beamGroups(v: Voice, beatLen: number): Event[][] {
     }
   };
   walk(v.items);
-  out.push(...autoGroups(flat, beatLen, grouped, (e) => e.kind === 'note' && !!e.noBeam));
+  out.push(...autoGroups(flat, beatLen, phase, grouped, (e) => e.kind === 'note' && !!e.noBeam));
   return out;
 }
 
@@ -46,6 +62,7 @@ export function beamGroups(v: Voice, beatLen: number): Event[][] {
 function autoGroups(
   flat: ReturnType<typeof flattenVoice>,
   beatLen: number,
+  phase: number,
   skip: Set<Event>,
   isFlagged: (e: Event) => boolean,
 ): Event[][] {
@@ -66,7 +83,7 @@ function autoGroups(
     if (prev) {
       const sameTuplets =
         prev.tuplets.length === te.tuplets.length && prev.tuplets.every((t, i) => t === te.tuplets[i]);
-      const beatCross = Math.floor(prev.start / beatLen) !== Math.floor(te.start / beatLen);
+      const beatCross = Math.floor((prev.start + phase) / beatLen) !== Math.floor((te.start + phase) / beatLen);
       // `sameTuplets` is the cheap case. Otherwise the run is cut unless the two notes share some
       // tuplet (one side nested inside the other), so a tuplet's beam never extends to a neighbor.
       if (
@@ -96,20 +113,20 @@ function autoGroups(
 export type BeamMode = 'auto' | 'none' | 'break' | 'join';
 
 /** Which events are beamed to their predecessor (`links[i]`: events i-1 and i are in one group). */
-export function beamLinks(v: Voice, beatLen: number): boolean[] {
+export function beamLinks(v: Voice, beatLen: number, phase = 0): boolean[] {
   const flat = flattenVoice(v);
   const at = new Map(flat.map((t) => [t.ev, t.index]));
   const links = flat.map(() => false);
-  for (const g of beamGroups(v, beatLen)) for (let k = 1; k < g.length; k++) links[must(at.get(g[k]))] = true;
+  for (const g of beamGroups(v, beatLen, phase)) for (let k = 1; k < g.length; k++) links[must(at.get(g[k]))] = true;
   return links;
 }
 
 /** The same for the automatic rules alone, with explicit groups ignored and `flags[i]` standing for `noBeam` of event i. */
-function autoLinks(v: Voice, beatLen: number, flags: boolean[]): boolean[] {
+function autoLinks(v: Voice, beatLen: number, phase: number, flags: boolean[]): boolean[] {
   const flat = flattenVoice(v);
   const at = new Map(flat.map((t) => [t.ev, t.index]));
   const links = flat.map(() => false);
-  for (const g of autoGroups(flat, beatLen, new Set(), (e) => flags[must(at.get(e))]))
+  for (const g of autoGroups(flat, beatLen, phase, new Set(), (e) => flags[must(at.get(e))]))
     for (let k = 1; k < g.length; k++) links[must(at.get(g[k]))] = true;
   return links;
 }
@@ -129,10 +146,10 @@ export function canJoin(flat: ReturnType<typeof flattenVoice>, i: number): strin
 }
 
 /** The mode of every event of a voice (rests count as `auto`). */
-export function beamModes(v: Voice, beatLen: number): BeamMode[] {
+export function beamModes(v: Voice, beatLen: number, phase = 0): BeamMode[] {
   const flags = noBeamFlags(v);
-  const eff = beamLinks(v, beatLen);
-  const auto = autoLinks(v, beatLen, flags);
+  const eff = beamLinks(v, beatLen, phase);
+  const auto = autoLinks(v, beatLen, phase, flags);
   return flags.map((f, i) => (f ? 'none' : eff[i] === auto[i] ? 'auto' : eff[i] ? 'join' : 'break'));
 }
 
@@ -146,9 +163,9 @@ export interface BeamPlan {
  * Applies per-note modes (`changes`: event index -> mode) to the current beaming of a voice. A string (a
  * message for the user) says why a note cannot be joined. The result is realized by `setBeamMode`.
  */
-export function planBeams(v: Voice, beatLen: number, changes: Map<number, BeamMode>): BeamPlan | string {
+export function planBeams(v: Voice, beatLen: number, changes: Map<number, BeamMode>, phase = 0): BeamPlan | string {
   const flat = flattenVoice(v);
-  const links = beamLinks(v, beatLen);
+  const links = beamLinks(v, beatLen, phase);
   const flags = noBeamFlags(v);
   const cleared = new Set<number>();
   const clear = (i: number) => {
@@ -170,7 +187,7 @@ export function planBeams(v: Voice, beatLen: number, changes: Map<number, BeamMo
     }
   }
   // A note that lost its flag was cut off from both neighbors by it: they go back to the automatic choice.
-  const auto = autoLinks(v, beatLen, flags);
+  const auto = autoLinks(v, beatLen, phase, flags);
   for (const i of cleared) {
     links[i] = auto[i];
     if (i + 1 < links.length) links[i + 1] = auto[i + 1];
@@ -187,9 +204,9 @@ export function planBeams(v: Voice, beatLen: number, changes: Map<number, BeamMo
 }
 
 /** A canonical string for "which events are beamed together" (flat event indices), to compare two beamings. */
-function partitionKey(v: Voice, beatLen: number): string {
+function partitionKey(v: Voice, beatLen: number, phase = 0): string {
   const idx = new Map(flattenVoice(v).map((t) => [t.ev, t.index]));
-  return beamGroups(v, beatLen)
+  return beamGroups(v, beatLen, phase)
     .map((g) => g.map((e) => idx.get(e)).join(','))
     .sort()
     .join('|');
@@ -199,7 +216,7 @@ function partitionKey(v: Voice, beatLen: number): string {
  * Rewrites a voice so that it states only what automatic beaming cannot do: explicit groups and `noBeam`
  * flags are dropped when the result is the same beaming; single-note groups become `noBeam`.
  */
-export function simplifyBeams(v: Voice, beatLen: number): void {
+export function simplifyBeams(v: Voice, beatLen: number, phase = 0): void {
   const unwrapSingles = (items: Item[]) => {
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
@@ -212,7 +229,7 @@ export function simplifyBeams(v: Voice, beatLen: number): void {
     }
   };
   unwrapSingles(v.items);
-  const target = partitionKey(v, beatLen);
+  const target = partitionKey(v, beatLen, phase);
   const dropGroups = (items: Item[]) => {
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
@@ -221,7 +238,7 @@ export function simplifyBeams(v: Voice, beatLen: number): void {
         items.splice(i, 1, ...it.items);
         // The group's members now sit in slots i.. instead of it: if the beaming is unchanged the
         // group was redundant, so re-examine slot i (it holds a member now, possibly a nested group).
-        if (partitionKey(v, beatLen) === target) {
+        if (partitionKey(v, beatLen, phase) === target) {
           i--;
           continue;
         }
@@ -241,7 +258,7 @@ export function simplifyBeams(v: Voice, beatLen: number): void {
       }
       if (it.kind === 'note' && it.noBeam) {
         delete it.noBeam;
-        if (partitionKey(v, beatLen) !== target) it.noBeam = true;
+        if (partitionKey(v, beatLen, phase) !== target) it.noBeam = true;
       }
     }
   };
@@ -252,9 +269,9 @@ export function simplifyBeams(v: Voice, beatLen: number): void {
  * Drops the explicit `bracket` of tuplets when it equals what the engraver chooses on its own
  * (bracket unless the whole tuplet is under one beam). Run after `simplifyBeams`.
  */
-export function simplifyTupletBrackets(v: Voice, beatLen: number): void {
+export function simplifyTupletBrackets(v: Voice, beatLen: number, phase = 0): void {
   const groupOf = new Map<Event, object>();
-  for (const g of beamGroups(v, beatLen)) for (const e of g) groupOf.set(e, g);
+  for (const g of beamGroups(v, beatLen, phase)) for (const e of g) groupOf.set(e, g);
   const walk = (items: Item[]) => {
     for (const it of items) {
       if (isEvent(it)) continue;

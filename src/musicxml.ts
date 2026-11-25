@@ -7,7 +7,7 @@
 // reproduces left out again; (4) timed marks are hung on events (`anchorMarks`).
 // Everything MuseScore-specific that is only a position or an automatic break is dropped on purpose.
 
-import { beatTicks, simplifyBeams, simplifyTupletBrackets } from './beams.ts';
+import { beatTicks, pickupPhase, simplifyBeams, simplifyTupletBrackets } from './beams.ts';
 
 import type { Measure, NoteEvent, Score, StaffDef, TimedMark, TimeSig } from './model.ts';
 import { anchorMarks, baseTicks, measureTicks } from './model.ts';
@@ -269,20 +269,27 @@ function buildMeasures(read: ReadMeasures, warn: (msg: string) => void): Measure
   const sinks: MeasureSink[] = [];
   for (const sink of read.sinks) {
     if (sink.measure.time) timeNow = sink.measure.time;
+    if (sink.implicit) {
+      // A pickup keeps the length of what it holds instead of being padded with rests.
+      let end = 0;
+      for (const notes of sink.raws.values()) for (const n of notes) end = Math.max(end, n.tick + n.ticks);
+      if (end > 0 && end < measureTicks(timeNow)) sink.measure.length = end;
+    }
     sinks.push(...splitOverfull(sink, measureTicks(timeNow), sinks.length + 1, warn));
   }
   timeNow = { beats: 4, beatType: 4 };
   const measures = sinks.map(({ measure, raws, marks }, mi) => {
     if (measure.time) timeNow = measure.time;
-    const mlen = measureTicks(timeNow);
+    const mlen = measure.length ?? measureTicks(timeNow);
     for (const [key, notes] of raws) {
       const [staffId, sourceVoice] = key.split('|');
       const id = must(numbers.get(staffId)).indexOf(Number(sourceVoice)) + 1;
       const voice = { id, items: buildVoice(notes, mlen, mi + 1, warn) };
       // Leave out what the engraver's automatic beaming and bracket choice does anyway, so the text
       // format only states deliberate deviations.
-      simplifyBeams(voice, beatTicks(timeNow));
-      simplifyTupletBrackets(voice, beatTicks(timeNow));
+      const phase = mi === 0 ? pickupPhase(measure.length, timeNow) : 0;
+      simplifyBeams(voice, beatTicks(timeNow), phase);
+      simplifyTupletBrackets(voice, beatTicks(timeNow), phase);
       measure.staves[staffId] ??= { voices: [] };
       measure.staves[staffId].voices.push(voice);
     }

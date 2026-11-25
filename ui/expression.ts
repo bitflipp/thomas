@@ -12,7 +12,7 @@ import * as X from '../src/editor/expression.ts';
 import type { CurveName } from '../src/editor/performance.ts';
 import * as P from '../src/editor/performance.ts';
 import type { Pitch, Score } from '../src/model.ts';
-import { beatOf, PPQ, timeAt } from '../src/model.ts';
+import { beatOf, lengthOf, measureLabel, measureTicks, PPQ, timeAt } from '../src/model.ts';
 import type { HeadAt, Note, Sequence } from '../src/playback/sequence.ts';
 import { buildSequence, measureStarts } from '../src/playback/sequence.ts';
 import { select } from './interact.ts';
@@ -109,11 +109,16 @@ export const roll = computed<RollData>(() => {
   return { bars, maxEnd, lo: Math.min(PIANO_LO, ...midis), hi: Math.max(PIANO_HI, ...midis) };
 });
 
-/** A measure of the piece: where it starts, its length and the length of its beat (ticks). */
+/**
+ * A measure of the piece: where it starts, its length and the length of its beat (ticks), the number printed for it
+ * (0 for a pickup) and how far its first tick lies after the downbeat (`shift`, ticks: a pickup starts late in its bar).
+ */
 export interface MeasureSpan {
   start: number;
   len: number;
   beat: number;
+  label: number;
+  shift: number;
 }
 
 export const measures = computed<MeasureSpan[]>(() => {
@@ -123,6 +128,8 @@ export const measures = computed<MeasureSpan[]>(() => {
     start,
     len: (measureStart[mi + 1] ?? total) - start,
     beat: (PPQ * 4) / timeAt(sc, mi).beatType,
+    label: measureLabel(sc, mi),
+    shift: mi === 0 ? measureTicks(timeAt(sc, 0)) - lengthOf(sc, 0) : 0,
   }));
 });
 
@@ -331,10 +338,11 @@ const num = (v: number): string => String(Math.round(v * 10) / 10);
 
 /** The text over a head: pitch, place, and what it sounds like with where each value comes from. */
 function headTip(i: HeadInfo): string {
-  const start = seq.peek().measureStart[i.head.mi] ?? 0;
+  const span = measures.peek()[i.head.mi];
+  const start = span?.start ?? 0;
   const set = (on: boolean) => (on ? '' : ' (from notation)');
   return [
-    `${pitchName(i.midi, i.written)} · m. ${i.head.mi + 1} beat ${beatOf(i.at - start)}`,
+    `${pitchName(i.midi, i.written)} · m. ${span?.label ?? i.head.mi + 1} beat ${beatOf(i.at - start + (span?.shift ?? 0))}`,
     `velocity ${i.vel}${set(i.has.vel)}`,
     `shift ${i.shift > 0 ? '+' : ''}${num(i.shift)} ms${set(i.has.shift)}`,
     `gate ${i.gate}${set(i.has.gate)}`,
@@ -809,7 +817,7 @@ export function placeOf(tick: number): string {
     if (ms[mid].start <= tick) lo = mid;
     else hi = mid - 1;
   }
-  return `m. ${lo + 1} beat ${beatOf(tick - (ms[lo]?.start ?? 0))}`;
+  return `m. ${ms[lo]?.label ?? lo + 1} beat ${beatOf(tick - (ms[lo]?.start ?? 0) + (ms[lo]?.shift ?? 0))}`;
 }
 
 /** Called when the pointer leaves the canvas. */

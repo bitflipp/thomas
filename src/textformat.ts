@@ -36,7 +36,7 @@ import type {
   TupletGroup,
 } from './model.ts';
 
-import { anchorMarks, isBeam, isTremolo, isTuplet, PPQ } from './model.ts';
+import { anchorMarks, isBeam, isTremolo, isTuplet, measureLabel, PPQ } from './model.ts';
 import { must } from './util.ts';
 
 const DYNAMICS = new Set([
@@ -462,8 +462,9 @@ function write(score: Score, tags?: Tags): string {
   if (score.performance) L.push(...performanceLines(score.performance));
   L.push('');
   score.measures.forEach((m, mi) => {
-    const h = [`m${mi + 1}`];
+    const h = [`m${measureLabel(score, mi)}`];
     if (m.time) h.push(`time=${m.time.beats}/${m.time.beatType}`);
+    if (m.length !== undefined) h.push(`length=${lengthStr(m.length)}`);
     if (m.key !== undefined) h.push(`key=${m.key}`);
     if (m.breakBefore) h.push(`break=${m.breakBefore}`);
     if (m.barline) h.push(`barline=${m.barline}`);
@@ -1102,7 +1103,24 @@ function parseVoiceStatement(st: TextState, raw: string, where: string): void {
   if (marks.length) st.timed.set(sm, [...(st.timed.get(sm) ?? []), ...marks]);
 }
 
-/** `m<N> time=3/4 key=2 break=system barline=final start=repeat ending=1,2`: starts a measure. */
+/** A measure length in ticks as a fraction of a whole note, in lowest terms (`1/4`, `3/16`). */
+function lengthStr(ticks: number): string {
+  const whole = PPQ * 4;
+  let a = ticks;
+  let b = whole;
+  while (b) [a, b] = [b, a % b];
+  return `${ticks / a}/${whole / a}`;
+}
+
+/** The inverse of `lengthStr`; the length must be a whole number of ticks. */
+function parseLength(text: string): number {
+  const [n, d] = text.split('/').map(Number);
+  const ticks = (n * PPQ * 4) / d;
+  if (!(n > 0 && d > 0 && Number.isInteger(ticks))) throw new Error(`Invalid measure length ${text}`);
+  return ticks;
+}
+
+/** `m<N> time=3/4 length=1/4 key=2 break=system barline=final start=repeat ending=1,2`: starts a measure. */
 function parseMeasureStatement(st: TextState, t: string[]): void {
   const o = kv(t.slice(1));
   const measure: Measure = { staves: {} }; // The number in `m<N>` is only a label.
@@ -1110,6 +1128,7 @@ function parseMeasureStatement(st: TextState, t: string[]): void {
     const [beats, beatType] = o.time.split('/').map(Number);
     measure.time = { beats, beatType };
   }
+  if (o.length) measure.length = parseLength(o.length);
   if (o.key !== undefined) measure.key = Number(o.key);
   if (o.break) measure.breakBefore = o.break as 'system' | 'page';
   if (o.barline) measure.barline = o.barline as Measure['barline'];

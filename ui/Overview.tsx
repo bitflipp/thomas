@@ -10,7 +10,7 @@ import { signal } from '@preact/signals';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Engraved } from '../src/engrave/system.ts';
 import type { MarkBody, Score } from '../src/model.ts';
-import { flattenVoice, marksOf } from '../src/model.ts';
+import { flattenVoice, marksOf, measureLabel } from '../src/model.ts';
 import { measureStarts } from '../src/playback/sequence.ts';
 import { pageToSvg } from '../src/render.ts';
 import { must } from '../src/util.ts';
@@ -370,7 +370,10 @@ export function Overview() {
           res={res}
           mi={hov.mi}
           x={hov.x}
-          label={[`Measure ${hov.mi + 1}`, ...lands.filter((l) => l.mi === hov.mi).map((l) => l.label)].join(' · ')}
+          label={[
+            `Measure ${measureLabel(score.value, hov.mi)}`,
+            ...lands.filter((l) => l.mi === hov.mi).map((l) => l.label),
+          ].join(' · ')}
         />
       )}
       {gotoOpen.value && <GotoPrompt count={bars.length} />}

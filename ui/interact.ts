@@ -17,7 +17,7 @@ import { similarTo } from '../src/editor/similar.ts';
 import { eventAtTick } from '../src/editor/voice.ts';
 import type { MeasureGeom } from '../src/engrave/system.ts';
 import type { Event, MarkBody, NoteEvent, Pitch, Score } from '../src/model.ts';
-import { baseTicks, flattenVoice, marksOf, measureTicks, PPQ, STEPS, timeAt } from '../src/model.ts';
+import { baseTicks, flattenVoice, lengthOf, marksOf, PPQ, STEPS } from '../src/model.ts';
 import { must } from '../src/util.ts';
 import { hoverFinding } from './layers.ts';
 import { measureTick, seek } from './player.ts';
@@ -179,7 +179,7 @@ export function revealMeasure(mi: number): void {
 const staffId = (sc: Score, idx: number) => sc.staves[idx].id;
 
 /** The length of measure `mi` in ticks. */
-const lenOf = (sc: Score, mi: number) => measureTicks(timeAt(sc, mi));
+const lenOf = (sc: Score, mi: number) => lengthOf(sc, mi);
 
 /** The length in ticks of the duration chosen in the palette. */
 const durTicks = () => baseTicks({ base: dur.value, dots: dots.value });
