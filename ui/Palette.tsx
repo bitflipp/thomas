@@ -1,5 +1,6 @@
-// The tool palette of the editor: tools, durations, accidentals, dynamics and other marks that the
-// user picks before clicking on the score. It only sets the signals of state.ts; interact.ts reads them.
+// The tool palette of the editor: tools, durations, accidentals, dynamics and other marks. The duration, dot and
+// accidental buttons act on the selection in select mode and set the next note in note input (actions.ts); the mark
+// tools take their settings in a popup at the pointer and are then applied by clicking on the score (interact.ts).
 
 import { effect, signal } from '@preact/signals';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';

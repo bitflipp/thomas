@@ -480,17 +480,17 @@ export function enterRest(score: Score, loc: Loc, tick: number, dur: Dur, descen
  */
 export function deleteEvents(score: Score, addrs: (EvAddr & { pi?: number })[]): Score {
   return edit(score, (d) => {
-    const whole = new Map<string, Set<number>>();
+    // The whole events selected, per voice of a measure, to tell whether a voice is selected completely.
+    const whole = new Map<string, { a: EvAddr; idxs: Set<number> }>();
     for (const a of addrs) {
       if (a.pi !== undefined) continue;
       const key = `${a.mi}/${a.staff}/${a.voice}`;
-      const set = whole.get(key) ?? new Set<number>();
-      whole.set(key, set);
-      set.add(a.idx);
+      const g = whole.get(key) ?? { a, idxs: new Set<number>() };
+      whole.set(key, g);
+      g.idxs.add(a.idx);
     }
     const cleared = new Set<string>();
-    for (const [key, idxs] of whole) {
-      const a = must(addrs.find((x) => x.pi === undefined && `${x.mi}/${x.staff}/${x.voice}` === key));
+    for (const [key, { a, idxs }] of whole) {
       const v = voiceIn(d, a);
       const n = flattenVoice(v as Voice).length;
       if (idxs.size < n) continue;

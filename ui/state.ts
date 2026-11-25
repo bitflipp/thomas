@@ -290,7 +290,7 @@ export interface Caret {
 export const caret = signal<Caret | null>(null);
 
 /**
- * Switches the tool. Entering note or rest input puts the caret on the first selected event (or leaves it where it was)
+ * Switches the tool. Entering note input puts the caret on the first selected event (or leaves it where it was)
  * and clears the selection, so that nothing selected is changed by accident.
  */
 export function setTool(t: Tool): void {

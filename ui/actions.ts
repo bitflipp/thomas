@@ -61,7 +61,7 @@ export function shownDuration(): { base: BaseDur; dots: number } {
 }
 
 /**
- * Picks a note value. In note and rest input it sets the next note's value and never touches the score. In select
+ * Picks a note value. In note input it sets the next note's value and never touches the score. In select
  * mode it changes the selected events and the next note follows; with nothing selected it sets the next note's
  * value and switches to note input.
  */
@@ -140,7 +140,7 @@ export function chooseAccidental(a: number): void {
  * Sets the alteration of the selected notes (of one pitch of a chord when a single head is selected); `undefined`
  * does nothing.
  */
-export function setAccidentalSel(alter: number | undefined): void {
+function setAccidentalSel(alter: number | undefined): void {
   const refs = evRefs();
   if (!refs.length || alter === undefined) return;
   run((s) =>

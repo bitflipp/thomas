@@ -1,4 +1,5 @@
-// Pointer interaction on the score: selection, note input, dragging, and the tools that create spanners and marks.
+// Pointer interaction on the score: selection, placing the note input caret, dragging, and the tools that create
+// spanners and marks.
 //
 // A small state machine: `pointerdown` decides from the active tool and what is under the pointer
 // (via the hit index) which `Drag` begins; `pointermove` updates it and the ghost overlay; `pointerup`
@@ -52,7 +53,7 @@ import {
 // below shows on top of the engraved pages. They are not part of the score.
 
 export type Ghost =
-  | { kind: 'bar'; page: number; x: number; top: number; bad: boolean; label?: string }
+  | { kind: 'bar'; page: number; x: number; top: number }
   | {
       kind: 'span';
       from: { page: number; x: number; y: number };
@@ -160,14 +161,11 @@ export function revealMeasure(mi: number): void {
   if (showExpression.peek()) exprView.value = { ...exprView.peek(), left: measureTick(mi) - PPQ };
 }
 
-// Small helpers shared by the pointer handling and the commands: staff ids, measure lengths, the
+// Small helpers shared by the pointer handling and the commands: staff ids, the
 // duration currently chosen in the palette and the selection.
 
 /** The id of the staff at index `idx`. */
 const staffId = (sc: Score, idx: number) => sc.staves[idx].id;
-
-/** The length of measure `mi` in ticks. */
-const lenOf = (sc: Score, mi: number) => lengthOf(sc, mi);
 
 /** The length in ticks of the duration chosen in the palette. */
 const durTicks = () => baseTicks({ base: dur.value, dots: dots.value });
@@ -208,8 +206,8 @@ function ghostFor(w: Where): Ghost | null {
   if (!h) return null;
   const g = measureAt(h.layout, w.page, w.x, w.y);
   if (!g) return null;
-  const sn = snapTick(g, lenOf(score.peek(), g.mi), w.x, durTicks());
-  return { kind: 'bar', page: g.page, x: sn.x, top: g.y, bad: false };
+  const sn = snapTick(g, lengthOf(score.peek(), g.mi), w.x, durTicks());
+  return { kind: 'bar', page: g.page, x: sn.x, top: g.y };
 }
 
 // The pointer state machine: press, move and release are interpreted according to the current tool
@@ -403,7 +401,7 @@ export function onPointerDown(e: PointerEvent): void {
   else if (e.altKey && t === 'select') {
     // Alt+click: put the playhead here.
     const g = measureAt(h.layout, w.page, w.x, w.y);
-    if (g) seek(measureTick(g.mi) + snapTick(g, lenOf(score.peek(), g.mi), w.x, PPQ / 4).tick);
+    if (g) seek(measureTick(g.mi) + snapTick(g, lengthOf(score.peek(), g.mi), w.x, PPQ / 4).tick);
   } else pressWithSelectTool(e, w, h, target);
 }
 
@@ -426,7 +424,7 @@ function eventHover(w: Where, staff?: string, prefer = voice.value): Target | nu
           sc.staves.findIndex((s) => s.id === staff),
         );
   if (!g) return null;
-  const at = eventAtX(sc, g, staffId(sc, g.staff), lenOf(sc, g.mi), w.x, prefer);
+  const at = eventAtX(sc, g, staffId(sc, g.staff), lengthOf(sc, g.mi), w.x, prefer);
   return at ? { page: g.page, ref: { t: 'ev', ...at }, k: 'head', boxes: [], bbox: ZERO, prio: 0 } : null;
 }
 
@@ -644,7 +642,7 @@ function finishMarkMove(d: Extract<Drag, { k: 'mark' }>, w: Where, h: HitIndex):
     sc.staves.findIndex((s) => s.id === d.ref.staff),
   );
   if (!g) return;
-  const at = eventAtX(sc, g, d.ref.staff, lenOf(sc, g.mi), w.x, d.ref.voice);
+  const at = eventAtX(sc, g, d.ref.staff, lengthOf(sc, g.mi), w.x, d.ref.voice);
   if (!at || (at.mi === d.ref.mi && at.voice === d.ref.voice && at.idx === d.ref.idx)) return;
   const ref = d.ref;
   run((s) => C.moveMark(s, ref, at));
@@ -673,7 +671,7 @@ function placeCaretAt(w: Where): void {
   const sc = score.peek();
   const g = measureAt(h.layout, w.page, w.x, w.y);
   if (!g) return;
-  placeCaret({ mi: g.mi, staff: staffId(sc, g.staff), tick: snapTick(g, lenOf(sc, g.mi), w.x, durTicks()).tick });
+  placeCaret({ mi: g.mi, staff: staffId(sc, g.staff), tick: snapTick(g, lengthOf(sc, g.mi), w.x, durTicks()).tick });
 }
 
 /** Puts a grace note in front of the note at the pointer, on the pitch of the clicked position, and selects it. */
@@ -684,7 +682,7 @@ function addGraceAt(w: Where): void {
   const g = measureAt(h.layout, w.page, w.x, w.y);
   if (!g) return;
   const id = staffId(sc, g.staff);
-  const at = eventAtX(sc, g, id, lenOf(sc, g.mi), w.x, voice.value);
+  const at = eventAtX(sc, g, id, lengthOf(sc, g.mi), w.x, voice.value);
   if (!at) return;
   const te = flattenVoice(must(voiceOf(sc, at)))[at.idx];
   const pos = clampPos(posAtY(g.y, w.y));
@@ -708,7 +706,7 @@ function addMarkAt(w: Where): void {
   const g = measureAt(h.layout, w.page, w.x, w.y);
   if (!g) return;
   const id = staffId(sc, g.staff);
-  const at = eventAtX(sc, g, id, lenOf(sc, g.mi), w.x, voice.value);
+  const at = eventAtX(sc, g, id, lengthOf(sc, g.mi), w.x, voice.value);
   if (!at) return;
   const above = w.y < g.y + 2;
   const placement = above ? { placement: 'above' as const } : {};

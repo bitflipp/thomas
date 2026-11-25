@@ -1104,7 +1104,7 @@ function parseVoiceStatement(st: TextState, raw: string, where: string): void {
 }
 
 /** A measure length in ticks as a fraction of a whole note, in lowest terms (`1/4`, `3/16`). */
-function lengthStr(ticks: number): string {
+export function lengthStr(ticks: number): string {
   const whole = PPQ * 4;
   let a = ticks;
   let b = whole;

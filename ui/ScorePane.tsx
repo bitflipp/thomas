@@ -1,5 +1,5 @@
-// The score view: the engraved pages as SVG, with overlays for ghosts (note input preview, marquee,
-// drag feedback), the playhead, hover and selection highlights.
+// The score view: the engraved pages as SVG, with overlays for ghosts (where a click puts the caret, marquee,
+// drag feedback), the note input caret, the playhead, hover and selection highlights.
 //
 // Re-engraving happens in state.ts; this pane only draws its result. To stay fast on a big piece, SVG is
 // generated only for pages near the viewport, and again only when the page's own part of the selection
@@ -65,14 +65,6 @@ type GhostOf<K extends Ghost['kind']> = Extract<Ghost, { kind: K }>;
 const BAD = '#d33';
 const GHOST_FONT = 'system-ui, sans-serif';
 
-const _ACCIDENTAL_GLYPHS = [
-  'accidentalDoubleFlat',
-  'accidentalFlat',
-  'accidentalNatural',
-  'accidentalSharp',
-  'accidentalDoubleSharp',
-];
-
 /** A head being dragged to another pitch. */
 function HeadGhost({ g }: { g: GhostOf<'head'> }) {
   return (
@@ -87,17 +79,7 @@ function HeadGhost({ g }: { g: GhostOf<'head'> }) {
 
 /** A barline being placed. */
 function BarGhost({ g }: { g: GhostOf<'bar'> }) {
-  const col = g.bad ? BAD : SEL;
-  return (
-    <g>
-      <line x1={g.x} x2={g.x} y1={g.top - 1} y2={g.top + 5} stroke={col} stroke-width="0.25" opacity="0.8" />
-      {g.label && (
-        <text x={g.x + 0.5} y={g.top - 1.2} font-size="1.4" fill={col} font-family={GHOST_FONT}>
-          {g.label}
-        </text>
-      )}
-    </g>
-  );
+  return <line x1={g.x} x2={g.x} y1={g.top - 1} y2={g.top + 5} stroke={SEL} stroke-width="0.25" opacity="0.8" />;
 }
 
 /** The input caret on page `page`: a bar through its staff with the input voice, shown while notes are entered. */

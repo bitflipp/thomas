@@ -272,7 +272,7 @@ function onNavigationKey(e: KeyboardEvent): boolean {
   }
 }
 
-/** Single letter and digit keys: durations, tools, ties, slurs, stem flip and the voice. */
+/** Single letter and digit keys: durations, dots, tools, ties, slurs, ornaments, stem flip, chord tones and voices. */
 function onToolKey(e: KeyboardEvent): void {
   const vd = /^Digit([1-4])$/.exec(e.code);
   if (e.shiftKey && !e.altKey && vd) {
@@ -302,7 +302,10 @@ function onToolKey(e: KeyboardEvent): void {
   else if (letter === 'w' && e.shiftKey) addChordTone();
 }
 
-/** Keys of note input with the caret: letters enter notes, R a rest, arrows move the caret. Returns true if the key was one of them. */
+/**
+ * Keys of note input with the caret: W repeats a note (Shift+W adds a chord tone), R enters a rest, S opens or closes
+ * a slur, the arrows move the caret or the note just entered, + and - alter it. Returns true if the key was one of them.
+ */
 function onCaretKey(e: KeyboardEvent): boolean {
   if (e.altKey) return false;
   const k = e.key.toLowerCase();

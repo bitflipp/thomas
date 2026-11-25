@@ -15,6 +15,7 @@ import type { OrnamentKind } from '../src/editor/similar.ts';
 import { eventsInMeasures } from '../src/editor/similar.ts';
 import type { Event, Grace, MarkBody, MarkPlacement, NoteEvent, Score, Syllable } from '../src/model.ts';
 import { flattenVoice, keyAt, measureLabel, measureTicks, PPQ, timeAt } from '../src/model.ts';
+import { lengthStr } from '../src/textformat.ts';
 
 import {
   chooseDots,
@@ -414,16 +415,10 @@ function StavesSection() {
 function lengthOptions(s: Score, mi: number): { value: number; label: string }[] {
   const full = measureTicks(timeAt(s, mi));
   const unit = PPQ / 4;
-  const frac = (t: number) => {
-    let a = t;
-    let b = PPQ * 4;
-    while (b) [a, b] = [b, a % b];
-    return `${t / a}/${(PPQ * 4) / a}`;
-  };
-  const opts = [{ value: 0, label: `Full (${frac(full)})` }];
-  for (let t = unit; t < full; t += unit) opts.push({ value: t, label: frac(t) });
+  const opts = [{ value: 0, label: `Full (${lengthStr(full)})` }];
+  for (let t = unit; t < full; t += unit) opts.push({ value: t, label: lengthStr(t) });
   const own = s.measures[mi].length;
-  if (own !== undefined && !opts.some((o) => o.value === own)) opts.push({ value: own, label: frac(own) });
+  if (own !== undefined && !opts.some((o) => o.value === own)) opts.push({ value: own, label: lengthStr(own) });
   return opts;
 }
 
