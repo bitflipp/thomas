@@ -161,7 +161,7 @@ function Toolbar() {
         type="button"
         class="play"
         aria-pressed={playing.value}
-        title="Play / stop (Space). Starts from the first selected note, else resumes where it stopped; Alt+click moves the playhead, Home rewinds"
+        title="Play / stop (Space). Starts from the playhead, where it stopped; Alt+click moves the playhead, Home rewinds"
         onClick={toggle}
       >
         {playing.value ? (
