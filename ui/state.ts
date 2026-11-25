@@ -13,7 +13,7 @@ import type { HitIndex } from '../src/editor/hit.ts';
 import { buildHitIndex } from '../src/editor/hit.ts';
 import type { Engraved, EngraveOptions } from '../src/engrave/system.ts';
 import { createEngraveCache, engrave } from '../src/engrave/system.ts';
-import type { BaseDur, Clef, Pitch, Score } from '../src/model.ts';
+import type { BaseDur, Clef, Score } from '../src/model.ts';
 import { flattenVoice, validate } from '../src/model.ts';
 import { parseText, writeText, writeTextMap } from '../src/textformat.ts';
 
@@ -288,9 +288,6 @@ export interface Caret {
 }
 
 export const caret = signal<Caret | null>(null);
-
-/** The pitch of the note entered last, which the octave of the next letter key is chosen near. */
-export const lastPitch = signal<Pitch | null>(null);
 
 /**
  * Switches the tool. Entering note or rest input puts the caret on the first selected event (or leaves it where it was)

@@ -126,7 +126,7 @@ export function selectedAlter(): number | 'mixed' | undefined {
  * becomes natural). The input tool is left alone then; without notes selected it toggles the input tool's accidental.
  */
 export function chooseAccidental(a: number): void {
-  const ps = entering() ? [] : selectedPitches();
+  const ps = selectedPitches();
   if (!ps.length) {
     acc.value = acc.value === a ? undefined : a;
     return;

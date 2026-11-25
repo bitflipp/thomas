@@ -5,8 +5,7 @@
 import type { Ref } from '../src/editor/addr.ts';
 import { voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
-import { transposeSteps } from '../src/editor/context.ts';
-import type { MarkBody, Step } from '../src/model.ts';
+import type { MarkBody } from '../src/model.ts';
 import { flattenVoice } from '../src/model.ts';
 
 import {
@@ -27,7 +26,6 @@ import {
   alterLast,
   backspaceAtCaret,
   caretToMeasureStart,
-  enterLetter,
   enterRestAtCaret,
   moveCaret,
   repeatNote,
@@ -45,7 +43,6 @@ import type { Tool } from './state.ts';
 
 import {
   entering,
-  lastPitch,
   redo,
   run,
   say,
@@ -137,7 +134,6 @@ function paste(): void {
 
 const DURATION_KEYS = [1, 2, 4, 8, 16, 32, 64, 128] as const;
 const TOOL_KEYS: Record<string, Tool> = { n: 'note', v: 'select', l: 'slur' };
-const MAX_VOICE = 4;
 const ZOOM_STEP = 1.2;
 
 /** Edit shortcuts that must not fire while the user types (undo, redo, clipboard). Returns true if the key was one of them. */
@@ -277,6 +273,11 @@ function onNavigationKey(e: KeyboardEvent): boolean {
 /** Single letter and digit keys: durations, tools, ties, slurs, stem flip and the voice. */
 function onToolKey(e: KeyboardEvent): void {
   const vd = /^Digit([1-4])$/.exec(e.code);
+  if (e.shiftKey && !e.altKey && vd) {
+    // Shift+1..4 chooses the voice to enter into; the caret keeps its place in time.
+    voice.value = Number(vd[1]);
+    return;
+  }
   if (e.altKey && vd) {
     // Alt+1..4 moves the selected notes to that voice, Alt+Shift+1..4 selects the voice.
     if (e.shiftKey) selectVoice(Number(vd[1]));
@@ -295,17 +296,14 @@ function onToolKey(e: KeyboardEvent): void {
   else if (letter === 'f') toggleOrnament('fermata');
   else if (letter === 't' && e.shiftKey) toggleOrnament('trill');
   else if (letter === 'x') flipStemOrTie();
-  else if (letter === 'q') voice.value = Math.max(1, voice.value - 1);
-  else if (letter === 'w') voice.value = Math.min(MAX_VOICE, voice.value + 1);
 }
 
 /** Keys of note input with the caret: letters enter notes, R a rest, arrows move the caret. Returns true if the key was one of them. */
 function onCaretKey(e: KeyboardEvent): boolean {
   if (e.altKey) return false;
   const k = e.key.toLowerCase();
-  if (e.key.length === 1 && k >= 'a' && k <= 'g') enterLetter(k as Step, e.shiftKey);
-  else if (k === 'r') repeatNote();
-  else if (k === '0') enterRestAtCaret();
+  if (k === 'w') repeatNote();
+  else if (k === 'r') enterRestAtCaret();
   else if (k === 's') toggleSlur();
   else if (e.key === 'ArrowLeft') moveCaret(-1);
   else if (e.key === 'ArrowRight') moveCaret(1);
@@ -328,8 +326,6 @@ function onKey(e: KeyboardEvent): void {
     e.preventDefault();
     const d = e.key === 'ArrowUp' ? 7 : -7;
     nudge(undefined, d);
-    const lp = lastPitch.peek();
-    if (entering() && lp) lastPitch.value = transposeSteps(lp, d);
     return;
   }
   if (mod && !typing(e) && onEditShortcut(e)) return;

@@ -15,6 +15,7 @@ import {
 } from './actions.ts';
 
 import { CPS, Glyph, Icon, Label } from './icons.tsx';
+import { evRefs } from './interact.ts';
 import { AccidentalButtons, DurationButtons } from './pickers.tsx';
 import type { Tool } from './state.ts';
 
@@ -283,7 +284,10 @@ export function Palette() {
         <ToolBtn t="select" title="Select (Esc)">
           <Icon.select />
         </ToolBtn>
-        <ToolBtn t="note" title="Note input (N): click to put the caret, then type A-G, R repeats, 0 rest, S slur">
+        <ToolBtn
+          t="note"
+          title="Note input (N): click to put the caret, W repeats the last note, arrows move it, R rest, S slur"
+        >
           <Glyph cp={CPS.quarter} />
         </ToolBtn>
       </div>
@@ -296,7 +300,7 @@ export function Palette() {
       </div>
       <h4>Accidental</h4>
       <div class="grid">
-        <AccidentalButtons value={editsSelection() ? selectedAlter() : acc.value} onPick={chooseAccidental} />
+        <AccidentalButtons value={evRefs().length ? selectedAlter() : acc.value} onPick={chooseAccidental} />
       </div>
       <h4>Voice</h4>
       <div class="grid">
