@@ -712,7 +712,12 @@ button.mini {
   .textpane,
   .expression,
   .toast,
-  .overlay {
+  .overlay,
+  .overview,
+  .preview,
+  .popover,
+  .modal,
+  .playhead {
     display: none !important;
   }
   html,
