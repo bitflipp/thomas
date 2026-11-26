@@ -619,6 +619,25 @@ test('deleting every event of a voice in a measure clears it to a whole-measure 
   assert.equal(evs[0].ev.kind === 'rest' && evs[0].ev.style, 'measure');
 });
 
+test('deleting every event of a second voice removes the voice', () => {
+  let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
+  s = C.enterNote(s, { ...loc, voice: 2 }, 0, { base: 4, dots: 0 }, { ...c4, step: 'g' });
+  const v2 = s.measures[0].staves.rh.voices.find((v) => v.id === 2);
+  assert.ok(v2);
+  const n = flattenVoice(v2).length;
+  const out = ok(
+    C.deleteEvents(
+      s,
+      Array.from({ length: n }, (_, idx) => ({ ...loc, voice: 2, idx })),
+    ),
+  );
+  assert.deepEqual(
+    out.measures[0].staves.rh.voices.map((v) => v.id),
+    [1],
+  );
+  assert.equal(validate(out).length, 0);
+});
+
 test('flipVoices exchanges the contents of two voices and flipping again restores them', () => {
   let s = C.enterNote(load(), loc, 0, { base: 4, dots: 0 }, c4);
   s = C.enterNote(s, { ...loc, voice: 2 }, 0, { base: 2, dots: 0 }, { ...c4, step: 'g' });

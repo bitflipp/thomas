@@ -476,7 +476,8 @@ export function enterRest(score: Score, loc: Loc, tick: number, dur: Dur, descen
 
 /**
  * Notes become rests of the same value (a chord pitch `pi` is removed instead). When every event of a voice in a
- * measure is selected, even if they are all rests, that part of the measure is cleared to one whole-measure rest.
+ * measure is selected, even if they are all rests, the voice is removed, or, for the first voice of the staff (the lowest
+ * id), cleared to one whole-measure rest.
  */
 export function deleteEvents(score: Score, addrs: (EvAddr & { pi?: number })[]): Score {
   return edit(score, (d) => {
@@ -494,8 +495,16 @@ export function deleteEvents(score: Score, addrs: (EvAddr & { pi?: number })[]):
       const v = voiceIn(d, a);
       const n = flattenVoice(v as Voice).length;
       if (idxs.size < n) continue;
-      v.items = measureRest(lengthOf(d as Score, a.mi)) as Draft<Item>[];
       cleared.add(key);
+      // A voice other than the first goes away; its end marks (stops of spans) move to the first voice.
+      const sm = d.measures[a.mi].staves[a.staff];
+      const first = sm.voices.reduce((x, y) => (y.id < x.id ? y : x));
+      if (first !== v) {
+        if (v.end?.length) first.end = [...(first.end ?? []), ...v.end];
+        sm.voices.splice(sm.voices.indexOf(v), 1);
+        continue;
+      }
+      v.items = measureRest(lengthOf(d as Score, a.mi)) as Draft<Item>[];
     }
     for (const a of addrs) {
       if (cleared.has(`${a.mi}/${a.staff}/${a.voice}`)) continue;

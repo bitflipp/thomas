@@ -800,7 +800,6 @@ export function deleteSelection(): void {
   let s = sc;
   try {
     const evs = sel.filter((r) => r.t === 'ev') as Extract<Ref, { t: 'ev' }>[];
-    if (evs.length) s = C.deleteEvents(s, evs);
     const graces = sel
       .filter((x): x is Extract<Ref, { t: 'grace' }> => x.t === 'grace')
       .sort((a, b) => a.mi - b.mi || a.idx - b.idx || b.gi - a.gi);
@@ -812,6 +811,8 @@ export function deleteSelection(): void {
     for (const r of sel.filter((x): x is Extract<Ref, { t: 'tuplet' }> => x.t === 'tuplet')) s = C.removeTuplet(s, r);
     for (const r of sel.filter((x): x is Extract<Ref, { t: 'tie' }> => x.t === 'tie'))
       s = C.toggleTie(s, [{ ...r, pi: r.pi }]);
+    // Events go after the rest, since deleting a whole voice removes it and the other refs could point into it.
+    if (evs.length) s = C.deleteEvents(s, evs);
     const ms = sel
       .filter((x): x is Extract<Ref, { t: 'measure' }> => x.t === 'measure')
       .map((m) => m.mi)
@@ -819,6 +820,7 @@ export function deleteSelection(): void {
     if (ms.length && !evs.length && sel.length === ms.length) s = C.deleteMeasures(s, ms[0], ms[ms.length - 1]);
     commit(s);
     if (sel.every((r) => r.t !== 'ev' && r.t !== 'tuplet')) selection.value = [];
+    else selection.value = sel.filter((r) => !('voice' in r) || voiceOf(s, r));
   } catch (e) {
     if (e instanceof C.EditError) say(e.message, true);
     else throw e;
