@@ -229,18 +229,22 @@ function dynamicItem(sm0: StaffMarks, mi: number, m: Mark & { type: 'dynamic' })
   };
 }
 
-/** The placement item of a tempo mark: a note head, stem and the text after it, drawn like a staff note. */
+/** The scale of the note in a tempo mark, relative to a staff note. */
+const TEMPO_NOTE_SCALE = 0.8;
+
+/** The placement item of a tempo mark: a note head, stem and the text after it, drawn like a small staff note. */
 function tempoItem(m: Mark & { type: 'tempo' }, x0: number): Item {
   let x = x0;
-  // Drawn exactly like a staff note: the same head glyph and scale, stem 3.5 long.
+  // Drawn like a staff note (the same head glyph, stem 3.5 long), scaled down by `TEMPO_NOTE_SCALE`.
+  const k = TEMPO_NOTE_SCALE;
   const head = headGlyph(m.unit);
-  const hw = headWidth(m.unit);
+  const hw = headWidth(m.unit) * k;
   const flags = m.unit >= 8 ? Math.log2(m.unit) - 2 : 0;
-  const noteBox = { x1: hw + (flags ? 0.9 : 0) };
+  const noteBox = { x1: hw + (flags ? 0.9 * k : 0) };
   const label = `= ${m.bpm}`;
   const size = 2.5;
   const textWidth = label.length * size * 0.55;
-  const dotsWidth = m.dots * 0.5;
+  const dotsWidth = m.dots * 0.5 * k;
   return {
     src: m,
     kind: 'tempo',
@@ -252,19 +256,26 @@ function tempoItem(m: Mark & { type: 'tempo' }, x0: number): Item {
     x0: x,
     x1: x + noteBox.x1 + dotsWidth + 0.75 + textWidth,
     side: 'above',
-    up: 3.7,
+    up: 3.7 * k,
     down: 1.8,
     row: 0,
     order: 0,
     draw: (ref) => {
-      const out: Prim[] = [{ t: 'glyph', name: head, x, y: ref, sx: HEAD_SCALE, sy: 1 }];
+      const out: Prim[] = [{ t: 'glyph', name: head, x, y: ref, sx: HEAD_SCALE * k, sy: k }];
       if (m.unit >= 2) {
-        const sx = x + hw - STEM_T / 2;
-        out.push({ t: 'line', x1: sx, y1: ref - 0.17, x2: sx, y2: ref - 3.5, w: STEM_T });
-        if (flags) out.push({ t: 'glyph', name: flagGlyph(flags, true), x: sx, y: ref - 3.5 });
+        const sx = x + hw - (STEM_T * k) / 2;
+        out.push({ t: 'line', x1: sx, y1: ref - 0.17 * k, x2: sx, y2: ref - 3.5 * k, w: STEM_T * k });
+        if (flags) out.push({ t: 'glyph', name: flagGlyph(flags, true), x: sx, y: ref - 3.5 * k, sx: k, sy: k });
       }
-      for (let k = 0; k < m.dots; k++)
-        out.push({ t: 'glyph', name: 'augmentationDot', x: x + noteBox.x1 + 0.2 + k * 0.5, y: ref });
+      for (let d = 0; d < m.dots; d++)
+        out.push({
+          t: 'glyph',
+          name: 'augmentationDot',
+          x: x + noteBox.x1 + 0.2 * k + d * 0.5 * k,
+          y: ref,
+          sx: k,
+          sy: k,
+        });
       out.push({ t: 'text', x: x + noteBox.x1 + dotsWidth + 0.75, y: ref + 0.5, s: label, size, bold: true });
       return out;
     },
