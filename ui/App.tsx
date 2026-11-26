@@ -47,7 +47,6 @@ import {
   showExpression,
   shownZoom,
   showProperties,
-  timing,
   toast,
   undo,
   voiceColors,
@@ -189,10 +188,9 @@ const MODES: { mode: Mode; label: string; title: string }[] = [
   { mode: 'text', label: 'Text', title: 'The score as text (Ctrl E)' },
 ];
 
-/** The toolbar: file, playback, undo, the controls of the mode (zoom, menus, tools), status, mode selector and help. */
+/** The toolbar: file, playback, undo, the controls of the mode (zoom, menus, tools), engraver errors, mode selector and help. */
 function Toolbar() {
   const m = mode.value;
-  const res = engraved.value;
   const h = histLen.value;
   return (
     <header class="toolbar">
@@ -317,12 +315,7 @@ function Toolbar() {
         </>
       )}
       <span class="grow" />
-      {(engraveError.value || (res && m === 'score')) && (
-        <span class={`status${engraveError.value ? ' err' : ''}`}>
-          {engraveError.value ||
-            (res ? `${res.systems} systems · ${res.pages.length} pages · ${Math.round(timing.value)} ms` : '')}
-        </span>
-      )}
+      {engraveError.value && <span class="status err">{engraveError.value}</span>}
       <div class="seg" title="Mode">
         {MODES.map((x) => (
           <button

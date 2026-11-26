@@ -1,7 +1,8 @@
 // The overview strip under the score: the whole piece as one thin bar per measure (width by length, height by
 // the number of notes), with the visible part of the score as a frame. A click or drag on it scrolls the score
-// there. It marks tempo marks, key and time changes, repeats, parallels, the selection and the playhead, and
-// holds the "go to measure" box (Ctrl+G).
+// there. It marks tempo marks, key and time changes, repeats, parallels, the selection and the playhead, shows
+// the number of systems and pages and the time of the last engraving at its right, and holds the "go to measure"
+// box (Ctrl+G).
 //
 // Everything is computed from the score and from the engraver's layout (`Layout.systems`), so the strip needs no
 // drawing of its own and stays cheap on a long piece. It only scrolls the score pane; it changes nothing else.
@@ -17,7 +18,7 @@ import { must } from '../src/util.ts';
 import { pageEls, revealMeasure, select } from './interact.ts';
 import { findings } from './layers.ts';
 import { playMeasure } from './player.ts';
-import { engraved, score, selection, zoom } from './state.ts';
+import { engraved, mode, score, selection, timing, zoom } from './state.ts';
 
 /** Whether the "go to measure" prompt is open. */
 const gotoOpen = signal(false);
@@ -365,6 +366,13 @@ export function Overview() {
         )}
         {playing !== null && bars[playing] && <div class="play" style={{ left: pct(bars[playing].start) }} />}
       </div>
+      {/* The figures of the engraving, beside the strip that shows its systems and pages. */}
+      {res && mode.value === 'score' && (
+        <div class="stats" title="Systems and pages of the engraving, and how long the last engraving took">
+          <span>{`${count(res.systems, 'system')} · ${count(res.pages.length, 'page')}`}</span>
+          <span>{`${Math.round(timing.value)} ms`}</span>
+        </div>
+      )}
       {hov && res && (
         <Preview
           res={res}
@@ -379,4 +387,9 @@ export function Overview() {
       {gotoOpen.value && <GotoPrompt count={bars.length} />}
     </div>
   );
+}
+
+/** `n` with the noun, in the plural unless `n` is 1. */
+function count(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
