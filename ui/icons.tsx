@@ -1,12 +1,32 @@
-// Icons for the palette: SMuFL glyphs from the same font as the score, centered on their ink and
-// scaled to fit, plus text labels. Glyph outlines come from the engraver's font access (smufl.ts).
+// Icons for the palette: SMuFL glyphs from the same font as the score, plus a few drawn shapes and text
+// labels. All music glyphs are drawn at one scale with the noteheads of the note values on one line, so
+// that the icons keep the proportions of the engraving and read as one set; the drawn shapes use one thin
+// stroke that matches the weight of the glyphs. Glyph outlines come from the engraver's font access
+// (smufl.ts), the letters of a dynamic are spaced by the engraver (`dynRun`).
 
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { loadSmufl } from '../src/smufl.ts';
+import { dynRun } from '../src/engrave/marks.ts';
+import { CP, loadSmufl } from '../src/smufl.ts';
+
+/** Pixels per staff space of note values, accidentals, dots and noteheads (in the 36-unit icon square). */
+export const NOTE_SP = 5.8;
+
+/** Pixels per staff space of signs (accidentals, dynamics, pedal, trill, ottava, tuplet number, grace note), a little larger than the notes so that the small ones do not get lost in their cells. */
+export const MARK_SP = 7;
+
+/**
+ * The y of the noteheads of the stemmed note values (and of the augmentation dot). A quarter centered on its ink
+ * would put it at 26.6, a 64th at 31; this is midway, so both are about 2 units off center and the 64th's flags
+ * still fit.
+ */
+export const HEAD_Y = 28.8;
+
+/** The stroke width of the drawn icons, about the weight of Leland's stems and hairpins at this size. */
+const LW = 1.5;
 
 const bboxCache = new Map<number, { d: string; x0: number; y0: number; x1: number; y1: number }>();
 
-/** The outline path of a SMuFL glyph and its bounding box, cached per code point. */
+/** The outline path of a SMuFL glyph and its bounding box (staff spaces, y down), cached per code point. */
 function glyphBox(cp: number) {
   let g = bboxCache.get(cp);
   if (!g) {
@@ -28,21 +48,81 @@ function glyphBox(cp: number) {
   return g;
 }
 
-/** A SMuFL glyph as an icon: centered on its ink and scaled to fit `max` px (never beyond `cap` px per staff space). */
-export function Glyph({ cp, max = 24, cap = 10 }: { cp: number; max?: number; cap?: number }) {
-  const g = glyphBox(cp);
-  const w = g.x1 - g.x0;
-  const h = g.y1 - g.y0;
-  const k = Math.min(max / Math.max(w, h), cap);
+/** A run of glyphs: code points with their x offsets in staff spaces. */
+type Run = [cp: number, x: number][];
+
+/** Glyph paths of `run` at `k` px per staff space, centered on their ink at x = `cx`; the origin line at `y`, or centered on the ink at `cy` when `y` is not given. */
+function RunPaths({ run, k, cx = 18, cy = 18, y }: { run: Run; k: number; cx?: number; cy?: number; y?: number }) {
+  let x0 = Number.POSITIVE_INFINITY;
+  let x1 = Number.NEGATIVE_INFINITY;
+  let y0 = Number.POSITIVE_INFINITY;
+  let y1 = Number.NEGATIVE_INFINITY;
+  for (const [cp, x] of run) {
+    const g = glyphBox(cp);
+    x0 = Math.min(x0, x + g.x0);
+    x1 = Math.max(x1, x + g.x1);
+    y0 = Math.min(y0, g.y0);
+    y1 = Math.max(y1, g.y1);
+  }
+  const tx = cx - ((x0 + x1) / 2) * k;
+  const ty = y ?? cy - ((y0 + y1) / 2) * k;
   return (
-    <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
-      <path
-        d={g.d}
-        transform={`translate(${18 - ((g.x0 + g.x1) / 2) * k} ${18 - ((g.y0 + g.y1) / 2) * k}) scale(${k})`}
-        fill="currentColor"
-      />
+    <>
+      {run.map(([cp, x]) => (
+        <path d={glyphBox(cp).d} transform={`translate(${tx + x * k} ${ty}) scale(${k})`} fill="currentColor" />
+      ))}
+    </>
+  );
+}
+
+/** The 36-unit square every palette icon is drawn in. */
+function Square({ children }: { children: preact.ComponentChildren }) {
+  return (
+    <svg width="36" height="36" viewBox="0 0 36 36" overflow="visible" aria-hidden="true">
+      {children}
     </svg>
   );
+}
+
+/**
+ * A SMuFL glyph as an icon, centered sideways on its ink. `y` puts its origin line there (note values and dots
+ * at `HEAD_Y`, so their heads line up), else it is centered on its ink. `k` is px per staff space.
+ */
+export function Glyph({ cp, k = NOTE_SP, y }: { cp: number; k?: number; y?: number }) {
+  return (
+    <Square>
+      <RunPaths run={[[cp, 0]]} k={k} y={y} />
+    </Square>
+  );
+}
+
+/** A quarter note with one or two augmentation dots on the notehead line, as the dot button shows them. */
+export function Dots({ n }: { n: number }) {
+  const run: Run = [
+    [CPS.quarter, 0],
+    [CPS.dot, 1.75],
+  ];
+  if (n === 2) run.push([CPS.dot, 2.5]);
+  return (
+    <Square>
+      <RunPaths run={run} k={NOTE_SP} y={HEAD_Y} />
+    </Square>
+  );
+}
+
+/** A dynamic (`mf`, `pp` ...) from Leland's dynamic glyphs, spaced as the engraver spaces them. */
+export function Dynamic({ text }: { text: string }) {
+  const r = dynRun(text);
+  return (
+    <Square>
+      <RunPaths run={r.names.map((n, i) => [CP[n], r.xs[i]])} k={MARK_SP} />
+    </Square>
+  );
+}
+
+/** A mark glyph (pedal, trill, ottava, grace note) at the scale of marks. */
+export function Mark({ cp, k = MARK_SP }: { cp: number; k?: number }) {
+  return <Glyph cp={cp} k={k} />;
 }
 
 /**
@@ -80,9 +160,12 @@ function GlyphPath({ cp, k }: { cp: number; k: number }) {
   );
 }
 
+/** A black notehead at the note scale, centered at (`x`, `y`). */
+const Head = ({ x, y }: { x: number; y: number }) => <RunPaths run={[[CPS.head, 0]]} k={NOTE_SP} cx={x} cy={y} />;
+
 let measureCtx: CanvasRenderingContext2D | null | undefined;
 
-/** The ink box of a text in the label font: distances from the baseline origin (left, right, ascent, descent). */
+/** The ink box of a text in a font: distances from the baseline origin (left, right, ascent, descent). */
 function inkOf(text: string, font: string) {
   if (measureCtx === undefined) measureCtx = document.createElement('canvas').getContext('2d');
   if (!measureCtx) return null;
@@ -96,37 +179,25 @@ function inkOf(text: string, font: string) {
   };
 }
 
-/** Text icon in one common style, centered on its ink (not on its line box). */
-export function Label({
-  children,
-  italic,
-  size = 15,
-}: {
-  children: preact.ComponentChildren;
-  italic?: boolean;
-  size?: number;
-}) {
+/** Text icon (upright, regular weight), centered on its ink (not on its line box). */
+export function Label({ children, size = 14 }: { children: preact.ComponentChildren; size?: number }) {
   const text = [children].flat().join('');
   const family = "Georgia, 'Noto Serif', serif";
-  const ink = inkOf(text, `${italic ? 'italic ' : ''}700 ${size}px ${family}`);
-  const x = ink ? 18 + (ink.l - ink.r) / 2 : 18;
-  const y = ink ? 18 + (ink.a - ink.d) / 2 : 18;
+  const ink = inkOf(text, `${size}px ${family}`);
   return (
-    <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
+    <Square>
       <text
-        x={x}
-        y={y}
+        x={ink ? 18 + (ink.l - ink.r) / 2 : 18}
+        y={ink ? 18 + (ink.a - ink.d) / 2 : 18}
         dy={ink ? undefined : '.35em'}
         text-anchor={ink ? 'start' : 'middle'}
         font-size={size}
         font-family={family}
-        font-weight="700"
-        font-style={italic ? 'italic' : 'normal'}
         fill="currentColor"
       >
         {children}
       </text>
-    </svg>
+    </Square>
   );
 }
 
@@ -153,93 +224,63 @@ export const CPS = {
   mezzo: 0xe521,
   ped: 0xe650,
   ottava: 0xe510,
+  ottavaAlta: 0xe511,
+  ottavaBassaVb: 0xe51c,
+  trill: 0xe566,
+  grace: 0xe560,
+  tuplet3: 0xe883,
+  head: 0xe0a4,
   dot: 0xe1e7,
 } as const;
 
+const line = { fill: 'none', stroke: 'currentColor', 'stroke-width': LW, 'stroke-linecap': 'round' } as const;
+
 export const Icon = {
   select: () => (
-    <Centered vb={40} size={36}>
-      <path
-        d="M13 9l0 20 5-5 4 9 4-2-4-9 7 0z"
-        fill="currentColor"
-        stroke="currentColor"
-        stroke-width="1"
-        stroke-linejoin="round"
-      />
+    <Centered vb={36} size={36}>
+      <path d="M13 7.5v19l4.6-4.4 3.5 7.8 3.3-1.5-3.5-7.6h6.4z" fill="currentColor" />
     </Centered>
   ),
+  // Two noteheads under a slur, which tapers to its ends as an engraved one does.
   slur: () => (
-    <Centered vb={40} size={36}>
-      <path d="M8 26C14 12 26 12 32 26" fill="none" stroke="currentColor" stroke-width={LW} stroke-linecap="round" />
-      <circle cx="8" cy="27" r="2.8" fill="currentColor" />
-      <circle cx="32" cy="27" r="2.8" fill="currentColor" />
+    <Centered vb={36} size={36}>
+      <Head x={9} y={25} />
+      <Head x={27} y={25} />
+      <path d="M7 20.5C11 10.5 25 10.5 29 20.5C25 13 11 13 7 20.5z" fill="currentColor" />
     </Centered>
   ),
   link: () => (
-    <Centered vb={40} size={36}>
-      <path d="M9 12L31 28" fill="none" stroke="currentColor" stroke-width={LW} stroke-linecap="round" />
-      <circle cx="8" cy="11" r="2.8" fill="currentColor" />
-      <circle cx="32" cy="29" r="2.8" fill="currentColor" />
+    <Centered vb={36} size={36}>
+      <Head x={9} y={25} />
+      <Head x={27} y={11} />
+      <path d="M11.5 23L24.5 13" {...line} />
     </Centered>
   ),
   cresc: () => (
-    <Centered vb={40} size={36}>
-      <path
-        d="M7 20L33 12M7 20L33 28"
-        fill="none"
-        stroke="currentColor"
-        stroke-width={LW}
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
+    <Centered vb={36} size={36}>
+      <path d="M28 12L8 18L28 24" {...line} stroke-linejoin="round" />
     </Centered>
   ),
   dim: () => (
-    <Centered vb={40} size={36}>
-      <path
-        d="M7 12L33 20M7 28L33 20"
-        fill="none"
-        stroke="currentColor"
-        stroke-width={LW}
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
+    <Centered vb={36} size={36}>
+      <path d="M8 12L28 18L8 24" {...line} stroke-linejoin="round" />
     </Centered>
   ),
-  tie: () => (
-    <Centered vb={40} size={36}>
-      <path d="M9 22C14 30 26 30 31 22" fill="none" stroke="currentColor" stroke-width={LW} stroke-linecap="round" />
-    </Centered>
-  ),
-  text: () => <Label italic>Aa</Label>,
+  text: () => <Label>Aa</Label>,
   tempo: () => (
-    <Centered vb={40} size={36}>
-      <g transform="translate(11 20)">
-        <GlyphPath cp={0xe1d5} k={6} />
-      </g>
-      <path d="M22 17h10M22 23h10" fill="none" stroke="currentColor" stroke-width={LW} stroke-linecap="round" />
+    <Centered vb={36} size={36}>
+      <RunPaths run={[[CPS.quarter, 0]]} k={NOTE_SP} cx={12} y={25} />
+      <path d="M19.5 19h8M19.5 23h8" {...line} />
     </Centered>
   ),
   tuplet: () => (
-    <Centered vb={40} size={36}>
-      <path
-        d="M8 28v-6h24v6"
-        fill="none"
-        stroke="currentColor"
-        stroke-width={LW}
-        stroke-linejoin="round"
-        stroke-linecap="round"
-      />
-      <g transform="translate(20 13)">
-        <GlyphPath cp={0xe883} k={9} />
-      </g>
+    <Centered vb={36} size={36}>
+      <path d="M7 27v-5h6.5M22.5 22H29v5" {...line} stroke-linejoin="round" />
+      <RunPaths run={[[CPS.tuplet3, 0]]} k={MARK_SP} cy={20.5} />
     </Centered>
   ),
   rest: () => <Glyph cp={CPS.restQuarter} />,
 };
-
-/** The stroke width of the palette's line icons (in the 40-unit drawing grid). */
-const LW = 2.6;
 
 /** Small line icons for toolbar and Properties panel buttons (24 px grid, drawn in the text color; sized by CSS). */
 const S = (d: preact.ComponentChildren, fill = false) => (

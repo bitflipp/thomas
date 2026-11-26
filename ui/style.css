@@ -21,7 +21,7 @@
   /* Control heights: default, small (mini buttons, rows, list options) and large (palette cells). */
   --h: 30px;
   --h-sm: 26px;
-  --h-lg: 38px;
+  --h-lg: 44px;
   /* Icon sizes inside controls. */
   --icon-sm: 16px;
   --icon: 18px;
@@ -261,11 +261,23 @@ button.mini {
   padding: 0;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  /* Flat cells: no fill or border until hovered or chosen, so that the glyphs read as one set. */
+  background: transparent;
+  border-color: transparent;
+}
+.palette .grid button:hover:not(:disabled) {
+  background: var(--bg);
+  border-color: transparent;
+}
+.palette .grid button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
 }
 .palette .grid button svg {
-  width: var(--h-lg);
-  height: var(--h-lg);
+  /* The icon fills the button inside its border, so that its center is the button's. */
+  width: calc(var(--h-lg) - 2px);
+  height: calc(var(--h-lg) - 2px);
 }
 .palette .grid .dotlbl {
   font-size: calc(var(--h-lg) * 2 / 3);
@@ -304,6 +316,10 @@ button.mini {
   display: grid;
   place-items: center;
   overflow: hidden;
+}
+.toolpopup .choices.units button svg {
+  width: calc(var(--h-lg) - 2px);
+  height: calc(var(--h-lg) - 2px);
 }
 .toolpopup .choices button {
   min-width: var(--h-lg);

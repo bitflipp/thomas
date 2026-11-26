@@ -3,7 +3,7 @@
 
 import type { BaseDur } from '../src/model.ts';
 
-import { CPS, Glyph } from './icons.tsx';
+import { CPS, Glyph, HEAD_Y, MARK_SP } from './icons.tsx';
 
 const DURS: [BaseDur, number, string][] = [
   [1, CPS.whole, '1'],
@@ -13,7 +13,6 @@ const DURS: [BaseDur, number, string][] = [
   [16, CPS.sixteenth, '5'],
   [32, CPS.thirty2, '6'],
   [64, CPS.sixty4, '7'],
-  [128, CPS.hundred28, '8'],
 ];
 
 const ACCS: [number, number, string][] = [
@@ -41,7 +40,8 @@ export function DurationButtons({
           title={`${b === 1 ? 'Whole' : `1/${b}`} (${k})`}
           onClick={() => onPick(b)}
         >
-          <Glyph cp={cp} />
+          {/* The whole note has no stem to line up with the others, so it is centered. */}
+          <Glyph cp={cp} y={b === 1 ? undefined : HEAD_Y} />
         </button>
       ))}
     </>
@@ -60,7 +60,7 @@ export function AccidentalButtons({
     <>
       {ACCS.map(([a, cp, name]) => (
         <button type="button" aria-pressed={value === a} title={name} onClick={() => onPick(a)}>
-          <Glyph cp={cp} max={22} cap={10} />
+          <Glyph cp={cp} k={MARK_SP} />
         </button>
       ))}
     </>

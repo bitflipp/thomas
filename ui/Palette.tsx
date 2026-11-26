@@ -16,7 +16,7 @@ import {
 } from './actions.ts';
 
 import { nextAccidental, pickNextAccidental } from './caret.ts';
-import { CPS, Glyph, Icon, Label } from './icons.tsx';
+import { CPS, Dots, Dynamic, Glyph, HEAD_Y, Icon, Mark } from './icons.tsx';
 import { evRefs } from './interact.ts';
 import { AccidentalButtons, DurationButtons } from './pickers.tsx';
 import type { Tool } from './state.ts';
@@ -229,7 +229,8 @@ function ToolPopup() {
                 title={`Beat unit 1/${u}`}
                 onClick={() => (tempoArg.value = { ...tempoArg.value, unit: u })}
               >
-                <Glyph cp={cp} max={30} cap={12} />
+                {/* The units go down to the 16th only, so their heads can sit higher than in the palette; the whole note is centered. */}
+                <Glyph cp={cp} y={u === 1 ? undefined : HEAD_Y - 2} />
               </button>
             ))}
             <button
@@ -238,7 +239,7 @@ function ToolPopup() {
               title="Dotted"
               onClick={() => (tempoArg.value = { ...tempoArg.value, dots: tempoArg.value.dots ? 0 : 1 })}
             >
-              <Glyph cp={CPS.dot} cap={24} max={9} />
+              <Dots n={1} />
             </button>
           </div>
           <label>
@@ -302,7 +303,7 @@ export function Palette() {
           title="Dot (Q or .)"
           onClick={() => chooseDots((shownDuration().dots + 1) % 3)}
         >
-          {shownDuration().dots === 2 ? <Label size={26}>··</Label> : <Glyph cp={CPS.dot} cap={24} max={9} />}
+          <Dots n={Math.max(1, shownDuration().dots)} />
         </Btn>
       </div>
       <h4>Accidental</h4>
@@ -341,22 +342,22 @@ export function Palette() {
           <Icon.dim />
         </ToolBtn>
         <ToolBtn t="pedal" title="Pedal: drag from note to note">
-          <Glyph cp={CPS.ped} />
+          <Mark cp={CPS.ped} />
         </ToolBtn>
         <ToolBtn t="trill" title="Trill line: drag from note to note">
-          <Label italic>tr</Label>
+          <Mark cp={CPS.trill} />
         </ToolBtn>
         <ToolBtn t="8va" title="8va: drag from note to note">
-          <Label italic>8va</Label>
+          <Mark cp={CPS.ottavaAlta} />
         </ToolBtn>
         <ToolBtn t="8vb" title="8vb: drag from note to note">
-          <Label italic>8vb</Label>
+          <Mark cp={CPS.ottavaBassaVb} />
         </ToolBtn>
       </div>
       <h4>Marks</h4>
       <div class="grid">
         <ToolBtn t="dynamic" title="Dynamic: click a note or rest">
-          <Label italic>mf</Label>
+          <Dynamic text="mf" />
         </ToolBtn>
         <ToolBtn t="text" title="Text: click a note or rest">
           <Icon.text />
@@ -365,13 +366,13 @@ export function Palette() {
           <Icon.tempo />
         </ToolBtn>
         <ToolBtn t="clef" title="Clef change: click a note or rest">
-          <Glyph cp={CPS.gclef} max={28} cap={9} />
+          <Glyph cp={CPS.gclef} k={4} />
         </ToolBtn>
         <ToolBtn t="tuplet" title="Tuplet: click a note or rest">
           <Icon.tuplet />
         </ToolBtn>
         <ToolBtn t="grace" title="Grace note: click on the staff in front of a note">
-          <Label italic>gr</Label>
+          <Mark cp={CPS.grace} />
         </ToolBtn>
       </div>
       <ToolPopup key={tool.value} />

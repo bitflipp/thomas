@@ -125,7 +125,7 @@ function dynSpacing(left: string, right: string): number {
 }
 
 /** Glyphs of a dynamic like `mf`, its advance width, its extent above and below the baseline, and where its ink starts and ends (for centring on the notehead). */
-function dynRun(text: string): {
+export function dynRun(text: string): {
   names: string[];
   xs: number[];
   w: number;
