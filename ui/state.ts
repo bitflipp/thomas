@@ -6,14 +6,14 @@
 
 import { batch, computed, effect, signal } from '@preact/signals';
 
-import type { Ref } from '../src/editor/addr.ts';
+import type { EvAddr, Ref } from '../src/editor/addr.ts';
 import { voiceOf } from '../src/editor/addr.ts';
 import { EditError } from '../src/editor/commands.ts';
 import type { HitIndex } from '../src/editor/hit.ts';
 import { buildHitIndex } from '../src/editor/hit.ts';
 import type { Engraved, EngraveOptions } from '../src/engrave/system.ts';
 import { createEngraveCache, engrave } from '../src/engrave/system.ts';
-import type { BaseDur, Clef, Score } from '../src/model.ts';
+import type { BaseDur, Clef, Pitch, Score } from '../src/model.ts';
 import { flattenVoice, validate } from '../src/model.ts';
 import { parseText, writeText, writeTextMap } from '../src/textformat.ts';
 
@@ -222,6 +222,75 @@ export const engraved = signal<Engraved | null>(null);
 export const hit = signal<HitIndex | null>(null);
 export const engraveError = signal('');
 
+// The score that is engraved and shown. In note input it is the would-be score: the score with the note the next W
+// (or Shift+W) would enter already in it, so that the measure is spaced, beamed and split into rests exactly as it will
+// be. `caret.ts` supplies the would-be score through `previewSource`; the engraving, the hit index and the drawing
+// follow `shown`, everything else (playback, text, undo, layers) the real score. Refs from the hit index name things
+// in the shown score, so a click turns them back with `realRef`.
+
+/** A would-be score: the score with one note entered, the address of that note and, when only a head of it is new (a chord tone), that head. */
+export interface Preview {
+  score: Score;
+  at: EvAddr;
+  pi?: number;
+}
+
+/** Gives the would-be score of note input, or null when nothing is about to be entered (or the entry would be refused). */
+export const previewSource = signal<() => Preview | null>(() => null);
+
+export const preview = computed(() => previewSource.value());
+
+/** The score that is engraved: the would-be score in note input, else the score. */
+export const shown = computed(() => preview.value?.score ?? score.value);
+
+/** Whether `r` names the note of the preview (or, for a chord tone, its new head). */
+export function isPreviewNote(pv: Preview, r: Ref): boolean {
+  const a = pv.at;
+  return (
+    r.t === 'ev' &&
+    r.mi === a.mi &&
+    r.staff === a.staff &&
+    r.voice === a.voice &&
+    r.idx === a.idx &&
+    (pv.pi === undefined || r.pi === pv.pi)
+  );
+}
+
+/** The index, in the same voice of score `b`, of the event that starts where event `r.idx` of score `a` starts. */
+function sameStart(r: EvAddr, a: Score, b: Score): number | undefined {
+  const va = voiceOf(a, r);
+  const te = va && flattenVoice(va)[r.idx];
+  const vb = voiceOf(b, r);
+  return te && vb ? flattenVoice(vb).find((t) => t.start === te.start)?.index : undefined;
+}
+
+/**
+ * Moves ref `r` between the score and the shown score (`toShown`): an event (or a tie, slur, mark ... hanging on one)
+ * is found by the tick it starts at in its voice, and a head index steps over the new head of a chord tone. Undefined
+ * when there is no such event there (the note of the preview, or a note it overwrites).
+ */
+function moveRef(r: Ref, toShown: boolean): Ref | undefined {
+  const pv = preview.peek();
+  if (!pv || r.t === 'measure') return r;
+  if (!toShown && isPreviewNote(pv, r)) return undefined;
+  const idx = toShown ? sameStart(r, score.peek(), pv.score) : sameStart(r, pv.score, score.peek());
+  if (idx === undefined) return undefined;
+  const out = { ...r, idx } as Ref;
+  if (out.t === 'ev' && out.pi !== undefined && pv.pi !== undefined) {
+    const a = pv.at;
+    const chord = a.mi === r.mi && a.staff === r.staff && a.voice === r.voice && a.idx === (toShown ? idx : r.idx);
+    if (chord && toShown && out.pi >= pv.pi) out.pi++;
+    else if (chord && !toShown && out.pi > pv.pi) out.pi--;
+  }
+  return out;
+}
+
+/** The ref in the score of a ref from the shown score (from the hit index); undefined for the note of the preview. */
+export const realRef = (r: Ref): Ref | undefined => moveRef(r, false);
+
+/** The ref in the shown score of a ref in the score (from the selection), for drawing it; undefined when it is overwritten there. */
+export const shownRef = (r: Ref): Ref | undefined => moveRef(r, true);
+
 /** Kept from one edit to the next, so that only what an edit touched is engraved again. */
 const engraveCache = createEngraveCache();
 
@@ -236,9 +305,9 @@ function pageWithSpace(page: Score['page'], sp: number): Score['page'] {
 }
 
 effect(() => {
-  const s0 = score.value;
+  const s0 = shown.value;
   const sp = space.value;
-  const nums = score.value.page.measureNumbers ?? 'system';
+  const nums = s0.page.measureNumbers ?? 'system';
   if (!ready.value) return;
   const s = sp ? { ...s0, page: pageWithSpace(s0.page, sp) } : s0;
   const t0 = performance.now();
@@ -306,11 +375,18 @@ export interface Caret {
 export const caret = signal<Caret | null>(null);
 
 /**
+ * The pitch of the next note in note input, chosen before it is entered; null: the pitch of the note before the caret.
+ * Entering a note keeps its pitch here, so that W enters it again; a click that puts the caret clears it.
+ */
+export const nextPitch = signal<Pitch | null>(null);
+
+/**
  * Switches the tool. Entering note input puts the caret on the first selected event (or leaves it where it was)
  * and clears the selection, so that nothing selected is changed by accident.
  */
 export function setTool(t: Tool): void {
   if (t === 'note') {
+    nextPitch.value = null;
     const r = selection.peek().find((x) => x.t === 'ev');
     const v = r && voiceOf(score.peek(), r);
     const te = v && r && flattenVoice(v)[r.idx];

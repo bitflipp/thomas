@@ -35,6 +35,7 @@ import {
   exprView,
   fit,
   hit,
+  realRef,
   run,
   say,
   score,
@@ -389,10 +390,13 @@ export function onPointerDown(e: PointerEvent): void {
   if (!(w && h)) return;
   const t = tool.value;
   const target = asSelected(hitTest(h, w.page, w.x, w.y));
-  if (t === 'note' && target?.ref.t === 'ev' && eventOf(score.peek(), target.ref)?.kind === 'note') {
-    // A click on an existing note leaves input and selects it; anywhere else it puts the caret there.
+  // In note input the hit index is the would-be score's, so a clicked note is turned back into a ref of the score.
+  const real = t === 'note' && target ? realRef(target.ref) : undefined;
+  if (t === 'note' && real?.t === 'ev' && eventOf(score.peek(), real)?.kind === 'note') {
+    // A click on an existing note leaves input and selects it; anywhere else (also on the note about to be entered)
+    // it puts the caret there.
     setTool('select');
-    pressWithSelectTool(e, w, h, target);
+    selection.value = [real];
   } else if (t === 'note') placeCaretAt(w);
   else if (SPAN_TOOLS.has(t)) startSpan(e, w, t as SpanTool, target);
   else if (MARK_TOOLS.has(t)) addMarkAt(w);

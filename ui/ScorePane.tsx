@@ -1,5 +1,5 @@
 // The score view: the engraved pages as SVG, with overlays for ghosts (where a click puts the caret, marquee,
-// drag feedback), the note input caret, the playhead, hover and selection highlights.
+// drag feedback), the note input preview (the label of the note W would enter, which the would-be score already shows), the playhead, hover and selection highlights.
 //
 // Re-engraving happens in state.ts; this pane only draws its result. To stay fast on a big piece, SVG is
 // generated only for pages near the viewport, and again only when the page's own part of the selection
@@ -10,14 +10,17 @@ import { effect } from '@preact/signals';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Ref } from '../src/editor/addr.ts';
 import { refKey } from '../src/editor/addr.ts';
+import { clefAt, ottavaAt, plainAlter } from '../src/editor/context.ts';
 import type { HitIndex } from '../src/editor/hit.ts';
 import { dependentNotes, noteBoxes, primRef } from '../src/editor/hit.ts';
+import { posToY, staffPos } from '../src/engrave/prep.ts';
 import type { Prim } from '../src/engrave/scene.ts';
 import type { Engraved } from '../src/engrave/system.ts';
+import type { Pitch } from '../src/model.ts';
 import { pageToSvg } from '../src/render.ts';
 import { loadSmufl } from '../src/smufl.ts';
 import { must } from '../src/util.ts';
-import { caretGeom, slurFrom } from './caret.ts';
+import { caretGeom, nextNote, refusalOf, slurFrom } from './caret.ts';
 import type { Ghost } from './interact.ts';
 
 import {
@@ -38,19 +41,20 @@ import { hoverShape, LAYER_COLORS, layerNotes, shapeById, shapeParts, wheelFindi
 import { playhead, playing } from './player.ts';
 
 import {
-  caret,
   engraved,
-  entering,
   fit,
   hit,
+  isPreviewNote,
   mode,
+  preview,
   printing,
+  realRef,
   score,
   selection,
+  shownRef,
   shownZoom,
   tool,
   VOICE_COLORS,
-  voice,
   voiceColors,
   zoom,
 } from './state.ts';
@@ -59,6 +63,7 @@ const MM_PX = 96 / 25.4;
 const SEL = '#2f6fed';
 const GHOST = '#c4c4c4'; // A hidden rest is drawn faintly in the editor only.
 const HOVER = '#6b9af0'; // This is the selection color, but lighter.
+const PREVIEW = '#8fb0f5'; // The note about to be entered is drawn in a pale selection color.
 
 type GhostOf<K extends Ghost['kind']> = Extract<Ghost, { kind: K }>;
 
@@ -82,18 +87,61 @@ function BarGhost({ g }: { g: GhostOf<'bar'> }) {
   return <line x1={g.x} x2={g.x} y1={g.top - 1} y2={g.top + 5} stroke={SEL} stroke-width="0.25" opacity="0.8" />;
 }
 
-/** The input caret on page `page`: a bar through its staff with the input voice, shown while notes are entered. */
+const ACCIDENTAL_GLYPHS = [
+  'accidentalDoubleFlat',
+  'accidentalFlat',
+  'accidentalNatural',
+  'accidentalSharp',
+  'accidentalDoubleSharp',
+];
+
+/** The name of a pitch for the preview label, such as `F#4` or `Bb3`. */
+function pitchName(p: Pitch): string {
+  const acc = p.alter > 0 ? '#'.repeat(p.alter) : 'b'.repeat(-p.alter);
+  return `${p.step.toUpperCase()}${acc}${p.octave}`;
+}
+
+/**
+ * The label of the note input preview on page `page`: pitch, voice (`+` for a chord tone) and an open slur, above the
+ * note about to be entered, which the would-be score (`shown`) already holds. When the entry would be refused there is
+ * no would-be score, and the note is drawn here in red, with ledger lines and an accidental, over the score as it is, and the label says why.
+ */
 function CaretSvg({ page }: { page: number }) {
-  const c = caret.value;
-  if (!(c && entering())) return null;
-  const at = caretGeom(c);
-  if (!at || at.page !== page) return null;
+  const n = nextNote();
+  const pv = preview.value;
+  const sc = score.value;
+  const at = n && caretGeom(n);
+  if (!(n && at) || at.page !== page) return null;
+  const pos = staffPos(
+    { ...n.pitch, octave: n.pitch.octave + ottavaAt(sc, n.staff, n.mi, n.tick) },
+    clefAt(sc, n.staff, n.mi, n.tick),
+  );
+  const y = at.y + posToY(pos);
+  const col = pv ? SEL : BAD;
+  const why = pv ? undefined : refusalOf(n);
+  const label = `${pitchName(n.pitch)} ${n.chord ? '+' : ''}${n.voice}${slurFrom.value ? ' slur' : ''}${why ? `: ${why}` : ''}`;
+  // The label is never stroked: inside the note's group a stroke of one staff space would blot it out.
+  const text = (
+    <text x={at.x} y={Math.min(at.y, y) - 1.2} font-size="1.4" fill={col} stroke="none" font-family={GHOST_FONT}>
+      {label}
+    </text>
+  );
+  if (pv) return text;
+  const sm = loadSmufl();
+  const ledgers: number[] = [];
+  for (let p = -2; p >= pos; p -= 2) ledgers.push(p);
+  for (let p = 10; p <= pos; p += 2) ledgers.push(p);
+  const plain = plainAlter(sc, n.staff, n.mi, n.tick, n.pitch.step, n.pitch.octave);
+  const accGlyph = n.pitch.alter === plain ? null : ACCIDENTAL_GLYPHS[n.pitch.alter + 2];
+  const head = n.dur.base === 1 ? 'noteheadWhole' : n.dur.base === 2 ? 'noteheadHalf' : 'noteheadBlack';
   return (
-    <g>
-      <rect x={at.x - 0.15} y={at.y - 0.8} width="0.3" height="5.6" fill={SEL} opacity="0.85" />
-      <text x={at.x + 0.4} y={at.y - 1} font-size="1.4" fill={SEL} font-family={GHOST_FONT}>
-        {slurFrom.value ? `${voice.value} slur` : voice.value}
-      </text>
+    <g opacity="0.75" fill={col} stroke={col}>
+      {ledgers.map((p) => (
+        <line x1={at.x - 0.4} x2={at.x + 1.6} y1={at.y + posToY(p)} y2={at.y + posToY(p)} stroke-width="0.16" />
+      ))}
+      <path d={sm.path(head)} transform={`translate(${at.x} ${y})`} stroke="none" />
+      {accGlyph && <path d={sm.path(accGlyph)} transform={`translate(${at.x - 1.2} ${y})`} stroke="none" />}
+      {text}
     </g>
   );
 }
@@ -175,27 +223,30 @@ function PageView({
   }, []);
   const p = res.pages[i];
   const warn = layerNotes.value;
+  const pv = preview.value;
   const svg = useMemo(() => {
     if (!near) return '';
     const colorFor = (q: Prim): string | undefined => {
       if (!q.r || printing.value) return undefined; // Print output is plain black, so it has no selection or voice colors.
       const r = primRef(h.index, q);
       if (!r) return undefined;
+      if (pv && q.k !== 'beam' && isPreviewNote(pv, r)) return PREVIEW;
       if (keys.size && q.k !== 'beam') {
         if (r.t === 'ev') {
           if (keys.has(refKey({ ...r, pi: undefined } as Ref))) return SEL;
           if (r.pi !== undefined && keys.has(refKey(r))) return SEL;
         } else if (keys.has(refKey(r))) return SEL;
       }
-      if (warn.heads.size && r.t === 'ev' && q.k !== 'beam' && !q.ghost) {
-        const k = refKey(r);
+      const real = warn.heads.size && pv ? realRef(r) : r; // The findings name notes of the score, not of the would-be score.
+      if (warn.heads.size && real?.t === 'ev' && q.k !== 'beam' && !q.ghost) {
+        const k = refKey(real);
         const whole = warn.wholeEvents.get(k);
-        if (r.pi === undefined && whole) {
+        if (real.pi === undefined && whole) {
           // The stem and flags of a note whose head is selected are selected too, not warned.
-          for (const sk of keys) if (sk.startsWith(`${k}:`)) return SEL;
+          for (const sk of keys) if (sk.startsWith(`${refKey(r)}:`)) return SEL;
           return whole;
         }
-        const head = r.pi !== undefined ? warn.heads.get(k) : undefined;
+        const head = real.pi !== undefined ? warn.heads.get(k) : undefined;
         if (head) return head;
       }
       if (q.ghost) return GHOST;
@@ -207,7 +258,7 @@ function PageView({
       /^<\?xml[^>]*>\s*/,
       '',
     );
-  }, [res, h, sig, near, voiceColors.value, printing.value, warn]);
+  }, [res, h, sig, near, voiceColors.value, printing.value, warn, pv]);
   // The hovered element is recolored in place, like a selected one but lighter. Generating
   // new SVG on every pointer move would be far too slow, so only the matching primitives change.
   const wrap = useRef<HTMLDivElement | null>(null);
@@ -319,7 +370,13 @@ function NotesSvg({ page, h }: { page: number; h: HitIndex }) {
   const sel = selection.value;
   const sc = score.value;
   const boxes = useMemo(() => {
-    const want = sel.flatMap((r) => dependentNotes(sc, r));
+    // The notes are found in the score and drawn where the shown (would-be) score has them.
+    const want = sel.flatMap((r) =>
+      dependentNotes(sc, r).flatMap((a) => {
+        const m = shownRef({ t: 'ev', ...a });
+        return m?.t === 'ev' ? [{ ...a, idx: m.idx }] : [];
+      }),
+    );
     return want.length ? noteBoxes(h, page, want) : [];
   }, [sel, sc, h, page]);
   const pad = 0.25;
@@ -500,7 +557,9 @@ export function ScorePane() {
     [],
   );
 
-  const keys = useMemo(() => new Set(sel.map(refKey)), [sel]);
+  // The selection names things in the score; the pages show the would-be score in note input, so it is moved there.
+  const pv = preview.value;
+  const keys = useMemo(() => new Set(sel.flatMap((r) => (pv ? (shownRef(r) ?? []) : r)).map(refKey)), [sel, pv]);
   // Which selected objects are drawn on which page. Each page gets a signature of its own part
   // of the selection, so a page is regenerated only when that signature changes.
   const sigs = useMemo(() => {

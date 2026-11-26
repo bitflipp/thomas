@@ -15,6 +15,7 @@ import {
   shownDuration,
 } from './actions.ts';
 
+import { nextAccidental, pickNextAccidental } from './caret.ts';
 import { CPS, Glyph, Icon, Label } from './icons.tsx';
 import { evRefs } from './interact.ts';
 import { AccidentalButtons, DurationButtons } from './pickers.tsx';
@@ -24,6 +25,7 @@ import {
   acc,
   clefArg,
   dynText,
+  entering,
   setTool,
   tempoArg,
   textArg,
@@ -305,7 +307,11 @@ export function Palette() {
       </div>
       <h4>Accidental</h4>
       <div class="grid">
-        <AccidentalButtons value={evRefs().length ? selectedAlter() : acc.value} onPick={chooseAccidental} />
+        {entering() ? (
+          <AccidentalButtons value={nextAccidental()} onPick={pickNextAccidental} />
+        ) : (
+          <AccidentalButtons value={evRefs().length ? selectedAlter() : acc.value} onPick={chooseAccidental} />
+        )}
       </div>
       <h4>Voice</h4>
       <div class="grid">

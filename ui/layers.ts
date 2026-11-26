@@ -18,7 +18,7 @@ import type { Ref } from '../src/editor/addr.ts';
 import { eventOf, refKey } from '../src/editor/addr.ts';
 import { headCenter } from '../src/editor/hit.ts';
 import { must } from '../src/util.ts';
-import { hit, score } from './state.ts';
+import { hit, score, shownRef } from './state.ts';
 
 /** One place a layer points at. */
 export interface Finding {
@@ -151,7 +151,11 @@ export const shapeParts = computed<ShapePart[]>(() => {
   const out: ShapePart[] = [];
   findings.value.forEach((f, fi) => {
     f.shapes.forEach((sh, si) => {
-      const ev = sh.flatMap((r) => (r.t === 'ev' ? [r] : []));
+      // The findings are about the score, the heads are drawn where the shown (would-be) score has them.
+      const ev = sh.flatMap((r) => {
+        const m = r.t === 'ev' ? shownRef(r) : undefined;
+        return m?.t === 'ev' ? [m] : [];
+      });
       if (ev.length !== 4) return;
       const centers = ev.map((r) => {
         const page = pageOf(r.mi);

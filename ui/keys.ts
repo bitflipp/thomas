@@ -2,6 +2,7 @@
 // `installKeys` adds one global listener that ignores keys while the user types in an input or in the
 // text pane's editor. The clipboard for copy/paste is kept here as plain events, not in the system clipboard.
 
+import { batch } from '@preact/signals';
 import type { Ref } from '../src/editor/addr.ts';
 import { voiceOf } from '../src/editor/addr.ts';
 import * as C from '../src/editor/commands.ts';
@@ -25,15 +26,17 @@ import {
 
 import {
   addChordTone,
-  alterLast,
+  alterNext,
   backspaceAtCaret,
   caretToMeasureStart,
+  enterNext,
   enterRestAtCaret,
   moveCaret,
-  repeatNote,
+  octaveNext,
   slurFrom,
-  stepNotes,
+  stepNext,
   toggleSlur,
+  trackShift,
 } from './caret.ts';
 
 import { zoomRoll } from './expression.ts';
@@ -316,30 +319,39 @@ function onCaretKey(e: KeyboardEvent): boolean {
   const k = e.key.toLowerCase();
   if (k === 'w') {
     if (e.shiftKey) addChordTone();
-    else repeatNote();
+    else enterNext();
   } else if (k === 'r') enterRestAtCaret();
   else if (k === 's') toggleSlur();
   else if (e.key === 'ArrowLeft') moveCaret(-1);
   else if (e.key === 'ArrowRight') moveCaret(1);
-  else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.ctrlKey)
-    stepNotes(e.key === 'ArrowUp' ? 1 : -1);
+  else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.ctrlKey)
+    stepNext(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey); // With Shift: the tone to add to the chord.
   else if (e.key === 'Backspace') backspaceAtCaret();
   else if (e.key === 'Home') caretToMeasureStart();
-  else if (e.key === '+' || e.key === '=') alterLast(1);
-  else if (e.key === '-') alterLast(-1);
+  // With Shift the accidental goes to the tone to add to the chord: + or * (German layout), = or + (US) and - or _.
+  else if (e.key === '+' || e.key === '=' || e.key === '*') alterNext(1, e.shiftKey);
+  else if (e.key === '-' || e.key === '_') alterNext(-1, e.shiftKey);
   else return false;
   e.preventDefault();
   return true;
 }
 
-/** The global key handler: editing and view shortcuts with Ctrl or Cmd, then the single-key bindings. */
+/**
+ * The global key handler. A key's changes to the score, the caret and the selection are batched, so that the would-be
+ * score of note input is engraved once per key, from the final state.
+ */
 function onKey(e: KeyboardEvent): void {
+  batch(() => handleKey(e));
+}
+
+/** Editing and view shortcuts with Ctrl or Cmd, then the single-key bindings. */
+function handleKey(e: KeyboardEvent): void {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && !typing(e) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-    // Ctrl+Up/Down moves the selected notes an octave, keeping their spelling.
+    // Ctrl+Up/Down moves the selected notes (in note input: the next note) an octave, keeping their spelling.
     e.preventDefault();
-    const d = e.key === 'ArrowUp' ? 7 : -7;
-    nudge(undefined, d);
+    if (entering()) octaveNext(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
+    else nudge(undefined, e.key === 'ArrowUp' ? 7 : -7);
     return;
   }
   if (mod && !typing(e) && onEditShortcut(e)) return;
@@ -355,8 +367,12 @@ function onKey(e: KeyboardEvent): void {
   if (!onNavigationKey(e)) onToolKey(e);
 }
 
-/** Installs the key handler and returns the function that removes it. */
+/** Installs the key handler (and the tracking of Shift for the note input preview) and returns the function that removes it. */
 export function installKeys(): () => void {
   addEventListener('keydown', onKey);
-  return () => removeEventListener('keydown', onKey);
+  const stopShift = trackShift();
+  return () => {
+    removeEventListener('keydown', onKey);
+    stopShift();
+  };
 }
