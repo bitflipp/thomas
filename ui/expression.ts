@@ -953,9 +953,3 @@ export function onKey(e: KeyboardEvent): boolean {
   }
   return true;
 }
-
-/** The value of the selected curve point. */
-export function pointValue(): number | undefined {
-  const p = pointSel.value;
-  return p && p.lane !== 'soft' ? curves.value[p.lane][p.index]?.value : undefined;
-}

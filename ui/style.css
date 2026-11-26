@@ -1044,6 +1044,17 @@ button.dd {
   flex-direction: column;
   gap: var(--sp-3);
 }
+.vtool .vhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+  font-weight: 600;
+}
+.vtool .vhead kbd {
+  font-weight: normal;
+  color: var(--muted);
+}
 .vtool .vgrid {
   display: grid;
   grid-template-columns: auto repeat(4, 1fr);

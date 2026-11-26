@@ -83,7 +83,7 @@ const ROWS: [string, string][] = [
   ],
   [
     '1 to 6 (Expression pane)',
-    'Open the tools of the selected notes at the pointer: Set, Ramp, Delta (velocity), Shift (ms), Gate (factor of the notated length), Roll (spread the attacks of chords). Ramp: pick a shape, then the first and the last velocity. Escape closes a window',
+    'Open the tools of the selected notes at the pointer (they have no buttons): Set, Ramp, Delta (velocity), Shift (ms), Gate (factor of the notated length), Roll (spread the attacks of chords). Ramp: pick a shape, then the first and the last velocity. Escape closes a window',
   ],
   [
     'Click, drag (tempo and sustain lanes)',

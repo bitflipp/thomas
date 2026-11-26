@@ -1,15 +1,14 @@
 // The Expression view: how the piece is played, as opposed to how it is written. It takes the place of the score
 // (Ctrl Space) and shows a roll with every sounding note where it is heard (shifted attacks included) and its velocity
 // as the color of the bar, with the three performance curves (tempo, sustain, una corda) stacked under it in lanes
-// that are always in view. The notes are selected here and in the score alike, and the main toolbar
-// (`ExpressionTools`) acts on that selection. All expression editing is done here; the state, the pointer handling and
+// that are always in view. The notes are selected here and in the score alike, and the tools of the notes (keys 1 to
+// 6, `NoteTools`) act on that selection. All expression editing is done here; the state, the pointer handling and
 // the actions are in expression.ts, the drawing of the canvas in exprDraw.ts.
 
 import { effect } from '@preact/signals';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { RampShape } from '../src/editor/expression.ts';
 import { RAMP_SHAPES } from '../src/editor/expression.ts';
-import { must } from '../src/util.ts';
 import { Dropdown } from './Dropdown.tsx';
 import type { Frame } from './exprDraw.ts';
 import { paint, readColors, velocityColor } from './exprDraw.ts';
@@ -106,6 +105,16 @@ const GATE_STEPS = [-0.1, -0.05, 0.05, 0.1];
 
 type Tool = 'set' | 'curve' | 'delta' | 'shift' | 'gate' | 'roll';
 
+/** The title of each tool's window. */
+const TITLES: Record<Tool, string> = {
+  set: 'Set velocity',
+  curve: 'Velocity ramp',
+  delta: 'Change velocity',
+  shift: 'Shift attack (ms)',
+  gate: 'Gate (factor of the notated length)',
+  roll: 'Roll chords',
+};
+
 /** A signed number as button text. */
 const signed = (d: number): string => (d > 0 ? `+${d}` : `−${-d}`);
 
@@ -152,9 +161,6 @@ function ShapeGlyph({ shape }: { shape: RampShape }) {
   );
 }
 
-/** Where a tool window opens: under its button, or at a point (the pointer, when a key opened it). */
-type Place = { anchor: HTMLElement; point?: undefined } | { point: { x: number; y: number }; anchor?: undefined };
-
 /** The last place the pointer was seen, so that a key can open a tool window under it. */
 const pointer = { x: 200, y: 200 };
 
@@ -168,30 +174,22 @@ const ROLL_ANCHORS: ['first' | 'last', string][] = [
   ['last', 'Last on the beat'],
 ];
 
-/** The window of the open tool: it opens under its button or at the pointer and closes on a pick, Escape or a click elsewhere. */
-function ToolWindow({ tool, place, onClose }: { tool: Tool; place: Place; onClose: () => void }) {
-  const { anchor, point } = place;
+/** The window of the open tool: it opens at the pointer and closes on a pick, Escape or a click elsewhere. */
+function ToolWindow({ tool, point, onClose }: { tool: Tool; point: { x: number; y: number }; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null);
   const [first, setFirst] = useState<number | undefined>();
   const [at, setAt] = useState({ left: 0, top: 0 });
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    if (point) {
-      // The pointer lands inside the window, near its top left corner, so that a pick is a short move.
-      const left = Math.max(8, Math.min(point.x - 16, innerWidth - el.offsetWidth - 8));
-      const top = Math.max(8, Math.min(point.y - 16, innerHeight - el.offsetHeight - 8));
-      setAt({ left, top });
-      return;
-    }
-    const r = must(anchor).getBoundingClientRect();
-    const left = Math.max(8, Math.min(r.left, innerWidth - el.offsetWidth - 8));
-    const top = r.bottom + 2 + el.offsetHeight > innerHeight - 8 ? r.top - 2 - el.offsetHeight : r.bottom + 2;
-    setAt({ left, top: Math.max(8, top) });
-  }, [anchor, point]);
+    // The pointer lands inside the window, near its top left corner, so that a pick is a short move.
+    const left = Math.max(8, Math.min(point.x - 16, innerWidth - el.offsetWidth - 8));
+    const top = Math.max(8, Math.min(point.y - 16, innerHeight - el.offsetHeight - 8));
+    setAt({ left, top });
+  }, [point]);
   useEffect(() => {
     const away = (e: PointerEvent) => {
-      if (!(box.current?.contains(e.target as Node) || anchor?.contains(e.target as Node))) onClose();
+      if (!box.current?.contains(e.target as Node)) onClose();
     };
     const esc = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -204,9 +202,22 @@ function ToolWindow({ tool, place, onClose }: { tool: Tool; place: Place; onClos
       document.removeEventListener('pointerdown', away, true);
       document.removeEventListener('keydown', esc, true);
     };
-  }, [anchor, onClose]);
+  }, [onClose]);
   return (
-    <div ref={box} class="vtool" role="dialog" style={{ left: `${at.left}px`, top: `${at.top}px` }}>
+    <div
+      ref={box}
+      class="vtool"
+      role="dialog"
+      aria-labelledby="vtool-title"
+      style={{ left: `${at.left}px`, top: `${at.top}px` }}
+    >
+      <div class="vhead">
+        <span id="vtool-title">
+          {TITLES[tool]}
+          {tool === 'curve' && (first === undefined ? ': pick the start' : ': pick the end')}
+        </span>
+        <kbd>{TOOLS.indexOf(tool) + 1}</kbd>
+      </div>
       {tool === 'set' && (
         <VelocityGrid
           onPick={(v) => {
@@ -362,42 +373,25 @@ function ToolWindow({ tool, place, onClose }: { tool: Tool; place: Place; onClos
   );
 }
 
-/** The tools of the selected notes (keys 1 to 6 in the view); the windows of Set, Shift and Gate also show the values of the notes. */
-function NoteBar({ none }: { none: boolean }) {
-  const [open, setOpen] = useState<({ tool: Tool } & Place) | null>(null);
-  const tools: { tool: Tool; key: string; label: string; title: string }[] = [
-    {
-      tool: 'set',
-      key: '1',
-      label: 'Set',
-      title: 'Give the selected notes one velocity, picked from the dynamics (1)',
-    },
-    {
-      tool: 'curve',
-      key: '2',
-      label: 'Ramp',
-      title: 'Shape the velocities along a ramp: pick its shape, then the start and the end (2)',
-    },
-    {
-      tool: 'delta',
-      key: '3',
-      label: 'Delta',
-      title: 'Raise or lower the velocities of the selected notes by a fixed amount (3)',
-    },
-    { tool: 'shift', key: '4', label: 'Shift', title: 'Strike the selected notes earlier or later than written (4)' },
-    { tool: 'gate', key: '5', label: 'Gate', title: 'Make the selected notes sound shorter or longer (5)' },
-    { tool: 'roll', key: '6', label: 'Roll', title: 'Spread the attacks of each chord among the selected notes (6)' },
-  ];
+/** The order of the tools of the selected notes: the keys 1 to 6 open them. */
+const TOOLS: Tool[] = ['set', 'curve', 'delta', 'shift', 'gate', 'roll'];
+
+/**
+ * The tools of the selected notes, which have no buttons: the keys 1 to 6 open them in a window at the pointer (Set,
+ * Ramp, Delta, Shift, Gate, Roll); the windows of Set, Shift and Gate also show the values of the notes.
+ */
+function NoteTools({ none }: { none: boolean }) {
+  const [open, setOpen] = useState<{ tool: Tool; point: { x: number; y: number } } | null>(null);
   // The keys 1 to 6 open the tools (as in Pianizer) wherever the focus is in the Expression view, also with a tool
   // window open (it then switches to that tool), except while a text field is being typed in.
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      const t = tools.find((x) => x.key === e.key);
+      const t = TOOLS[Number(e.key) - 1];
       const target = e.target as HTMLElement;
       if (!t || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
       e.preventDefault();
       e.stopPropagation();
-      if (!none) setOpen(open?.tool === t.tool ? null : { tool: t.tool, point: { x: pointer.x, y: pointer.y } });
+      if (!none) setOpen(open?.tool === t ? null : { tool: t, point: { x: pointer.x, y: pointer.y } });
     };
     const move = (e: PointerEvent) => {
       pointer.x = e.clientX;
@@ -410,27 +404,13 @@ function NoteBar({ none }: { none: boolean }) {
       document.removeEventListener('pointermove', move, true);
     };
   });
-  const button = (t: (typeof tools)[number]) => (
-    <button
-      type="button"
-      data-tool={t.tool}
-      disabled={none}
-      aria-pressed={open?.tool === t.tool}
-      title={t.title}
-      onClick={(e) => setOpen(open?.tool === t.tool ? null : { tool: t.tool, anchor: e.currentTarget as HTMLElement })}
-    >
-      {t.label}
-    </button>
-  );
   return (
     <>
-      <div class="seg">{tools.slice(0, 3).map(button)}</div>
-      <div class="seg">{tools.slice(3).map(button)}</div>
       {open && (
         <ToolWindow
           key={open.tool}
           tool={open.tool}
-          place={open}
+          point={open.point}
           onClose={() => {
             setOpen(null);
             document.querySelector<HTMLElement>('.expression canvas')?.focus();
@@ -441,51 +421,20 @@ function NoteBar({ none }: { none: boolean }) {
   );
 }
 
-/** The controls of the curve lanes: the value of the selected point and the snap grid. */
-function CurveBar() {
-  const value = E.pointValue();
-  const sel = pointSelLane();
+/**
+ * The controls of the Expression view, which the main toolbar shows in place of the score's View and Layers menus: the
+ * snap grid of the curve lanes. It also holds the tools of the selected notes, which open from the keys.
+ */
+export function ExpressionTools() {
   return (
     <>
-      <Field
-        label="Point"
-        title="The value of the selected tempo or sustain point"
-        value={
-          value === undefined || sel === 'soft'
-            ? undefined
-            : sel === 'tempo'
-              ? Math.round(value * 1000) / 10
-              : Math.round(value * 100)
-        }
-        min={sel === 'tempo' ? 80 : 0}
-        max={sel === 'tempo' ? 120 : 100}
-        disabled={value === undefined}
-        onChange={(n) => E.setPointValue(n / 100)}
-      />
+      <NoteTools none={E.selected.value.size === 0} />
       <Dropdown
         title="Snap grid for curve points and regions (Alt while dragging: none)"
         value={E.snap.value}
         opts={E.SNAPS.map((n) => ({ value: n.value, label: `Snap ${n.label}` }))}
         onChange={(n) => (E.snap.value = n)}
       />
-    </>
-  );
-}
-
-/** The lane of the selected curve point or region. */
-const pointSelLane = () => E.pointSel.value?.lane;
-
-/**
- * The controls of the Expression view, which the main toolbar shows in place of the score's View and Layers menus: the
- * tools and values of the selected notes, and those of the curves.
- */
-export function ExpressionTools() {
-  const none = E.selected.value.size === 0;
-  return (
-    <>
-      <NoteBar none={none} />
-      <span class="sep" />
-      <CurveBar />
     </>
   );
 }
