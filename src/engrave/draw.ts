@@ -25,6 +25,7 @@ import {
   HEAD_SCALE,
   headGlyph,
   headWidth,
+  REPEAT_WIDTH,
   restGlyph,
   STEM_T,
 } from './spacing.ts';
@@ -247,6 +248,26 @@ export function drawSystemNotes(ctx: SysCtx): void {
 const beamLevelsOf = (e: EvL) => beamLevels(e.te.ev.dur.base);
 
 /**
+ * The room of measure `mi` on staff `s` that a whole-measure rest is centered in (measure-local x): from the end of
+ * what opens the measure (a key or time change, a repeat sign) to the inner edge of the closing barline (a double,
+ * final or repeat barline is wider than the line at `endX`), or to the small clef drawn before it.
+ */
+function barRoom(ctx: SysCtx, mi: number, s: number): { left: number; right: number } {
+  const sp = ctx.spacing[mi];
+  const endX = ctx.placed[mi].endX;
+  const { measures } = ctx.prep.score;
+  const thin = D.thinBarlineThickness as number;
+  const barline = measures[mi].barline;
+  let inset = thin / 2;
+  if (barline === 'repeat-end') inset = REPEAT_WIDTH;
+  else if (barline === 'final' || mi === measures.length - 1)
+    inset = (D.thickBarlineThickness as number) + (D.barlineSeparation as number) + thin;
+  else if (barline === 'double') inset = 0.4 + thin;
+  const right = sp.endClef[s] ? Math.min(endX - inset, endX - sm.adv('gClefChange') - 2 * END_CLEF_GAP) : endX - inset;
+  return { left: sp.open, right };
+}
+
+/**
  * Phase 1: positions the events. x comes from the measure's columns, so notes sounding together line
  * up across staves; a whole-measure rest is centered in the bar instead.
  */
@@ -256,9 +277,10 @@ function positionEvents(ctx: SysCtx, mi: number, s: number): void {
   const colIndex = new Map(sp.cols.map((c, j) => [c.tick, j]));
   for (const e of ctx.prep.measures[mi][s].evs) {
     if (e.ev.kind === 'rest' && e.ev.style === 'measure') {
-      // Centered between the first column and the barline, or the small clef that precedes it.
-      const right = sp.endClef[s] ? pl.endX - sm.adv('gClefChange') - 2 * END_CLEF_GAP : pl.endX;
-      e.x = ctx.mx[mi] + (sp.lead + right) / 2 - sm.adv('restWhole') / 2;
+      // Centered in the room of the bar: from the barline, or the signature or repeat sign that opens the
+      // measure, to the barline that closes it, or the small clef that precedes it.
+      const { left, right } = barRoom(ctx, mi, s);
+      e.x = ctx.mx[mi] + (left + right) / 2 - sm.adv('restWhole') / 2;
       continue;
     }
     const j = colIndex.get(e.start);
@@ -983,8 +1005,9 @@ function drawMultiRest(ctx: SysCtx, e: EvL, s: number, count: number): void {
   const sp = ctx.spacing[e.mi];
   const endX = ctx.placed[e.mi].endX;
   const right = sp.endClef[s] ? endX - sm.adv('gClefChange') - 2 * END_CLEF_GAP : endX;
-  const x0 = ctx.mx[e.mi] + sp.lead;
-  const x1 = ctx.mx[e.mi] + right - 1.2; // This leaves room for a final or double barline.
+  // The bar keeps the same distance from both ends of the measure; it leaves room for a final or double barline.
+  const x0 = ctx.mx[e.mi] + sp.open + 1.2;
+  const x1 = ctx.mx[e.mi] + right - 1.2;
   const cx = (x0 + x1) / 2;
   const P = ctx.prims[s];
   P.push({ t: 'line', x1: x0, x2: x1, y1: 2, y2: 2, w: 1 });
@@ -998,6 +1021,24 @@ function drawMultiRest(ctx: SysCtx, e: EvL, s: number, count: number): void {
     x += sm.adv(d);
   }
   pushBox(ctx, s, cx - total / 2, cx + total / 2, -2.7, -0.5);
+}
+
+/**
+ * Whether another voice of the staff shows something (a note or a rest that is not hidden) while the rest `e`
+ * lasts. Where the other voices only have hidden rests, the rest stays in the middle of the staff.
+ */
+function othersVisibleDuring(ctx: SysCtx, e: EvL, s: number): boolean {
+  const end = e.start + e.ticks;
+  return ctx.prep.measures[e.mi][s].voices.some(
+    (v) =>
+      v.id !== e.voice &&
+      v.evs.some(
+        (o) =>
+          (o.ev.kind === 'note' || o.ev.style !== 'hidden') &&
+          o.start < end &&
+          e.start < o.start + Math.max(o.ticks, 1),
+      ),
+  );
 }
 
 /**
@@ -1016,8 +1057,11 @@ function drawRestPrims(ctx: SysCtx, e: EvL, s: number, ghost: boolean): void {
   if (e.ev.kind === 'rest' && e.ev.display) {
     const clef = e.clef;
     y = posToY(staffPos(e.ev.display, clef));
-  } else if (e.nVoices > 1) {
-    y += e.voiceRank === 0 ? -1.5 : 1.5;
+  } else if ((ghost || e.nVoices > 1) && othersVisibleDuring(ctx, e, s)) {
+    // A ghost's voice may have nothing visible and so no rank among the sounding voices: it takes its place
+    // among all voices of the staff instead, so that it sits on its voice's side and not on the other's notes.
+    const rank = ghost ? ctx.prep.measures[e.mi][s].voices.findIndex((v) => v.id === e.voice) : e.voiceRank;
+    y += rank === 0 ? -1.5 : 1.5;
     // Keep clear of the heads (and accidentals) of the other voices sounding at the same time: step
     // away from the voice's default row, one space at a time, until nothing is in the way.
     const rb = sm.bbox(name);
@@ -1032,7 +1076,7 @@ function drawRestPrims(ctx: SysCtx, e: EvL, s: number, ghost: boolean): void {
           return hy + r > yy - rb.y1 && hy - r < yy - rb.y0;
         }),
       );
-    const stepDir = e.voiceRank === 0 ? -1 : 1;
+    const stepDir = rank === 0 ? -1 : 1;
     for (let k = 0; k < 8 && hits(y); k++) y += stepDir;
   }
   ctx.prims[s].push({ t: 'glyph', name, x: e.x, y });

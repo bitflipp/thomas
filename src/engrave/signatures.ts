@@ -3,7 +3,7 @@
 
 import type { Clef } from '../model.ts';
 
-import { keyAt, timeAt } from '../model.ts';
+import { keyAt, timeAt, timeChangeAt } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import type { SysCtx } from './draw.ts';
 import { xAtTick } from './draw.ts';
@@ -170,7 +170,8 @@ export function drawMidSystemChanges(P: Prim[], ctx: SysCtx, s: number, y0: numb
   for (let mi = ctx.a; mi <= ctx.b; mi++) {
     if (mi > ctx.a) {
       const x = drawKeyChange(P, ctx, mi, s, y0, ctx.mx[mi] + 0.6);
-      if (score.measures[mi].time) drawTimeSig(P, x, y0, timeAt(score, mi));
+      const ts = timeChangeAt(score, mi);
+      if (ts) drawTimeSig(P, x, y0, ts);
     }
     drawClefChanges(P, ctx, mi, s, y0);
     drawEndClef(P, ctx, mi, s, y0);

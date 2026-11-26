@@ -11,6 +11,7 @@ import { flattenVoice, PPQ, validate } from '../src/model.ts';
 import { pageToSvg } from '../src/render.ts';
 import { loadSmufl } from '../src/smufl.ts';
 import { parseText, writeText } from '../src/textformat.ts';
+import { must } from '../src/util.ts';
 
 const HEAD = `title "T"
 page 210x297 margin=10 space=1.91
@@ -337,6 +338,68 @@ m1 time=4/4 key=0
   assert.deepEqual(bare(ghosted.pages[0].prims.filter((p) => !p.ghost)), bare(plain.pages[0].prims));
   assert.ok(!pageToSvg(ghosted.pages[0], ghosted.staffSpace).includes('restQuarter'));
   assert.ok(pageToSvg(ghosted.pages[0], ghosted.staffSpace, { ghosts: true }).includes('restQuarter'));
+});
+
+test('a rest moves to its voice row only while another voice shows something, not over hidden rests', () => {
+  const s = parseText(`${HEAD}
+m1 time=4/4 key=0
+  rh.1: r:4 c5:4 r:2
+  rh.2: e4:4 s:4 s:2
+  lh.1: R:1
+`);
+  const prims = engrave(s).pages[0].prims;
+  const glyph = (name: string) => must(prims.find((p) => p.t === 'glyph' && p.name === name));
+  const quarter = glyph('restQuarter');
+  const half = glyph('restHalf');
+  assert.ok(quarter.t === 'glyph' && half.t === 'glyph');
+  // The quarter rest is above the note of voice 2; the half rest is over hidden rests only, so it stays centered.
+  // Both on voice rows they would be 3 spaces apart; with the half rest centered, 1.5.
+  assert.equal(half.y - quarter.y, 1.5);
+});
+
+test('a whole-measure rest is centered between the key change that opens the bar and the barline', () => {
+  const s = parseText(`${HEAD}
+m1 time=4/4 key=0
+  rh.1: c5:1
+  lh.1: c3:1
+m2 key=3
+  rh.1: R:1
+  lh.1: c3:1
+m3
+  rh.1: c5:1
+  lh.1: c3:1
+`);
+  const prims = engrave(s).pages[0].prims;
+  const rest = must(prims.find((p) => p.t === 'glyph' && p.name === 'restWhole'));
+  const sharps = prims.filter((p) => p.t === 'glyph' && p.name === 'accidentalSharp' && p.x > 0);
+  const bars = prims.filter((p) => p.k === 'barline' && p.t === 'line').map((p) => (p.t === 'line' ? p.x1 : 0));
+  assert.ok(rest.t === 'glyph');
+  // The key change in front of m2 is the last run of sharps before the rest; the bar ends at the next barline.
+  const keyEnd = Math.max(
+    ...sharps
+      .filter((p) => p.t === 'glyph' && p.x < rest.x)
+      .map((p) => (p.t === 'glyph' ? p.x + loadSmufl().adv(p.name) : 0)),
+  );
+  const barEnd = Math.min(...bars.filter((x) => x > rest.x));
+  const center = rest.x + loadSmufl().adv('restWhole') / 2;
+  // The key change is a little wider than its glyphs, the barline a little thicker than a point: allow for both.
+  assert.ok(Math.abs(center - (keyEnd + barEnd) / 2) < 0.4, `rest at ${center}, bar from ${keyEnd} to ${barEnd}`);
+});
+
+test('ghost rests of a voice with only hidden rests sit on that voice side, clear of the other voice', () => {
+  const s = parseText(`${HEAD}
+m1 time=4/4 key=0
+  rh.1: c4:4 d4 e4 f4
+  rh.2: s:4 s s s
+  lh.1: R:1
+`);
+  const prims = engrave(s, { ghostRests: true }).pages[0].prims;
+  const heads = prims.filter((p) => p.t === 'glyph' && p.k === 'head');
+  const ghosts = prims.filter((p) => p.ghost);
+  assert.equal(ghosts.length, 4);
+  // Voice 2 goes below: every ghost is lower on the page than every head of voice 1.
+  const lowestHead = Math.max(...heads.map((p) => (p.t === 'glyph' ? p.y : 0)));
+  assert.ok(ghosts.every((p) => p.t === 'glyph' && p.y > lowestHead));
 });
 
 test('an ottava stop at a note ends the line before it, so the note is written at pitch', () => {

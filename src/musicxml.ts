@@ -10,7 +10,7 @@
 import { beatTicks, pickupPhase, simplifyBeams, simplifyTupletBrackets } from './beams.ts';
 
 import type { Measure, NoteEvent, Score, StaffDef, TimedMark, TimeSig } from './model.ts';
-import { anchorMarks, baseTicks, measureTicks } from './model.ts';
+import { anchorMarks, baseTicks, carriedFrom, measureTicks } from './model.ts';
 import type { MeasureSink, PartState, RawMark, ReadEnv } from './musicxml-measure.ts';
 import { readPartMeasure } from './musicxml-measure.ts';
 import type { RawNote } from './musicxml-raw.ts';
@@ -298,7 +298,25 @@ function buildMeasures(read: ReadMeasures, warn: (msg: string) => void): Measure
     return measure;
   });
   if (!measures[0].time) measures[0].time = timeNow;
+  keepVoltaTimes(measures);
   return measures;
+}
+
+/**
+ * MusicXML reads time signatures in score order, the model lets a later volta ignore the earlier ones
+ * (`carriedFrom`): where they differ (a volta after one that changed the time), the time is given explicitly.
+ */
+function keepVoltaTimes(measures: Measure[]): void {
+  const inOrder: TimeSig[] = [];
+  const carried: TimeSig[] = [];
+  for (const [mi, m] of measures.entries()) {
+    const prev = inOrder[mi - 1] ?? { beats: 4, beatType: 4 };
+    const from = carriedFrom(measures, mi);
+    const own = from < 0 ? prev : carried[from];
+    if (!m.time && (own.beats !== prev.beats || own.beatType !== prev.beatType)) m.time = { ...prev };
+    inOrder.push(m.time ?? prev);
+    carried.push(m.time ?? own);
+  }
 }
 
 /** Rounds to `d` decimals. */

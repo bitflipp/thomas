@@ -25,7 +25,7 @@ import type {
   Voice,
 } from '../model.ts';
 
-import { flattenVoice, marksOf, measureTicks, pitchStep, STEPS } from '../model.ts';
+import { carriedFrom, flattenVoice, marksOf, measureTicks, pitchStep, STEPS } from '../model.ts';
 import { must } from '../util.ts';
 import type { MeasureSpacing } from './spacing.ts';
 
@@ -497,12 +497,11 @@ function signaturesOf(score: Score): { keyOf: number[]; timeOf: TimeSig[] } {
   const keyOf: number[] = [];
   const timeOf: TimeSig[] = [];
   let key = 0;
-  let time: TimeSig = { beats: 4, beatType: 4 };
-  for (const m of score.measures) {
+  for (const [mi, m] of score.measures.entries()) {
     if (m.key !== undefined) key = m.key;
-    if (m.time) time = m.time;
+    const from = carriedFrom(score.measures, mi);
     keyOf.push(key);
-    timeOf.push(time);
+    timeOf.push(m.time ?? (from < 0 ? { beats: 4, beatType: 4 } : timeOf[from]));
   }
   return { keyOf, timeOf };
 }
@@ -516,6 +515,7 @@ function measureSignature(env: PrepEnv, mi: number): string {
     env.keyOf[mi],
     mi > 0 ? env.keyOf[mi - 1] : 0,
     env.timeOf[mi],
+    mi > 0 ? env.timeOf[mi - 1] : 0,
     staves.map((si) => env.clefAt(si, mi, -1)),
     clefAtStart(score, mi + 1),
     staves.map((si) => env.ottavaAt(si, mi, -1, false)),

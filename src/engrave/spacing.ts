@@ -9,7 +9,7 @@
 
 import type { Score } from '../model.ts';
 
-import { keyAt, PPQ, timeAt } from '../model.ts';
+import { keyAt, PPQ, timeChangeAt } from '../model.ts';
 import { loadSmufl } from '../smufl.ts';
 import { must } from '../util.ts';
 import { HYPHEN_ROOM, LYRIC_GAP, lyricWidth } from './lyrics.ts';
@@ -96,13 +96,14 @@ export interface Column {
 }
 
 /** Width a repeat sign takes beside its barline: the thick and thin lines and the dots. */
-const REPEAT_WIDTH = 1.4;
+export const REPEAT_WIDTH = 1.4;
 
 /** What system layout needs to know about one measure: its columns and how narrow or wide it can get. */
 export interface MeasureSpacing {
   mi: number;
   cols: Column[];
   endIdeal: number;
+  open: number; // This is where the room of the notes starts: after a key or time change and a repeat sign.
   lead: number; // This is the x of the first column at minimum.
   endTrail: number; // This is the required distance from the last column to the barline (the maximum over staves).
   endReq: number[]; // This is the right extent of the last occupied column, per staff.
@@ -239,7 +240,7 @@ function separateCrossStaffStems(cols: Column[]): void {
 
 /** Width taken at the start of a measure by a key change and a time signature change. */
 function measurePrefix(prep: Prepared, mi: number): { prefix: number; timeSig?: { beats: number; beatType: number } } {
-  const timeSig = mi > 0 && prep.score.measures[mi].time ? timeAt(prep.score, mi) : undefined;
+  const timeSig = timeChangeAt(prep.score, mi);
   const digitWidth = sm.adv('timeSig2');
   const timeSigWidth = timeSig
     ? Math.max(digitWidth * String(timeSig.beats).length, digitWidth * String(timeSig.beatType).length) + 1.2
@@ -270,15 +271,13 @@ export function spaceMeasure(prep: Prepared, mi: number): MeasureSpacing {
   const { prefix, timeSig } = measurePrefix(prep, mi);
   const endReq: number[] = new Array(nStaves).fill(0);
   for (let s = 0; s < nStaves; s++) for (const c of cols) if (c.has[s]) endReq[s] = c.R[s];
+  const open = prefix + (prep.score.measures[mi].repeatStart ? REPEAT_WIDTH : 0);
   const sp: MeasureSpacing = {
     mi,
     cols,
     endIdeal,
-    lead:
-      0.9 +
-      prefix +
-      (prep.score.measures[mi].repeatStart ? REPEAT_WIDTH : 0) +
-      Math.max(0, ...cols.slice(0, 1).flatMap((c) => c.L)),
+    open,
+    lead: open + 0.9 + Math.max(0, ...cols.slice(0, 1).flatMap((c) => c.L)),
     endTrail: 0.75 + (prep.score.measures[mi].barline === 'repeat-end' ? REPEAT_WIDTH : 0),
     endReq,
     endClef: clefAtStart(prep.score, mi + 1).map((c) => c !== undefined),

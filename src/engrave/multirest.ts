@@ -4,6 +4,7 @@
 // `prepare` and line breaking: `planSystems` may not cut inside a run.
 
 import type { Score } from '../model.ts';
+import { timeChangeAt } from '../model.ts';
 
 import type { Prepared } from './prep.ts';
 import type { MeasureSpacing } from './spacing.ts';
@@ -55,7 +56,7 @@ export function findMultiRuns(prep: Prepared, forced: Set<number>): MultiRuns {
 /** Can measure `mi` be swallowed by the run before it: empty and with no key or time change, and no special barline unless it ends the run. */
 function isFollower(score: Score, prep: Prepared, mi: number): boolean {
   const m = score.measures[mi];
-  if (m.time || m.key !== undefined || !isEmptyMeasure(prep, mi, false)) return false;
+  if (timeChangeAt(score, mi) || m.key !== undefined || !isEmptyMeasure(prep, mi, false)) return false;
   return true;
 }
 
@@ -81,6 +82,7 @@ export function absorbedSpacing(sp: MeasureSpacing): MeasureSpacing {
     ...sp,
     cols: [],
     endIdeal: 0,
+    open: 0,
     lead: 0,
     endTrail: 0,
     endReq: sp.endReq.map(() => 0),

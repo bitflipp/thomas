@@ -561,10 +561,50 @@ export function pitchStep(p: Pitch): number {
   return p.octave * 7 + STEPS.indexOf(p.step);
 }
 
-/** The time signature in force at measure `mi` (4/4 before any is given). */
+/**
+ * The measure whose time signature carries into measure `mi`: `mi - 1`, except at the start of a later volta,
+ * which is played after the measure before the earlier voltas of its group, not after them. A volta continues the
+ * group of the one before it when its numbers are all higher; -1 before the first measure.
+ */
+export function carriedFrom(measures: readonly Measure[], mi: number): number {
+  const first = (e: number[]) => Math.min(...e);
+  const last = (e: number[]) => Math.max(...e);
+  let i = mi;
+  let e = measures[i]?.ending;
+  // Step back over whole voltas of the same group, from the start of one to the start of the one before.
+  while (e && i > 0 && measures[i - 1].ending && !sameEnding(measures[i - 1].ending, e)) {
+    const before = must(measures[i - 1].ending);
+    if (first(e) <= last(before)) break;
+    i--;
+    while (i > 0 && sameEnding(measures[i - 1].ending, before)) i--;
+    e = before;
+  }
+  return i === mi ? mi - 1 : i - 1;
+}
+
+/** Whether two `Measure.ending`s name the same passes. */
+function sameEnding(a: number[] | undefined, b: number[] | undefined): boolean {
+  return !!a && !!b && a.length === b.length && a.every((x, k) => x === b[k]);
+}
+
+/** The time signature in force at measure `mi` (4/4 before any is given); a later volta ignores the earlier ones. */
 export function timeAt(score: Score, mi: number): TimeSig {
-  for (let i = mi; i >= 0; i--) if (score.measures[i].time) return must(score.measures[i].time);
+  for (let i = mi; i >= 0; i = carriedFrom(score.measures, i))
+    if (score.measures[i].time) return must(score.measures[i].time);
   return { beats: 4, beatType: 4 };
+}
+
+/**
+ * The time signature printed at the start of measure `mi` (not the first): one given there, or the one in force
+ * when it differs from the one at the end of the measure before (the start of a later volta after an earlier
+ * one that changed it).
+ */
+export function timeChangeAt(score: Score, mi: number): TimeSig | undefined {
+  if (mi === 0) return undefined;
+  const ts = timeAt(score, mi);
+  if (score.measures[mi].time) return ts;
+  const prev = timeAt(score, mi - 1);
+  return prev.beats === ts.beats && prev.beatType === ts.beatType ? undefined : ts;
 }
 
 /** The key signature, in fifths, in force at measure `mi` (0 before any is given). */
