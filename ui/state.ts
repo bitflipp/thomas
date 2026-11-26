@@ -2,7 +2,8 @@
 //
 // Everything is a preact signal. The score signal holds an immutable `Score`; an edit replaces it
 // (`commit`), so undo is just a stack of earlier values (structural sharing keeps that cheap). The
-// engraving, hit index and text are derived by effects from the score, so no component recomputes them.
+// engraving and hit index are derived by effects from the shown score (in note input the would-be score, see below), the
+// text from the score, so no component recomputes them.
 
 import { batch, computed, effect, signal } from '@preact/signals';
 
@@ -185,9 +186,6 @@ export const mode = signal<Mode>('score');
 /** Whether the Expression view is shown in place of the score. */
 export const showExpression = computed(() => mode.value === 'expression');
 
-/** Whether the score is shown as text in place of the score. */
-export const showText = computed(() => mode.value === 'text');
-
 /** Switches to `m`, or back to the score when `m` is shown already (the shortcuts of the modes). */
 export function toggleMode(m: Mode): void {
   mode.value = mode.peek() === m ? 'score' : m;
@@ -238,6 +236,7 @@ export interface Preview {
 /** Gives the would-be score of note input, or null when nothing is about to be entered (or the entry would be refused). */
 export const previewSource = signal<() => Preview | null>(() => null);
 
+/** The would-be score of note input, or null (recomputed whenever what decides the next note changes). */
 export const preview = computed(() => previewSource.value());
 
 /** The score that is engraved: the would-be score in note input, else the score. */

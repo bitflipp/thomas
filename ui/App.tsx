@@ -1,5 +1,6 @@
-// The application shell: toolbar (file, view, playback), the palette, score pane, Properties panel and the
-// optional text pane. It owns file handling (open/save text through the native dialogs, MusicXML import, PDF export) and
+// The application shell: the toolbar (file, playback, undo, the controls of the mode, the mode selector) and the main
+// area of the mode (`mode` in state.ts): Score (palette, score pane, Properties), Expression or Text, each over the
+// whole width. It owns file handling (open/save text through the native dialogs, MusicXML import, PDF export) and
 // otherwise only wires the panes to the signals in state.ts.
 
 import { signal } from '@preact/signals';

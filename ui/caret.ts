@@ -200,7 +200,6 @@ export function enterNext(): void {
   if (c) enterPitch(c, pitchAt(sc, c));
 }
 
-/** Changes the pitch of the next note by `f`, starting from the pitch the preview shows. */
 /**
  * Changes the pitch of the next note by `f`, starting from the pitch the preview shows: with `chord` (Shift held) the
  * tone Shift+W would add (`chordTone`), at the chord's position. With `skip`, `f` is applied again while the result is a
@@ -212,10 +211,15 @@ function changeNext(f: (p: Pitch, sc: Score, at: Caret) => Pitch, chord = false,
   if (!c) return;
   const t = chord ? chordTone(sc) : undefined;
   const at = t ? { mi: t.at.mi, staff: t.at.staff, tick: t.te.start } : c;
-  const has = (p: Pitch) => !!t && t.te.ev.pitches.some((np) => comparePitch(np.pitch, p) === 0);
+  const has = (p: Pitch) => !!t && hasPitch(t.te.ev, p);
   let p = f(t ? t.pitch : pitchAt(sc, c), sc, at);
   for (let i = 0; skip && i < 8 && has(p); i++) p = f(p, sc, at);
   nextPitch.value = p;
+}
+
+/** Whether chord `ev` has pitch `p` (with the same spelling). */
+function hasPitch(ev: NoteEvent, p: Pitch): boolean {
+  return ev.pitches.some((np) => comparePitch(np.pitch, p) === 0);
 }
 
 /**
@@ -323,8 +327,7 @@ function chordTone(sc: Score): { at: EvAddr; te: TimedEvent & { ev: NoteEvent };
   if (!(at && te && te.ev.kind === 'note')) return undefined;
   const c = entering() ? current(sc) : null;
   const want = c ? pitchAt(sc, c) : undefined;
-  const has = (p: Pitch) => te.ev.kind === 'note' && te.ev.pitches.some((np) => comparePitch(np.pitch, p) === 0);
-  let pitch = want && !has(want) ? want : undefined;
+  let pitch = want && !hasPitch(te.ev, want) ? want : undefined;
   if (!pitch) {
     const q = transposeSteps(te.ev.pitches[te.ev.pitches.length - 1].pitch, 2);
     pitch = { ...q, alter: plainAlter(sc, at.staff, at.mi, te.start, q.step, q.octave) };
@@ -356,7 +359,7 @@ export function addChordTone(): void {
 }
 
 /** Whether Shift is held, so that the preview shows the chord tone Shift+W would add instead of the note W enters. */
-export const shiftHeld = signal(false);
+const shiftHeld = signal(false);
 
 /** Follows the Shift key for `shiftHeld`; returns the function that stops it. */
 export function trackShift(): () => void {

@@ -510,6 +510,8 @@ function signaturesOf(score: Score): { keyOf: number[]; timeOf: TimeSig[] } {
 function measureSignature(env: PrepEnv, mi: number): string {
   const { score } = env;
   const staves = score.staves.map((_, si) => si);
+  // The key and time of the measure before count too: a change is printed (and takes room) where they differ, and a
+  // later volta can restore a time without giving it (`timeChangeAt`).
   return JSON.stringify([
     mi,
     env.keyOf[mi],

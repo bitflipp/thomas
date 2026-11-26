@@ -19,6 +19,7 @@ import type { MeasureSpacing, PlacedMeasure } from './spacing.ts';
 
 import {
   DOT_STEP,
+  DOUBLE_BAR_GAP,
   END_CLEF_GAP,
   flagGlyph,
   GRACE_SCALE,
@@ -262,7 +263,7 @@ function barRoom(ctx: SysCtx, mi: number, s: number): { left: number; right: num
   if (barline === 'repeat-end') inset = REPEAT_WIDTH;
   else if (barline === 'final' || mi === measures.length - 1)
     inset = (D.thickBarlineThickness as number) + (D.barlineSeparation as number) + thin;
-  else if (barline === 'double') inset = 0.4 + thin;
+  else if (barline === 'double') inset = DOUBLE_BAR_GAP + thin;
   const right = sp.endClef[s] ? Math.min(endX - inset, endX - sm.adv('gClefChange') - 2 * END_CLEF_GAP) : endX - inset;
   return { left: sp.open, right };
 }

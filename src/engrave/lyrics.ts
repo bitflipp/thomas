@@ -120,14 +120,8 @@ function drawVerse(ctx: SysCtx, s: number, base: number, list: Placed[], here: S
       const n = Math.max(1, Math.floor((to - from) / 6));
       for (let k = 0; k < n; k++) {
         const hx = clearOfBarlines(ctx, from + ((to - from) * (k + 0.5)) / n, from, to);
-        P.push({
-          t: 'line',
-          x1: hx - 0.25,
-          x2: hx + 0.25,
-          y1: base - LYRIC_SIZE * 0.18,
-          y2: base - LYRIC_SIZE * 0.18,
-          w: 0.1,
-        });
+        const hy = base - LYRIC_SIZE * 0.18; // The hyphen sits at about the middle of a lowercase letter.
+        P.push({ t: 'line', x1: hx - 0.25, x2: hx + 0.25, y1: hy, y2: hy, w: 0.1 });
       }
     }
     if (p.y.extend) {

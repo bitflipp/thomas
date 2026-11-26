@@ -954,14 +954,6 @@ export function onKey(e: KeyboardEvent): boolean {
   return true;
 }
 
-/** The value all selected heads share in the open lane, `'mixed'` when they differ, undefined when none is selected. */
-export function sharedValue(which: 'vel' | 'shift' | 'gate'): number | 'mixed' | undefined {
-  const keys = selected.value;
-  const xs = infos.value.filter((i) => keys.has(i.key)).map((i) => i[which]);
-  if (!xs.length) return undefined;
-  return xs.every((x) => x === xs[0]) ? xs[0] : 'mixed';
-}
-
 /** The value of the selected curve point. */
 export function pointValue(): number | undefined {
   const p = pointSel.value;

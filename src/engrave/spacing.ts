@@ -98,6 +98,9 @@ export interface Column {
 /** Width a repeat sign takes beside its barline: the thick and thin lines and the dots. */
 export const REPEAT_WIDTH = 1.4;
 
+/** Distance between the two thin lines of a double barline, center to center (the left one is drawn this far in). */
+export const DOUBLE_BAR_GAP = 0.4;
+
 /** What system layout needs to know about one measure: its columns and how narrow or wide it can get. */
 export interface MeasureSpacing {
   mi: number;

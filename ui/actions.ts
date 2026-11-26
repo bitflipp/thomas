@@ -172,7 +172,7 @@ export function nudge(semis?: number, steps?: number): void {
  * Runs an edit that moves selected heads of chords, then selects each moved head again. A chord is kept in pitch order,
  * so a head that passes another changes its index; it is found as the pitch that is not one of the others.
  */
-export function editHeads(edit: (s: Score) => Score): boolean {
+function editHeads(edit: (s: Score) => Score): boolean {
   const before = selection.peek();
   const sc0 = score.peek();
   if (!run(edit)) return false;

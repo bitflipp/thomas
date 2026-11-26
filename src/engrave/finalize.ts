@@ -11,6 +11,7 @@ import { barlineHidden } from './multirest.ts';
 import type { Prim } from './scene.ts';
 import { oid, tagFrom } from './scene.ts';
 import { clefGlyph, drawMidSystemChanges, drawSystemStart } from './signatures.ts';
+import { DOUBLE_BAR_GAP } from './spacing.ts';
 import { placeStaves, STAFF_HEIGHT } from './staffgap.ts';
 import { drawStaffLabels } from './stafflabels.ts';
 
@@ -123,7 +124,7 @@ function drawBarline(P: Prim[], ctx: SysCtx, kind: 'single' | 'double' | 'final'
     vertical(thickX, thick);
     vertical(thickX - thick / 2 - (D.barlineSeparation as number) - thin / 2, thin);
   } else if (kind === 'double') {
-    vertical(x - 0.4, thin);
+    vertical(x - DOUBLE_BAR_GAP, thin);
     vertical(x, thin);
   } else vertical(x, thin);
 }

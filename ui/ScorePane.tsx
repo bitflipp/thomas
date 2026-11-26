@@ -1,5 +1,6 @@
 // The score view: the engraved pages as SVG, with overlays for ghosts (where a click puts the caret, marquee,
-// drag feedback), the note input preview (the label of the note W would enter, which the would-be score already shows), the playhead, hover and selection highlights.
+// drag feedback), the note input preview (the label of the note W would enter, which the would-be score already
+// shows), the playhead, hover and selection highlights.
 //
 // Re-engraving happens in state.ts; this pane only draws its result. To stay fast on a big piece, SVG is
 // generated only for pages near the viewport, and again only when the page's own part of the selection
@@ -104,7 +105,8 @@ function pitchName(p: Pitch): string {
 /**
  * The label of the note input preview on page `page`: pitch, voice (`+` for a chord tone) and an open slur, above the
  * note about to be entered, which the would-be score (`shown`) already holds. When the entry would be refused there is
- * no would-be score, and the note is drawn here in red, with ledger lines and an accidental, over the score as it is, and the label says why.
+ * no would-be score, and the note is drawn here in red, with ledger lines and an accidental, over the score as it is,
+ * and the label says why.
  */
 function CaretSvg({ page }: { page: number }) {
   const n = nextNote();

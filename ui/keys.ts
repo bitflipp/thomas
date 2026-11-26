@@ -367,7 +367,10 @@ function handleKey(e: KeyboardEvent): void {
   if (!onNavigationKey(e)) onToolKey(e);
 }
 
-/** Installs the key handler (and the tracking of Shift for the note input preview) and returns the function that removes it. */
+/**
+ * Installs the key handler (and the tracking of Shift for the note input preview) and returns the function that
+ * removes it.
+ */
 export function installKeys(): () => void {
   addEventListener('keydown', onKey);
   const stopShift = trackShift();
