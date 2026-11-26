@@ -13,7 +13,7 @@ import { STAFF_HEIGHT } from './staffgap.ts';
 import { textWidth } from './textmetrics.ts';
 
 /** Text size of a syllable, in staff spaces. */
-const LYRIC_SIZE = 1.7;
+const LYRIC_SIZE = 2.2;
 
 /** Clear space between two syllables of different words, and the room a hyphen needs between those of one word. */
 export const LYRIC_GAP = 0.4;
@@ -21,7 +21,7 @@ export const LYRIC_GAP = 0.4;
 export const HYPHEN_ROOM = 1.1;
 
 /** The distance from one verse's baseline to the next. */
-const VERSE_STEP = 2.3;
+const VERSE_STEP = 2.9;
 
 /** The width of a syllable in staff spaces. */
 export function lyricWidth(text: string): number {
@@ -120,7 +120,14 @@ function drawVerse(ctx: SysCtx, s: number, base: number, list: Placed[], here: S
       const n = Math.max(1, Math.floor((to - from) / 6));
       for (let k = 0; k < n; k++) {
         const hx = clearOfBarlines(ctx, from + ((to - from) * (k + 0.5)) / n, from, to);
-        P.push({ t: 'line', x1: hx - 0.25, x2: hx + 0.25, y1: base - 0.3, y2: base - 0.3, w: 0.1 });
+        P.push({
+          t: 'line',
+          x1: hx - 0.25,
+          x2: hx + 0.25,
+          y1: base - LYRIC_SIZE * 0.18,
+          y2: base - LYRIC_SIZE * 0.18,
+          w: 0.1,
+        });
       }
     }
     if (p.y.extend) {
