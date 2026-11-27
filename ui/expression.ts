@@ -408,12 +408,37 @@ export function centerOn(g: Geo, spot: { tick: number; midi: number }): void {
   };
 }
 
-/** Moves the view the least that brings `tick` into the middle part of the canvas (width `w`). */
-export function reveal(tick: number, w: number): void {
+// Following the playhead yields to the user: a view panned or zoomed away from the playhead (wheel, drag, the overview
+// strip, a selection) stays where it was put until the playhead comes into it again or jumps (a seek, a new start).
+
+/** `left` of the view as following last left it, and the tick it followed last; null: nothing followed yet. */
+let followed: { left: number; tick: number } | null = null;
+
+/** Starts following afresh (when playback starts). */
+export function resetFollow(): void {
+  followed = null;
+}
+
+/** Moves the view the least that brings the playhead at `tick` into the middle part of the canvas (width `w`). */
+export function follow(tick: number, w: number): void {
+  if (drag?.kind === 'pan') {
+    // A pan in progress is never fought; its ticks still count as played, not as a jump.
+    if (followed) followed = { left: Number.NaN, tick };
+    return;
+  }
   const v = exprView.peek();
   const x = xOf(tick, v);
-  if (x > GUTTER + 24 && x < w - 24) return;
-  exprView.value = { ...v, left: tick - ((w - GUTTER) * 0.3 * PPQ) / v.ppq };
+  const inView = x > GUTTER + 24 && x < w - 24;
+  // Playback advances by a few ticks per frame; anything else is a seek.
+  const jumped = !followed || tick < followed.tick || tick - followed.tick > 2 * PPQ;
+  const moved = followed !== null && v.left !== followed.left;
+  if (inView) followed = { left: v.left, tick };
+  else if (moved && !jumped) followed = { left: followed?.left ?? v.left, tick };
+  else {
+    const left = tick - ((w - GUTTER) * 0.3 * PPQ) / v.ppq;
+    exprView.value = { ...v, left };
+    followed = { left, tick };
+  }
 }
 
 /** The first selected head's tick and pitch, if any (for bringing it into view). */

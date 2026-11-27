@@ -3,7 +3,7 @@
 // whole width. It owns file handling (open/save text through the native dialogs, MusicXML import, PDF export) and
 // otherwise only wires the panes to the signals in state.ts.
 
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import { lazy, Suspense } from 'preact/compat';
 import { useEffect } from 'preact/hooks';
 import { importMusicXml } from '../src/musicxml.ts';
@@ -132,6 +132,9 @@ function useGlobalHandlers(): void {
   }, []);
 }
 
+/** The zoom of the Expression roll alone, so that panning (which changes the rest of the view) does not re-render the zoom. */
+const rollPpq = computed(() => exprView.value.ppq);
+
 /**
  * The zoom of the view that is shown: the score (Fit is a mode that keeps the pages fitted to the window) or the
  * Expression roll (zoom as a percentage of the one it starts at, Fit shows the whole piece once).
@@ -143,7 +146,7 @@ function ZoomControls() {
         <button type="button" class="icon" title="Zoom out (Ctrl -)" onClick={() => zoomRoll(1 / 1.2)}>
           <Ui.minus />
         </button>
-        <span class="val">{Math.round((exprView.value.ppq / EXPR_BASE_PPQ) * 100)}%</span>
+        <span class="val">{Math.round((rollPpq.value / EXPR_BASE_PPQ) * 100)}%</span>
         <button type="button" class="icon" title="Zoom in (Ctrl +)" onClick={() => zoomRoll(1.2)}>
           <Ui.plus />
         </button>

@@ -428,6 +428,8 @@ function FindingsSvg({ page }: { page: number }) {
 
 /** The playhead line on page `page`, if playback is there. */
 function PlayheadSvg({ page }: { page: number }) {
+  // The pane is collapsed in the other modes; it then follows nothing, so playback does not re-render its pages.
+  if (mode.value !== 'score') return null;
   const p = playhead.value;
   if (!p || p.page !== page) return null;
   return (
@@ -544,6 +546,8 @@ export function ScorePane() {
   useEffect(
     () =>
       effect(() => {
+        // A collapsed pane (the other modes) is not scrolled: it would start a smooth scroll on every frame.
+        if (mode.value !== 'score') return;
         const p = playhead.value;
         const r = engraved.peek();
         const el = box.current;

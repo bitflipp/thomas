@@ -5,7 +5,7 @@
 // 6, `NoteTools`) act on that selection. All expression editing is done here; the state, the pointer handling and
 // the actions are in expression.ts, the drawing of the canvas in exprDraw.ts.
 
-import { effect } from '@preact/signals';
+import { effect, untracked } from '@preact/signals';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { RampShape } from '../src/editor/expression.ts';
 import { RAMP_SHAPES } from '../src/editor/expression.ts';
@@ -491,11 +491,19 @@ export function Expression() {
     const theme = window.matchMedia('(prefers-color-scheme: dark)');
     let raf = 0;
     const draw = () => {
-      cancelAnimationFrame(raf);
-      const f = frameOf(g);
+      // Reading the frame subscribes to everything it shows. A paint already asked for is kept, not replaced: replacing
+      // it put it off to the next frame, and during playback (the playhead moves every frame, before the paint's turn)
+      // a pan kept putting it off, so that hardly a frame was painted. The paint reads the state of its own moment.
+      frameOf(g);
+      if (raf) return;
       raf = requestAnimationFrame(() => {
+        raf = 0;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        paint(ctx, f, colors);
+        paint(
+          ctx,
+          untracked(() => frameOf(g)),
+          colors,
+        );
       });
     };
     const recolor = () => {
@@ -516,9 +524,16 @@ export function Expression() {
     () =>
       effect(() => {
         const tick = playTick.value;
-        if (playing.peek()) E.reveal(tick, size.w);
+        if (playing.peek()) E.follow(tick, size.w);
       }),
     [size.w],
+  );
+  useEffect(
+    () =>
+      effect(() => {
+        if (playing.value) E.resetFollow();
+      }),
+    [],
   );
   useEffect(
     () =>

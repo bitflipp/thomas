@@ -35,6 +35,7 @@ import {
   exprView,
   fit,
   hit,
+  mode,
   realRef,
   run,
   say,
@@ -466,6 +467,13 @@ export function onPointerMove(e: PointerEvent): void {
     }
     return;
   } // The shortcuts dialog covers the score.
+  // The pane is collapsed in the other modes. Locating the pointer would force a layout of the whole score on every
+  // move, which during playback (the page changes every frame) made panning the Expression pane a slideshow.
+  if (mode.peek() !== 'score' && drag.k === 'none') {
+    if (ghost.peek()) ghost.value = null;
+    if (hover.peek()) hover.value = null;
+    return;
+  }
   const w = locate(e.clientX, e.clientY);
   const h = hit.peek();
   hoverFinding(drag.k === 'none' ? w : undefined);
