@@ -284,6 +284,9 @@ export interface Playhead {
   x: number;
   y0: number;
   y1: number;
+  /** The top and bottom of all the system draws, which scrolling brings into view. */
+  top: number;
+  bottom: number;
 }
 
 /** Where the playhead is drawn: on the first staff's measure, from the top of the system to the bottom. */
@@ -303,6 +306,8 @@ export const playhead = computed<Playhead | null>(() => {
     x: xOfTick(g, len, Math.min(len, tick - starts[mi])),
     y0: sys.staffY[0] - 0.5,
     y1: sys.staffY[sys.staffY.length - 1] + 4.5,
+    top: sys.top,
+    bottom: sys.bottom,
   };
 });
 

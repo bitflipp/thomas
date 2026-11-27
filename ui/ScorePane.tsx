@@ -541,8 +541,9 @@ export function ScorePane() {
     return () => el.removeEventListener('wheel', w);
   }, []);
 
-  // While playing, keep the system under the playhead in view: scroll only when it leaves the
-  // visible area, so that the page does not jump on every frame.
+  // While playing, keep the whole system under the playhead in view (everything it draws, not only its staves): scroll
+  // only when part of it is out of view, so that the page does not jump on every frame. The system goes to the top of
+  // the pane, so that the next one shows below it.
   useEffect(
     () =>
       effect(() => {
@@ -555,10 +556,15 @@ export function ScorePane() {
         const pg = pageEls[p.page];
         if (!pg) return;
         const k = pg.clientWidth / r.pages[p.page].width;
-        const y0 = pg.offsetTop + p.y0 * k;
-        const y1 = pg.offsetTop + p.y1 * k;
-        if (y0 < el.scrollTop + 8 || y1 > el.scrollTop + el.clientHeight - 8)
-          el.scrollTo({ top: Math.max(0, y0 - 40), behavior: 'smooth' });
+        const margin = 12;
+        // The page's place in the scrolled content (not `offsetTop`: the pane is not positioned, so that counted from
+        // further up and put the system the height of the toolbar too low, cutting off its top).
+        const pageTop = pg.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+        const top = pageTop + p.top * k - margin;
+        const bottom = pageTop + p.bottom * k + margin;
+        // A system taller than the pane counts as in view once its top is at the top (2 px for rounding).
+        if (top < el.scrollTop - 2 || (bottom > el.scrollTop + el.clientHeight && top > el.scrollTop + 2))
+          el.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
       }),
     [],
   );

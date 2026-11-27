@@ -30,6 +30,9 @@ export interface SystemGeom {
   x0: number;
   x1: number;
   staffY: number[];
+  /** The top and bottom of everything the system draws (page coordinates), for scrolling the whole of it into view. */
+  top: number;
+  bottom: number;
 }
 
 /** The page geometry of the whole piece, for the editor's hit testing (see src/editor/hit.ts). */
@@ -148,7 +151,7 @@ function justifyPagesVertically(place: Placement, done: FinalizedSystem[], usabl
 }
 
 /** The editor geometry of one system placed at (x0, y). */
-function recordLayout(layout: Layout, ctx: SysCtx, page: number, x0: number, y: number): void {
+function recordLayout(layout: Layout, ctx: SysCtx, fin: FinalizedSystem, page: number, x0: number, y: number): void {
   const nStaves = ctx.prep.score.staves.length;
   layout.systems.push({
     page,
@@ -158,6 +161,8 @@ function recordLayout(layout: Layout, ctx: SysCtx, page: number, x0: number, y: 
     x0,
     x1: x0 + ctx.width + courtesyRoom(ctx.courtesy),
     staffY: ctx.staffY.map((sy) => y + sy),
+    top: y + fin.top,
+    bottom: y + fin.bottom,
   });
   for (let mi = ctx.a; mi <= ctx.b; mi++)
     for (let staff = 0; staff < nStaves; staff++) {
@@ -241,7 +246,7 @@ export function paginate(
       placed.push({ page: pi, prims });
     }
     for (const si of list)
-      recordLayout(layout, systems[si], pi, si === 0 ? x0 + opts.firstIndent : x0, place.placeY[si]);
+      recordLayout(layout, systems[si], done[si], pi, si === 0 ? x0 + opts.firstIndent : x0, place.placeY[si]);
     drawFooter(page, score, frame, pi);
     return page;
   });
