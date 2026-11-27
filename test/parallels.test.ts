@@ -57,6 +57,16 @@ test('octaves across the staves; the kinds can be chosen', () => {
   assert.equal(findParallels(s, ['octaves']).length, 1);
 });
 
+test('unisons across the staves count, two voices of one staff on one note do not', () => {
+  const s = score(['rh.1: f#4:2 g#4', 'lh.1: f#4:2 g#4']);
+  const gs = findParallels(s);
+  assert.equal(gs.length, 1);
+  assert.deepEqual(gs[0].kinds, ['unisons']);
+  assert.equal(gs[0].level, 'certain');
+  assert.deepEqual(findParallels(s, ['fifths', 'octaves']), []);
+  assert.deepEqual(findParallels(score(['rh.1: f#4:2 g#4', 'rh.2: f#4:2 g#4'])), []);
+});
+
 test('compound intervals count: a twelfth moving to a twelfth', () => {
   assert.equal(findParallels(score(['rh.1: g5:2 a5', 'lh.1: c4:2 d4']), ['fifths']).length, 1);
 });

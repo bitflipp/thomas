@@ -45,7 +45,7 @@ const USAGE = `usage:
   thomas render  <in.txt|in.musicxml> <out-base> [--pdf] [--no-breaks] [--numbers|--no-numbers] [--space <mm>]
                                                   write <out-base>-<page>.svg (and <out-base>.pdf)
   thomas check   <in.txt|in.musicxml> [--parallels] [--collisions [--mark <out-base>]]
-                                                  --parallels lists consecutive fifths and octaves (src/analysis/parallels.ts)
+                                                  --parallels lists consecutive fifths, octaves and unisons (src/analysis/parallels.ts)
                                                   validate; with --collisions also engrave and list overlapping
                                                   elements (see src/engrave/collide.ts); --mark writes <out-base>-<page>.svg
                                                   with every collision boxed in red
@@ -126,7 +126,7 @@ try {
         const maybe = g.level === 'possible' ? ' (possible)' : '';
         console.log(`${g.number}. m. ${g.mi + 1} beat ${beat}: ${g.kinds.join(' + ')} (${voices})${maybe}`);
       }
-      console.log(`${gs.length} group${gs.length === 1 ? '' : 's'} of consecutive fifths or octaves`);
+      console.log(`${gs.length} group${gs.length === 1 ? '' : 's'} of consecutive fifths, octaves or unisons`);
     }
     if (args.includes('--collisions')) {
       const res = engrave(s, { respectBreaks: true, measureNumbers: s.page.measureNumbers ?? 'system' });

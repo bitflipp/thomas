@@ -1,4 +1,4 @@
-// Layers: analyses that look at the score and point at places in it (consecutive fifths and octaves).
+// Layers: analyses that look at the score and point at places in it (consecutive fifths, octaves and unisons).
 //
 // One layer or none is chosen in the toolbar's Layers menu (`activeLayer`; the layers are independent analyses, and
 // one at a time lets them share colors). The chosen layer contributes `Finding`s: places in the score with
@@ -48,14 +48,14 @@ export interface Layer {
   findings: ReadonlySignal<Finding[]>;
 }
 
-// The parallels layer: consecutive fifths and octaves.
+// The parallels layer: consecutive fifths, octaves and unisons.
 
 /** The id of the chosen layer, or null for none. */
 export const activeLayer = signal<string | null>(null);
 
 const parallelsOn = computed(() => activeLayer.value === 'parallels');
 
-/** The groups of consecutive fifths and octaves of the score as findings. */
+/** The groups of consecutive fifths, octaves and unisons of the score as findings. */
 const parallelFindings = computed<Finding[]>(() => {
   if (!parallelsOn.value) return [];
   return findParallels(score.value).map((g) => ({
@@ -76,7 +76,7 @@ export const layers: Layer[] = [
   {
     id: 'parallels',
     label: 'Parallels',
-    title: 'Consecutive fifths and octaves',
+    title: 'Consecutive fifths, octaves and unisons',
     on: parallelsOn,
     findings: parallelFindings,
   },

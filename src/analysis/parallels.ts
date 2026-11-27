@@ -1,4 +1,4 @@
-// Voice-leading check: consecutive perfect intervals (parallel fifths and octaves) in a Score.
+// Voice-leading check: consecutive perfect intervals (parallel fifths, octaves and unisons) in a Score.
 //
 // The onsets and offsets of notes come straight from the tick-based voices of the Score model.
 // Nothing here draws or edits anything; the editor colors the notes of the groups found (`ui/`),
@@ -9,7 +9,8 @@
 // voices at two successive attacks is a violation, also across a rest that both voices share
 // (rest look-through). Tie continuations are not attacks and tied-over notes are not releases, grace
 // notes are not looked at, and an octave between two notes of one voice (a doubling) is allowed. The lower
-// note of an octave doubling within a staff is left out altogether (`markDoublings`).
+// note of an octave doubling within a staff is left out altogether (`markDoublings`). Unisons count only between
+// voices of different staves: two voices of one staff on one note share a head, which is a doubling too.
 // Violations that share a note form one group; groups are numbered in score order.
 //
 // A chord does not say which of its notes goes to which note of the next chord, but separate voices do. So a
@@ -24,7 +25,7 @@ import type { Score } from '../model.ts';
 import { flattenVoice, lengthOf, pitchMidi } from '../model.ts';
 import { must } from '../util.ts';
 
-export type ParallelKind = 'fifths' | 'octaves';
+export type ParallelKind = 'fifths' | 'octaves' | 'unisons';
 
 /** How sure a violation is: it is there in every reading of the voice-leading, or only in some. */
 export type ParallelLevel = 'certain' | 'possible';
@@ -89,12 +90,12 @@ export function voicesOf(g: ParallelGroup): string {
   return [...new Set(g.notes.map((n) => `${n.ev.staff}.${n.ev.voice}`))].join(' + ');
 }
 
-const SEMITONES: Record<ParallelKind, number> = { fifths: 7, octaves: 0 };
-
-/** Whether the pitches form the interval: a fifth is 7 semitones modulo 12, an octave a non-zero multiple of 12. */
-function forms(midiA: number, midiB: number, semitones: number): boolean {
-  const d = Math.abs(midiA - midiB);
-  return semitones === 0 ? d > 0 && d % 12 === 0 : d % 12 === semitones;
+/** Whether two notes form the interval: a fifth is 7 semitones modulo 12, an octave a non-zero multiple of 12, a unison the same pitch on another staff. */
+function forms(a: Note, b: Note, kind: ParallelKind): boolean {
+  const d = Math.abs(a.midi - b.midi);
+  if (kind === 'fifths') return d % 12 === 7;
+  if (kind === 'octaves') return d > 0 && d % 12 === 0;
+  return d === 0 && a.ev.staff !== b.ev.staff;
 }
 
 /** The first index in sorted `xs` whose key is greater than `t` (so the entries before it are those with key <= t). */
@@ -443,24 +444,24 @@ class Candidates {
 const overlap = (a: Note, b: Note): boolean => a.start < b.end && b.start < a.end;
 
 /** All pairs among `group` (notes sounding together) that form the interval; the octave of one voice with itself is a doubling and does not count. */
-function pairsOf(group: Note[], semitones: number): Pair[] {
+function pairsOf(group: Note[], kind: ParallelKind): Pair[] {
   const out: Pair[] = [];
   for (let i = 0; i < group.length; i++)
     for (let j = i + 1; j < group.length; j++) {
       const a = group[i];
       const b = group[j];
-      if (!forms(a.midi, b.midi, semitones)) continue;
-      if (semitones === 0 && a.vk === b.vk) continue;
+      if (!forms(a, b, kind)) continue;
+      if (kind !== 'fifths' && a.vk === b.vk) continue;
       out.push({ a, b, voices: a.vk === b.vk ? a.vk : [a.vk, b.vk].sort().join('|') });
     }
   return out;
 }
 
 /** Pairs by time of the groups in `byTime` that have at least one. */
-function pairsByTime(byTime: Map<number, Note[]>, semitones: number): Map<number, Pair[]> {
+function pairsByTime(byTime: Map<number, Note[]>, kind: ParallelKind): Map<number, Pair[]> {
   const out = new Map<number, Pair[]>();
   for (const [t, g] of byTime) {
-    const ps = pairsOf(g, semitones);
+    const ps = pairsOf(g, kind);
     if (ps.length) out.set(t, ps);
   }
   return out;
@@ -470,39 +471,25 @@ function pairsByTime(byTime: Map<number, Note[]>, semitones: number): Map<number
  * Rest look-through for a new pair in two voices: the previous notes of the two voices formed the
  * interval, overlapped, and neither voice attacked anything since (they rested or held on).
  */
-function lookThroughBetween(
-  p: Pair,
-  t: number,
-  semitones: number,
-  idx: VoiceIndex,
-  flags: Candidates,
-  kind: ParallelKind,
-) {
+function lookThroughBetween(p: Pair, t: number, idx: VoiceIndex, flags: Candidates, kind: ParallelKind) {
   const prevA = idx.lastSounding(p.a.vk, t);
   const prevB = idx.lastSounding(p.b.vk, t);
   if (!(prevA && prevB)) return;
   if (prevA.end === t && prevB.end === t) return; // The direct boundary handles that.
-  if (!(forms(prevA.midi, prevB.midi, semitones) && overlap(prevA, prevB))) return;
+  if (!(forms(prevA, prevB, kind) && overlap(prevA, prevB))) return;
   if (idx.attackBetween(p.a.vk, prevA.end, t) || idx.attackBetween(p.b.vk, prevB.end, t)) return;
   flags.flag([prevA.id, prevB.id, p.a.id, p.b.id], kind);
 }
 
 /** Rest look-through for a new pair inside one voice (two members of a chord): the previous chord of the voice holds a pair of the interval. */
-function lookThroughInside(
-  p: Pair,
-  t: number,
-  semitones: number,
-  idx: VoiceIndex,
-  flags: Candidates,
-  kind: ParallelKind,
-) {
+function lookThroughInside(p: Pair, t: number, idx: VoiceIndex, flags: Candidates, kind: ParallelKind) {
   const prev = idx.lastChord(p.a.vk, t);
   if (!prev) return;
   const end = prev[0].end;
   if (end === t || idx.attackBetween(p.a.vk, end, t)) return;
   for (let i = 0; i < prev.length; i++)
     for (let j = i + 1; j < prev.length; j++)
-      if (forms(prev[i].midi, prev[j].midi, semitones)) flags.flag([prev[i].id, prev[j].id, p.a.id, p.b.id], kind);
+      if (forms(prev[i], prev[j], kind)) flags.flag([prev[i].id, prev[j].id, p.a.id, p.b.id], kind);
 }
 
 /** The groups of the violations in `flags`, each with its first note (for the order) and the level. */
@@ -545,17 +532,16 @@ function groupsOf(
 const noteOrder = (a: Note, b: Note) => a.start - b.start || (a.vk < b.vk ? -1 : a.vk > b.vk ? 1 : 0) || a.pi - b.pi;
 
 /**
- * The groups of consecutive fifths and/or octaves in `score`, in score order (earliest first). The
- * default checks both; a note in violations of both kinds joins them into one group.
+ * The groups of consecutive fifths, octaves and/or unisons in `score`, in score order (earliest first). The
+ * default checks all three; a note in violations of several kinds joins them into one group.
  */
-export function findParallels(score: Score, kinds: ParallelKind[] = ['fifths', 'octaves']): ParallelGroup[] {
+export function findParallels(score: Score, kinds: ParallelKind[] = ['fifths', 'octaves', 'unisons']): ParallelGroup[] {
   const notes = collectNotes(score);
   const idx = new VoiceIndex(notes);
   const found = new Candidates(notes, idx);
   for (const kind of kinds) {
-    const semitones = SEMITONES[kind];
-    const ending = pairsByTime(idx.byEnd, semitones);
-    const starting = pairsByTime(idx.byStart, semitones);
+    const ending = pairsByTime(idx.byEnd, kind);
+    const starting = pairsByTime(idx.byStart, kind);
     // The direct boundary: the interval of two voices ends where the same two voices form it again.
     for (const [t, ends] of ending) {
       const starts = starting.get(t);
@@ -565,8 +551,8 @@ export function findParallels(score: Score, kinds: ParallelKind[] = ['fifths', '
     }
     for (const [t, ps] of starting)
       for (const p of ps)
-        if (p.a.vk === p.b.vk) lookThroughInside(p, t, semitones, idx, found, kind);
-        else lookThroughBetween(p, t, semitones, idx, found, kind);
+        if (p.a.vk === p.b.vk) lookThroughInside(p, t, idx, found, kind);
+        else lookThroughBetween(p, t, idx, found, kind);
   }
   const flags = found.split();
   const groups = [
