@@ -7,6 +7,7 @@ import type { SysCtx } from './draw.ts';
 import type { FinalizedSystem } from './finalize.ts';
 import type { Page, Prim } from './scene.ts';
 import { shiftPrim } from './scene.ts';
+import { courtesyRoom } from './signatures.ts';
 
 /** Where a measure of a staff sits on its page (staff spaces); `cols` are the x positions of its rhythmic columns, which the editor snaps to. */
 export interface MeasureGeom {
@@ -155,7 +156,7 @@ function recordLayout(layout: Layout, ctx: SysCtx, page: number, x0: number, y: 
     a: ctx.a,
     b: ctx.b,
     x0,
-    x1: x0 + ctx.width,
+    x1: x0 + ctx.width + courtesyRoom(ctx.courtesy),
     staffY: ctx.staffY.map((sy) => y + sy),
   });
   for (let mi = ctx.a; mi <= ctx.b; mi++)

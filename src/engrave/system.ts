@@ -19,6 +19,7 @@ import { paginate } from './paginate.ts';
 import type { MeasureEntry, PrepCache } from './prep.ts';
 import { prepare } from './prep.ts';
 import type { Page, Prim } from './scene.ts';
+import { courtesyTime } from './signatures.ts';
 import type { MeasureSpacing } from './spacing.ts';
 import { spaceMeasure } from './spacing.ts';
 import { drawNotesAndSpanners } from './staffgap.ts';
@@ -104,11 +105,22 @@ function sameAsSnapshot(ctx: SysCtx, snap: FinalSnapshot, key: string): boolean 
   return true;
 }
 
-/** Can the system drawn before as `c` be used again for `plan`? Same measures made from the same inputs at the same width. */
-function reusable(c: CachedSystem, plan: SysPlan, entries: MeasureEntry[], width: number, fillLast: boolean): boolean {
+/**
+ * Can the system drawn before as `c` be used again for `plan`? Same measures made from the same inputs at the same width,
+ * announcing the same time change at its end (`courtesy`, which depends on the measure after it).
+ */
+function reusable(
+  c: CachedSystem,
+  plan: SysPlan,
+  entries: MeasureEntry[],
+  width: number,
+  fillLast: boolean,
+  courtesy: { beats: number; beatType: number } | undefined,
+): boolean {
   const { ctx } = c;
   if (ctx.a !== plan.a || ctx.b !== plan.b || c.last !== plan.last || c.width !== width || c.fillLast !== fillLast)
     return false;
+  if (ctx.courtesy?.beats !== courtesy?.beats || ctx.courtesy?.beatType !== courtesy?.beatType) return false;
   if (ctx.widened || !ctx.base) return false;
   for (let mi = plan.a; mi <= plan.b; mi++) if (c.entries[mi - plan.a] !== entries[mi]) return false;
   return true;
@@ -179,7 +191,7 @@ export function engrave(score: Score, opts: EngraveOptions = {}): Engraved {
   const kept = new Set<SysCtx>();
   const systems: SysCtx[] = plans.map((plan, index) => {
     const old = cache?.systems.find((c) => c.ctx.a === plan.a);
-    if (old && prep.entries && reusable(old, plan, prep.entries, widthOf(plan), fillLast)) {
+    if (old && prep.entries && reusable(old, plan, prep.entries, widthOf(plan), fillLast, courtesyTime(prep, plan.b))) {
       const ctx = old.ctx;
       ctx.prep = prep;
       ctx.index = index;

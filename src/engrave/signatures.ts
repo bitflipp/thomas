@@ -164,12 +164,33 @@ function drawEndClef(P: Prim[], ctx: SysCtx, mi: number, s: number, y0: number):
   P.push({ t: 'glyph', name: g.name, x, y: y0 + g.y, k: 'clef', o: oid(mk), r: mk });
 }
 
+/** Gap between the last barline of a system and the courtesy time signature after it. */
+const COURTESY_GAP = 0.8;
+
+/** The time signature announced at the end of a system that ends with measure `b`: the next measure's change, if any. */
+export function courtesyTime(prep: Prepared, b: number): TimeSignature | undefined {
+  return b + 1 < prep.score.measures.length ? timeChangeAt(prep.score, b + 1) : undefined;
+}
+
+/** The room a courtesy time signature takes after the last barline of a system, with the staff lines running past it (0 without one). */
+export function courtesyRoom(ts: TimeSignature | undefined): number {
+  return ts
+    ? COURTESY_GAP + Math.max(String(ts.beats).length, String(ts.beatType).length) * sm.adv('timeSig2') + 0.5
+    : 0;
+}
+
+/** The courtesy time signature after the last barline of the system, when the next system starts with a time change. */
+export function drawCourtesyTime(P: Prim[], ctx: SysCtx, y0: number): void {
+  if (ctx.courtesy) drawTimeSig(P, ctx.width + COURTESY_GAP, y0, ctx.courtesy);
+}
+
 /** Changes inside a system: key and time signature at the start of a measure, and clef changes at their column. */
 export function drawMidSystemChanges(P: Prim[], ctx: SysCtx, s: number, y0: number): void {
   const { score } = ctx.prep;
   for (let mi = ctx.a; mi <= ctx.b; mi++) {
-    // At the start of a system the key is part of the system start, but a time change still goes into the measure's own room.
-    const x = mi > ctx.a ? drawKeyChange(P, ctx, mi, s, y0, ctx.mx[mi] + 0.6) : ctx.mx[mi] + 0.6;
+    // At the start of a system the key is part of the system start, but a time change still goes into the measure's
+    // own room, right after the key signature (where the first system has it), not a barline gap after it.
+    const x = mi > ctx.a ? drawKeyChange(P, ctx, mi, s, y0, ctx.mx[mi] + 0.6) : ctx.mx[mi];
     const ts = timeChangeAt(score, mi);
     if (ts) drawTimeSig(P, x, y0, ts);
     drawClefChanges(P, ctx, mi, s, y0);

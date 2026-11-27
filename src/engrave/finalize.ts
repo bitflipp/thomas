@@ -10,7 +10,7 @@ import { D } from './draw.ts';
 import { barlineHidden } from './multirest.ts';
 import type { Prim } from './scene.ts';
 import { oid, tagFrom } from './scene.ts';
-import { clefGlyph, drawMidSystemChanges, drawSystemStart } from './signatures.ts';
+import { clefGlyph, courtesyRoom, drawCourtesyTime, drawMidSystemChanges, drawSystemStart } from './signatures.ts';
 import { DOUBLE_BAR_GAP } from './spacing.ts';
 import { placeStaves, STAFF_HEIGHT } from './staffgap.ts';
 import { drawStaffLabels } from './stafflabels.ts';
@@ -63,7 +63,7 @@ function drawStaff(P: Prim[], ctx: SysCtx, s: number): void {
     P.push({
       t: 'line',
       x1: 0,
-      x2: ctx.width,
+      x2: ctx.width + courtesyRoom(ctx.courtesy),
       y1: y0 + l,
       y2: y0 + l,
       w: D.staffLineThickness as number,
@@ -71,6 +71,7 @@ function drawStaff(P: Prim[], ctx: SysCtx, s: number): void {
     });
   drawSystemStart(P, ctx, s, y0);
   drawMidSystemChanges(P, ctx, s, y0);
+  drawCourtesyTime(P, ctx, y0);
 }
 
 const MEASURE_NUMBER_SIZE = 1.8;

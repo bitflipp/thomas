@@ -6,7 +6,7 @@ import type { SysPlan } from './linebreak.ts';
 import { LAST_LINE_MIN_FILL } from './linebreak.ts';
 import type { Prepared } from './prep.ts';
 import { Skyline } from './scene.ts';
-import { prefixWidth } from './signatures.ts';
+import { courtesyRoom, courtesyTime, prefixWidth } from './signatures.ts';
 import type { MeasureSpacing, PlacedMeasure } from './spacing.ts';
 import { MIN_CLEARANCE, placeMeasure } from './spacing.ts';
 
@@ -50,10 +50,11 @@ export function justifySystem(
 ): SysCtx {
   const nStaves = prep.score.staves.length;
   const prefix = prefixWidth(prep, plan.a, plan.a === 0);
+  const courtesy = courtesyTime(prep, plan.b);
   const spacing: MeasureSpacing[] = [];
   for (let mi = plan.a; mi <= plan.b; mi++) spacing[mi] = mi === plan.a ? spF[mi] : spN[mi];
   const widthAt = (f: number, z = 1) => {
-    let w = prefix;
+    let w = prefix + courtesyRoom(courtesy);
     for (let mi = plan.a; mi <= plan.b; mi++) w += placeMeasure(spacing[mi], f, z).width;
     return w;
   };
@@ -94,6 +95,7 @@ export function justifySystem(
     mx,
     prefix,
     width: x,
+    ...(courtesy ? { courtesy } : {}),
     f,
     prims: Array.from({ length: nStaves }, () => []),
     sky: Array.from({ length: nStaves }, () => new Skyline()),

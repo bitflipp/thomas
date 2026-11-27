@@ -253,7 +253,7 @@ m2 break=system
   assert.ok(ps.some((p) => p.t === 'glyph' && p.name === 'keyboardPedalParensLeft'));
 });
 
-test('a time change at the start of a system is printed there', () => {
+test('a time change at the start of a system is printed there and announced at the end of the one before', () => {
   const s = parseText(`${HEAD}
 m1 time=2/4
   rh.1: R:2
@@ -262,9 +262,15 @@ m2 time=3/4 break=system
   rh.1: R:2.
   lh.1: R:2.
 `);
-  const ps = engrave(s).pages[0].prims;
-  const threes = ps.filter((p) => p.t === 'glyph' && p.name === 'timeSig3' && p.k === 'timesig');
-  assert.equal(threes.length, 2); // One per staff.
+  const res = engrave(s);
+  const threes = res.pages[0].prims.filter((p) => p.t === 'glyph' && p.name === 'timeSig3' && p.k === 'timesig');
+  // One per staff at the start of the second system, and one per staff as a courtesy at the end of the first.
+  assert.equal(threes.length, 4);
+  const [first, second] = res.layout.systems;
+  const xs = threes.map((p) => (p.t === 'glyph' ? p.x : 0));
+  assert.equal(xs.filter((x) => x > first.x1 - 3 && x < first.x1).length, 2);
+  assert.equal(xs.filter((x) => x < second.x0 + 8).length, 2);
+  assert.deepEqual(findCollisions(res.pages), []);
 });
 
 test('a tie inside the staff stops short of a time change it crosses and goes on after it', () => {

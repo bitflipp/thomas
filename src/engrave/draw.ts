@@ -45,7 +45,9 @@ export interface SysCtx {
   placed: PlacedMeasure[]; // This is indexed by measure index.
   mx: number[]; // This is the left x of each measure (system-local), indexed by measure index.
   prefix: number; // This is the width before the first measure.
-  width: number;
+  width: number; // This is the x of the last barline.
+  /** The time signature announced after the last barline (`courtesyTime`); the staff lines run `courtesyRoom` past `width`. */
+  courtesy?: { beats: number; beatType: number };
   f: number;
   prims: Prim[][]; // There is one list per staff, in staff-local coordinates.
   sky: Skyline[];

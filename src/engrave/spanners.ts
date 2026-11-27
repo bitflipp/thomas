@@ -665,7 +665,7 @@ function tieBlocks(ctx: SysCtx, s: number): [number, number][] {
     if (mi > ctx.a && sp.prefix > 0) out.push([x + 0.6, x + sp.prefix - 0.6]);
     else if (mi === ctx.a && sp.timeSig) {
       const digits = Math.max(String(sp.timeSig.beats).length, String(sp.timeSig.beatType).length);
-      out.push([x + 0.6, x + 0.6 + digits * sm.adv('timeSig2')]);
+      out.push([x, x + digits * sm.adv('timeSig2')]);
     }
     if (sp.endClef[s]) {
       const end = x + ctx.placed[mi].endX - END_CLEF_GAP;

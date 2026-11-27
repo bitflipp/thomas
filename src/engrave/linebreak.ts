@@ -2,7 +2,7 @@
 
 import type { Prepared } from './prep.ts';
 
-import { prefixWidth } from './signatures.ts';
+import { courtesyRoom, courtesyTime, prefixWidth } from './signatures.ts';
 import type { MeasureSpacing } from './spacing.ts';
 
 /** The measures a..b (inclusive) that make up one system. */
@@ -87,6 +87,8 @@ export function planSystems(
   const n = spN.length;
   // Width of measures a..b as the first of a system is a's own variant, the rest the normal ones: prefix sums make a range O(1).
   const prefixOf = Array.from({ length: n }, (_, a) => prefixWidth(prep, a, a === 0) + (a === 0 ? firstIndent : 0));
+  // A system that ends before a time change announces it after its last barline.
+  const suffixOf = Array.from({ length: n }, (_, b) => courtesyRoom(courtesyTime(prep, b)));
   const sums = (pick: (sp: MeasureSpacing) => number): number[] => {
     const out = [0];
     for (let k = 0; k < n; k++) out.push(out[k] + pick(spN[k]));
@@ -97,7 +99,7 @@ export function planSystems(
   const rangeWidth = (a: number, b: number, compressed: boolean) => {
     const sum = compressed ? sumComp : sumMin;
     const first = compressed ? spF[a].compWidth : spF[a].minWidth;
-    return prefixOf[a] + first + sum[b + 1] - sum[a + 1];
+    return prefixOf[a] + first + sum[b + 1] - sum[a + 1] + suffixOf[b];
   };
   const plans: SysPlan[] = [];
   const starts = [0, ...[...forced].filter((i) => i > 0).sort((x, y) => x - y)];
