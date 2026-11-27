@@ -8,7 +8,6 @@ import { lazy, Suspense } from 'preact/compat';
 import { useEffect } from 'preact/hooks';
 import { importMusicXml } from '../src/musicxml.ts';
 import { writeText } from '../src/textformat.ts';
-import { Dropdown } from './Dropdown.tsx';
 import { Expression, ExpressionTools } from './Expression.tsx';
 import { fitRoll, zoomRoll } from './expression.ts';
 import { Ui } from './icons.tsx';
@@ -16,12 +15,13 @@ import { zoomBy } from './interact.ts';
 import { installKeys } from './keys.ts';
 import { LayersMenu } from './Layers.tsx';
 import { layersOpen } from './layers.ts';
-import { chooseInput, midiIn, midiInPorts } from './midiin.ts';
+import { chooseInput, listInputs, midiIn, midiInPorts } from './midiin.ts';
 import { native } from './native.ts';
 import { Overview } from './Overview.tsx';
 import { Palette } from './Palette.tsx';
+import { PortMenu } from './PortMenu.tsx';
 import { Properties } from './Properties.tsx';
-import { chooseOutput, midiOut, midiPorts, playing, toggle } from './player.ts';
+import { chooseOutput, listOutputs, midiOut, midiPorts, playing, toggle } from './player.ts';
 import { ScorePane } from './ScorePane.tsx';
 import { Shortcuts, showHelp } from './Shortcuts.tsx';
 import type { Mode } from './state.ts';
@@ -217,51 +217,51 @@ function Toolbar() {
         </button>
       </div>
       <span class="sep" />
-      <button
-        type="button"
-        class="play"
-        aria-pressed={playing.value}
-        title="Play / stop (Space). Starts from the playhead, where it stopped; Alt+click moves the playhead, Home rewinds"
-        onClick={toggle}
+      <PortMenu
+        heading="MIDI output"
+        ports={midiPorts.value}
+        value={midiOut.value}
+        onPick={chooseOutput}
+        onOpen={listOutputs}
+        empty="None found. Start a synthesizer (e.g. FluidSynth)."
       >
-        {playing.value ? (
-          <>
-            <Ui.stop /> Stop
-          </>
-        ) : (
-          <>
-            <Ui.play /> Play
-          </>
-        )}
-      </button>
-      {midiPorts.value.length > 0 && (
-        <Dropdown
-          title="MIDI output"
-          value={midiOut.value ?? ''}
-          opts={midiPorts.value.map((p) => ({ value: p.id, label: p.name }))}
-          onChange={chooseOutput}
-        />
-      )}
+        <button
+          type="button"
+          class="play"
+          aria-pressed={playing.value}
+          title="Play / stop (Space). Starts from the playhead, where it stopped; Alt+click moves the playhead, Home rewinds. Right click or ▾ chooses the MIDI output"
+          onClick={toggle}
+        >
+          {playing.value ? (
+            <>
+              <Ui.stop /> Stop
+            </>
+          ) : (
+            <>
+              <Ui.play /> Play
+            </>
+          )}
+        </button>
+      </PortMenu>
       {/* Note entry from a MIDI keyboard is for the score; the other modes leave it out. */}
       {m === 'score' && (
-        <>
+        <PortMenu
+          heading="MIDI input"
+          ports={midiInPorts.value}
+          value={midiIn.value}
+          onPick={(id) => chooseInput(id)}
+          onOpen={listInputs}
+          empty="None found. Plug in a keyboard."
+        >
           <button
             type="button"
             aria-pressed={midiIn.value !== null}
-            title="Enter notes from a MIDI keyboard: select where to start, then play"
+            title="Enter notes from a MIDI keyboard: select where to start, then play. Right click or ▾ chooses the input"
             onClick={() => chooseInput(midiIn.value === null ? undefined : null)}
           >
             MIDI in
           </button>
-          {midiIn.value !== null && midiInPorts.value.length > 1 && (
-            <Dropdown
-              title="MIDI input"
-              value={midiIn.value}
-              opts={midiInPorts.value.map((p) => ({ value: p.id, label: p.name }))}
-              onChange={(id) => chooseInput(id)}
-            />
-          )}
-        </>
+        </PortMenu>
       )}
       <span class="sep" />
       <div class="seg">

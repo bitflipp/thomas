@@ -76,6 +76,30 @@ function refresh(): void {
   listen(midiIn.peek());
 }
 
+/** Asks for MIDI access on first use (the browser prompts) and reads the inputs; false (explained in the status line) when there is no access. */
+async function open(): Promise<boolean> {
+  if (!access) {
+    if (!navigator.requestMIDIAccess) {
+      say('This browser has no Web MIDI support', true);
+      return false;
+    }
+    try {
+      access = await navigator.requestMIDIAccess();
+    } catch {
+      say('MIDI access was refused', true);
+      return false;
+    }
+    access.onstatechange = () => refresh();
+  }
+  refresh();
+  return true;
+}
+
+/** Reads the MIDI inputs into `midiInPorts` (asking for access the first time), for the input menu; input stays off. */
+export function listInputs(): void {
+  void open();
+}
+
 /** Switches MIDI input on (asking for access the first time) with input `id`, the default input when omitted, or off with `null`. */
 export async function chooseInput(id?: string | null): Promise<void> {
   if (id === null) {
@@ -83,19 +107,7 @@ export async function chooseInput(id?: string | null): Promise<void> {
     listen(null);
     return;
   }
-  if (!access) {
-    if (!navigator.requestMIDIAccess) {
-      say('This browser has no Web MIDI support', true);
-      return;
-    }
-    try {
-      access = await navigator.requestMIDIAccess();
-    } catch {
-      say('MIDI access was refused', true);
-      return;
-    }
-    access.onstatechange = () => refresh();
-  }
+  if (!((await open()) && access)) return;
   const ins = [...access.inputs.values()];
   const pick = ins.find((i) => i.id === id) ?? ins.find((i) => !/through/i.test(i.name ?? '')) ?? ins[0];
   if (!pick) {

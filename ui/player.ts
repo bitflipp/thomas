@@ -89,22 +89,33 @@ function refreshPorts(): void {
   }
 }
 
-/** Asks for MIDI access on first use (the browser prompts), and returns the chosen output or explains in the status line why there is none. */
-async function connect(): Promise<MIDIOutput | null> {
+/** Asks for MIDI access on first use (the browser prompts) and reads the outputs; false (explained in the status line) when there is no access. */
+async function open(): Promise<boolean> {
   if (!access) {
     if (!navigator.requestMIDIAccess) {
       say('This browser has no Web MIDI support', true);
-      return null;
+      return false;
     }
     try {
       access = await navigator.requestMIDIAccess();
     } catch {
       say('MIDI access was refused', true);
-      return null;
+      return false;
     }
     access.onstatechange = () => refreshPorts();
   }
   refreshPorts();
+  return true;
+}
+
+/** Reads the MIDI outputs into `midiPorts` (asking for access the first time), for the output menu. */
+export function listOutputs(): void {
+  void open();
+}
+
+/** Opens MIDI and returns the chosen output, or explains in the status line why there is none. */
+async function connect(): Promise<MIDIOutput | null> {
+  if (!((await open()) && access)) return null;
   const out = midiOut.peek() ? access.outputs.get(must(midiOut.peek())) : undefined;
   if (!out) say('No MIDI output found. Start a synthesizer (e.g. FluidSynth) and try again.', true);
   return out ?? null;

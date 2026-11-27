@@ -826,8 +826,29 @@ kbd {
 }
 
 .viewmenu,
-.layersmenu {
+.layersmenu,
+.portmenu {
   position: relative;
+}
+/* The ▾ of a split button (`PortMenu`): narrow, joined to the button before it. */
+.portmenu > button.more {
+  width: calc(var(--h) * 0.7);
+  padding: 0;
+  color: var(--muted);
+}
+.portmenu.open > button.more {
+  color: var(--accent);
+  border-color: var(--accent);
+  z-index: 1;
+}
+.popover .heading {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.popover .muted {
+  color: var(--muted);
 }
 .popover {
   position: absolute;
