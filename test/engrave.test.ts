@@ -253,6 +253,35 @@ m2 break=system
   assert.ok(ps.some((p) => p.t === 'glyph' && p.name === 'keyboardPedalParensLeft'));
 });
 
+test('a time change at the start of a system is printed there', () => {
+  const s = parseText(`${HEAD}
+m1 time=2/4
+  rh.1: R:2
+  lh.1: R:2
+m2 time=3/4 break=system
+  rh.1: R:2.
+  lh.1: R:2.
+`);
+  const ps = engrave(s).pages[0].prims;
+  const threes = ps.filter((p) => p.t === 'glyph' && p.name === 'timeSig3' && p.k === 'timesig');
+  assert.equal(threes.length, 2); // One per staff.
+});
+
+test('a tie inside the staff stops short of a time change it crosses and goes on after it', () => {
+  const s = parseText(`${HEAD}
+m1 time=2/4
+  rh.1: r:4 c5:4~
+  lh.1: R:2
+m2 time=3/4
+  rh.1: c5:2.
+  lh.1: R:2.
+`);
+  const res = engrave(s);
+  const ties = res.pages[0].prims.filter((p) => p.k === 'tie');
+  assert.equal(ties.length, 2);
+  assert.deepEqual(findCollisions(res.pages), []);
+});
+
 test('cross-staff beam: stems point at a beam between the staves, which keep a gap that fits it', () => {
   const s = parseText(`${HEAD}
 m1 time=2/4

@@ -168,11 +168,10 @@ function drawEndClef(P: Prim[], ctx: SysCtx, mi: number, s: number, y0: number):
 export function drawMidSystemChanges(P: Prim[], ctx: SysCtx, s: number, y0: number): void {
   const { score } = ctx.prep;
   for (let mi = ctx.a; mi <= ctx.b; mi++) {
-    if (mi > ctx.a) {
-      const x = drawKeyChange(P, ctx, mi, s, y0, ctx.mx[mi] + 0.6);
-      const ts = timeChangeAt(score, mi);
-      if (ts) drawTimeSig(P, x, y0, ts);
-    }
+    // At the start of a system the key is part of the system start, but a time change still goes into the measure's own room.
+    const x = mi > ctx.a ? drawKeyChange(P, ctx, mi, s, y0, ctx.mx[mi] + 0.6) : ctx.mx[mi] + 0.6;
+    const ts = timeChangeAt(score, mi);
+    if (ts) drawTimeSig(P, x, y0, ts);
     drawClefChanges(P, ctx, mi, s, y0);
     drawEndClef(P, ctx, mi, s, y0);
   }

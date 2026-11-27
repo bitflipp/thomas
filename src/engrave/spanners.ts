@@ -12,7 +12,7 @@ import { drawMarks } from './marks.ts';
 import type { EvL } from './prep.ts';
 import { beamLevels, posToY } from './prep.ts';
 import { oid, Skyline } from './scene.ts';
-import { DOT_STEP, flagGlyph, STEM_T } from './spacing.ts';
+import { DOT_STEP, END_CLEF_GAP, flagGlyph, STEM_T } from './spacing.ts';
 import { drawVoltas } from './volta.ts';
 
 const sm = loadSmufl();
@@ -604,9 +604,19 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
       },
     };
   };
-  const solo = (p: { hgt: number; draw: (hh: number) => void } | undefined) => p?.draw(p.hgt);
+  type Piece = { hgt: number; draw: (hh: number) => void };
+  // A tie stops short of a signature change or a small clef it would run through and goes on after it, so a
+  // stretch of tie can come in several pieces, each drawn at its own height.
+  // Only a tie inside the staff meets them (it bulges by at most about a space).
+  const pieces = (ctx: SysCtx, xa: number, xb: number, yy: number): Piece[] =>
+    cutAround(xa, xb, (above ? yy > 0 && yy - 1 < 4 : yy < 4 && yy + 1 > 0) ? tieBlocks(ctx, e.staff) : [])
+      .map(([a, b]) => place(ctx, a, b, yy))
+      .filter((p): p is Piece => !!p);
+  const solo = (ps: Piece[]) => {
+    for (const p of ps) p.draw(p.hgt);
+  };
   if (!next || nh < 0) {
-    solo(place(si, x0, Math.min(x0 + 2.6, si.width), y));
+    solo(pieces(si, x0, Math.min(x0 + 2.6, si.width), y));
     return;
   }
   const sj = systems[sysOfIndex(systems, next.mi)];
@@ -620,12 +630,16 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
     x1 = x1Plain;
   }
   const yN = posToY(next.heads[nh].pos) + (above ? -0.38 : 0.38);
-  if (sj === si) solo(place(si, x0, x1, y));
+  if (sj === si) solo(pieces(si, x0, x1, y));
   else {
     // A tie broken across systems: the outgoing half runs to the end of the line, the incoming half
     // starts after the next system's prefix (clef, key, time signature).
-    const outgoing = place(si, x0, si.width - 0.2, y);
-    const incoming = place(sj, Math.max(0.4, Math.min(Math.max(sj.prefix - 0.6, 0.5), x1 - 2.4)), x1, yN); // A continuation is never a stub.
+    const outs = pieces(si, x0, si.width - 0.2, y);
+    const ins = pieces(sj, Math.max(0.4, Math.min(Math.max(sj.prefix - 0.6, 0.5), x1 - 2.4)), x1, yN); // A continuation is never a stub.
+    const outgoing = outs.pop();
+    const incoming = ins.shift();
+    solo(outs);
+    solo(ins);
     // The halves of a broken tie match in height, except that an obstacle-driven outgoing half does not turn the
     // incoming half into a bowl: that one only follows part of the way.
     const ho = outgoing?.hgt ?? 0;
@@ -633,6 +647,45 @@ function drawTie(systems: SysCtx[], e: EvL, hi: number, next: EvL | undefined, n
     outgoing?.draw(Math.max(ho, hi));
     incoming?.draw(hi >= ho ? hi : Math.max(hi, Math.min(ho, hi * 1.25 + 0.05)));
   }
+}
+
+/** Room a tie keeps from a signature or clef it is interrupted by. */
+const TIE_BLOCK_GAP = 0.3;
+
+/**
+ * Where a tie on staff `s` must not run in a system, as x ranges: a key or time signature change at the start of a
+ * measure (at the start of the system only the time signature, which is drawn in the measure's own room) and a small
+ * clef before a barline. Their places are those `signatures.ts` draws them at, worked out from the spacing.
+ */
+function tieBlocks(ctx: SysCtx, s: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (let mi = ctx.a; mi <= ctx.b; mi++) {
+    const sp = ctx.spacing[mi];
+    const x = ctx.mx[mi];
+    if (mi > ctx.a && sp.prefix > 0) out.push([x + 0.6, x + sp.prefix - 0.6]);
+    else if (mi === ctx.a && sp.timeSig) {
+      const digits = Math.max(String(sp.timeSig.beats).length, String(sp.timeSig.beatType).length);
+      out.push([x + 0.6, x + 0.6 + digits * sm.adv('timeSig2')]);
+    }
+    if (sp.endClef[s]) {
+      const end = x + ctx.placed[mi].endX - END_CLEF_GAP;
+      out.push([end - sm.adv('gClefChange'), end]);
+    }
+  }
+  return out;
+}
+
+/** The parts of [xa, xb] that keep `TIE_BLOCK_GAP` clear of every block. */
+function cutAround(xa: number, xb: number, blocks: [number, number][]): [number, number][] {
+  const parts: [number, number][] = [];
+  let a = xa;
+  for (const [l, r] of [...blocks].sort((p, q) => p[0] - q[0])) {
+    if (r + TIE_BLOCK_GAP <= a || l - TIE_BLOCK_GAP >= xb) continue;
+    if (l - TIE_BLOCK_GAP > a) parts.push([a, l - TIE_BLOCK_GAP]);
+    a = Math.max(a, r + TIE_BLOCK_GAP);
+  }
+  if (a < xb) parts.push([a, xb]);
+  return parts;
 }
 
 /** Index of the system containing measure `mi`. */
